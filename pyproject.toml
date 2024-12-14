@@ -4,4 +4,25 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "sqlalchemy>=2.0.36",
+    "PyYAML>=6.0.2",
+    "rich>=13.9.4",
+    "pydantic>=2.10.3",
+    "click>=8.1.7",
+]
+
+[project.scripts]
+eaidl = "eaidl.cli:generate"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.0.1",
+    "pytest>=8.3.4",
+    "ruff>=0.8.3",
+    "types-PyYAML>=6.0.12.20240917",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"

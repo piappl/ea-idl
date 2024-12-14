@@ -1,0 +1,1 @@
+database_url: sqlite+pysqlite:///tests/data/nafv4.qea

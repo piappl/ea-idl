@@ -17,5 +17,6 @@ pyenv virtualenv 3.13 eaidl
 ```
 
 ```sh
-pip install uv
+pip install -e "."
+pytest 
 ```

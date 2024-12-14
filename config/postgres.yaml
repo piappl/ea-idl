@@ -1,0 +1,2 @@
+database_url: postgresql+psycopg2://postgres:postgres@localhost/4817
+root_package: "{01142C55-16DF-4afe-B8A8-39D56BBDBE89}"
