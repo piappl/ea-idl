@@ -13,12 +13,23 @@ struct {{ cls.name }} {
 {{ gen_attribute(module, cls, attr) }}{% endfor -%}
 };
 {% endmacro -%}
-{% macro gen_class(module, cls) -%}
+{% macro gen_class_declaration(module, cls) -%}
 {% if "idlEnum" in cls.stereotypes %}
 enum {{ cls.name }} {
 {% for item in cls.attributes %}{% if loop.revindex0 == 0 %}    {{item.name}}
 {% else %}    {{item.name}},
 {% endif -%}{% endfor -%}};
+{% elif "idlUnion" in cls.stereotypes %}
+union {{ cls.name }};
+{% elif "idlTypedef" in cls.stereotypes %}
+    typedef {{cls.parent_type}} {{cls.name}};
+{% else %}
+struct {{ cls.name }};
+{% endif %}
+{% endmacro -%}
+{% macro gen_class(module, cls) -%}
+{% if "idlEnum" in cls.stereotypes %}
+{# Already outputted in definition part #}
 {% elif "idlUnion" in cls.stereotypes %}
 union {{ cls.name }} switch (int8)  {
 {%- for item in cls.attributes %}
@@ -26,11 +37,21 @@ union {{ cls.name }} switch (int8)  {
         {{ "::".join(cls.namespace) ~ "::" ~ item.type}} {{item.name}};{% endfor %}
 };
 {% elif "idlTypedef" in cls.stereotypes %}
-    typedef {{cls.parent_type}} {{cls.name}};
+{# Already outputted in definition part #}
 {% else %}
 {{ get_struct(module, cls) }}
 {% endif %}
 {% endmacro -%}
+{% macro gen_module_declaration(module, loop) %}
+module {{ module.name }} {
+{% for submodule in module.packages %}
+{{ gen_module(submodule, loop)|indent(4, False) }}
+{% endfor %}
+{% for cls in module.classes %}
+{{ gen_class_declaration(module, cls)|indent(4, False) }}
+{% endfor %}
+}; /* {{module.name}} */
+{%- endmacro -%}
 {% macro gen_module(module, loop) %}
 module {{ module.name }} {
 {% for submodule in module.packages %}
@@ -45,6 +66,9 @@ module {{ module.name }} {
 
 
 module {{package.name}} {
+{% for child in package.packages recursive -%}
+{{ gen_module_declaration(child, loop)|indent(4, False) }}
+{% endfor -%}
 {% for child in package.packages recursive -%}
 {{ gen_module(child, loop)|indent(4, False) }}
 {% endfor -%}
