@@ -16,9 +16,9 @@ struct {{ cls.name }} {
 {% macro gen_class(module, cls) -%}
 {% if "idlEnum" in cls.stereotypes %}
 enum {{ cls.name }} {
-{%- for item in cls.attributes %}
-    {{item.name}};{% endfor %}
-};
+{% for item in cls.attributes %}{% if loop.revindex0 == 0 %}    {{item.name}}
+{% else %}    {{item.name}},
+{% endif -%}{% endfor -%}};
 {% elif "idlUnion" in cls.stereotypes %}
 union {{ cls.name }} switch (int8)  {
 {%- for item in cls.attributes %}
