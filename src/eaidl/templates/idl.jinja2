@@ -22,13 +22,13 @@ enum {{ cls.name }} {
 {% elif "idlUnion" in cls.stereotypes %}
 union {{ cls.name }};
 {% elif "idlTypedef" in cls.stereotypes %}
-    typedef {{cls.parent_type}} {{cls.name}};
+typedef {{cls.parent_type}} {{cls.name}};
 {% else %}
 struct {{ cls.name }};
 {% endif %}
 {% endmacro -%}
 {% macro gen_class(module, cls) -%}
-{% if "idlEnum" in cls.stereotypes %}
+{% if "idlEnum" in cls.stereotypes -%}
 {# Already outputted in definition part #}
 {% elif "idlUnion" in cls.stereotypes %}
 union {{ cls.name }} switch (int8)  {
@@ -36,7 +36,7 @@ union {{ cls.name }} switch (int8)  {
     case {{loop.index}}:
         {{ "::".join(cls.namespace) ~ "::" ~ item.type}} {{item.name}};{% endfor %}
 };
-{% elif "idlTypedef" in cls.stereotypes %}
+{% elif "idlTypedef" in cls.stereotypes -%}
 {# Already outputted in definition part #}
 {% else %}
 {{ get_struct(module, cls) }}
@@ -45,7 +45,7 @@ union {{ cls.name }} switch (int8)  {
 {% macro gen_module_declaration(module, loop) %}
 module {{ module.name }} {
 {% for submodule in module.packages %}
-{{ gen_module(submodule, loop)|indent(4, False) }}
+{{ gen_module_declaration(submodule, loop)|indent(4, False) }}
 {% endfor %}
 {% for cls in module.classes %}
 {{ gen_class_declaration(module, cls)|indent(4, False) }}
