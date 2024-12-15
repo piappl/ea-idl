@@ -355,7 +355,11 @@ class ModelParser:
             package = self.session.query(TPackage).filter(TPackage.attr_package_id == current_package_id).scalar()
             current_package_id = package.attr_parent_id
             namespace.append(package.attr_name)
+            if self.config.root_package == package.attr_ea_guid:
+                # We got to our configured top package
+                break
             if current_package_id in [0, None]:
+                # We got to top package
                 break
         namespace.reverse()
         return namespace

@@ -1,44 +1,42 @@
 {% macro gen_attribute(module, cls, attr) -%}
-    {% if attr.is_collection %}    
-        sequence<{{ "::".join(attr.namespace + [attr.type])}}> {{attr.name}};
-    {% else %}
-        {{ "::".join(attr.namespace + [attr.type])}} {{attr.name}};
-    {% endif -%}
+{% if attr.is_collection %}    sequence<{{ "::".join(attr.namespace + [attr.type])}}> {{attr.name}};
+{% else %}    {{ "::".join(attr.namespace + [attr.type])}} {{attr.name}};
+{% endif -%}
 {% endmacro -%}
 {% macro get_struct(module, cls) -%}
-    struct {{ cls.name }} {
-    {% for attr in cls.attributes -%}
-    {{ gen_attribute(module, cls, attr) }}
-    {% endfor -%}
-    }
+struct {{ cls.name }} {
+{% for attr in cls.attributes -%}
+{{ gen_attribute(module, cls, attr) }}{% endfor -%}
+}
 {% endmacro -%}
 {% macro gen_class(module, cls) -%}
 {% if "idlEnum" in cls.stereotypes %}
-    enum {{ cls.name }} {
-    {% for item in cls.attributes %}
-        {{item.name}};{% endfor %}
-}{% elif "idlUnion" in cls.stereotypes %}
-    union {{ cls.name }} {
-    {% for item in cls.attributes %}
+enum {{ cls.name }} {
+{%- for item in cls.attributes %}
+    {{item.name}};{% endfor %}
+}
+{% elif "idlUnion" in cls.stereotypes %}
+union {{ cls.name }} switch (int8)  {
+{%- for item in cls.attributes %}
+    case {{loop.index}}:
         {{ "::".join(cls.namespace) ~ "::" ~ item.type}} {{item.name}};{% endfor %}
-}{% elif "idlTypedef" in cls.stereotypes %}
+}
+{% elif "idlTypedef" in cls.stereotypes %}
     {# Do nothing here #}
 {% else %}
-    {{ get_struct(module, cls) }}
-{%endif%}
+{{ get_struct(module, cls) }}
+{% endif %}
 {% endmacro -%}
 {% macro gen_module(module, loop) %}
 module {{ module.name }} {
-{% for cls in module.classes %}
-{{ gen_class(module, cls) }}
-{% endfor %}
-
 {% for submodule in module.packages %}
-{{ gen_module(submodule, loop) }}
+{{ gen_module(submodule, loop)|indent(4, False) }}
 {% endfor %}
-
+{% for cls in module.classes %}
+{{ gen_class(module, cls)|indent(4, False) }}
+{% endfor %}
 } /* {{module.name}} */
-{% endmacro -%}
+{%- endmacro -%}
 
 
 
