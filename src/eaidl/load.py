@@ -280,8 +280,8 @@ class ModelParser:
         TObject = base.classes.t_object
         TPackage = base.classes.t_package
         child_t_objects = self.session.query(TObject).filter(TObject.attr_package_id == parent_package.package_id).all()
-        classes: Deque[ModelClass] = deque()
-        packages: Deque[ModelPackage] = deque()
+        classes: Deque[ModelClass] = deque([])
+        packages: Deque[ModelPackage] = deque([])
         for child_t_object in child_t_objects:
             # inspect(child_t_object)
 
@@ -316,7 +316,6 @@ class ModelParser:
                 inspect(child_t_object)
         # Now we need to sort stuff. Do classes, those have depends_on list, which
         # means those need to go first.
-        transferred_objects: List[int] = []
         for count in range(len(classes) * len(classes)):
             # If there is something wrong we might infinite loop here with while,
             # for sure we can handle that in size*size/2
@@ -326,13 +325,18 @@ class ModelParser:
             if len(classes) == 0:
                 break
             item: ModelClass = classes.popleft()
+            ready = True
             for dependant in item.depends_on:
-                if dependant not in transferred_objects:
-                    # We are not ready for that one, put it back on another end
-                    classes.append(item)
+                for obj in classes:
+                    if obj.object_id == dependant:
+                        # We are not ready for that one, put it back on another end
+                        classes.append(item)
+                        ready = False
+                        break
+                if not ready:
                     break
-            transferred_objects.append(item.object_id)
-            parent_package.classes.append(item)
+            if ready:
+                parent_package.classes.append(item)
         # FIXME, packages need sorting to.
         parent_package.packages = [item for item in packages]
 
