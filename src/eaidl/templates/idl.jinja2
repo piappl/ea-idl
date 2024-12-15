@@ -26,7 +26,7 @@ union {{ cls.name }} switch (int8)  {
         {{ "::".join(cls.namespace) ~ "::" ~ item.type}} {{item.name}};{% endfor %}
 }
 {% elif "idlTypedef" in cls.stereotypes %}
-    {# Do nothing here #}
+    typedef {{cls.parent_type}} {{cls.name}};
 {% else %}
 {{ get_struct(module, cls) }}
 {% endif %}

@@ -97,6 +97,7 @@ class ModelClass(LocalBaseModel):
     stereotypes: Optional[List[str]] = None
     generalization: Optional[List[str]] = None
     depends_on: List[int] = []
+    parent_type: Optional[str] = None
 
 
 class ModelPackage(LocalBaseModel):
@@ -459,6 +460,11 @@ class ModelParser:
         model_class.stereotype = t_object.attr_stereotype
         model_class.stereotypes = self.get_stereotypes(t_object.attr_ea_guid)
         model_class.is_abstract = to_bool(t_object.attr_abstract)
+        if t_object.attr_genlinks is not None:
+            # We set parent for typedefs.
+            model_class.parent_type = (
+                m.group(1) if (m := re.search(r"Parent=(.*?);", t_object.attr_genlinks)) is not None else None
+            )
         model_class.notes = t_object.attr_note
         connections = self.get_object_connections(model_class.object_id, mode="source")
         for connection in connections:
