@@ -34,7 +34,7 @@ struct {{ cls.name }};
 union {{ cls.name }} switch (int8)  {
 {%- for item in cls.attributes %}
     case {{loop.index}}:
-        {{ "::".join(cls.namespace) ~ "::" ~ item.type}} {{item.name}};{% endfor %}
+        {{ "::".join(item.namespace + [item.type])}} {{item.name}};{% endfor %}
 };
 {% elif "idlTypedef" in cls.stereotypes -%}
 {# Already outputted in definition part #}
