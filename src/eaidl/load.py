@@ -316,14 +316,8 @@ class ModelParser:
                 inspect(child_t_object)
         # Now we need to sort stuff. Do classes, those have depends_on list, which
         # means those need to go first.
-        for count in range(len(classes) * len(classes)):
-            # If there is something wrong we might infinite loop here with while,
-            # for sure we can handle that in size*size/2
-            if count == len(classes) * len(classes) - 1:
-                log.error("Something is wrong with class dependencies")
-                break
-            if len(classes) == 0:
-                break
+        while len(classes) > 0:
+            # If there is something wrong we might infinite loop here with while.
             item: ModelClass = classes.popleft()
             ready = True
             for dependant in item.depends_on:
