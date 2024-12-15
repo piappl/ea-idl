@@ -4,7 +4,11 @@
 {% endif -%}
 {% endmacro -%}
 {% macro get_struct(module, cls) -%}
+{% if cls.generalization %}
+struct {{ cls.name }}: {{ "::".join(cls.generalization) }} {
+{% else %}
 struct {{ cls.name }} {
+{% endif %}
 {% for attr in cls.attributes -%}
 {{ gen_attribute(module, cls, attr) }}{% endfor -%}
 }

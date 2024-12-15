@@ -95,6 +95,7 @@ class ModelClass(LocalBaseModel):
     stereotype: Optional[str] = None
     attributes: List["ModelAttribute"] = []
     stereotypes: Optional[List[str]] = None
+    generalization: Optional[List[str]] = None
     depends_on: List[int] = []
 
 
@@ -454,8 +455,17 @@ class ModelParser:
         t_attributes = self.session.query(TAttribute).filter(TAttribute.attr_object_id == model_class.object_id).all()
         for t_attribute in t_attributes:
             model_class.attributes.append(self.attribute_parse(parent_package, model_class, t_attribute))
+
         model_class.stereotype = t_object.attr_stereotype
         model_class.stereotypes = self.get_stereotypes(t_object.attr_ea_guid)
         model_class.is_abstract = to_bool(t_object.attr_abstract)
         model_class.notes = t_object.attr_note
+        connections = self.get_object_connections(model_class.object_id, mode="source")
+        for connection in connections:
+            if connection.connector_type == "Generalization":
+                destination = self.get_object(connection.end_object_id)
+                namespace = self.get_namespace(destination.attr_package_id)
+                namespace.append(destination.attr_name)
+                model_class.generalization = namespace
+                model_class.depends_on.append(connection.end_object_id)
         return model_class
