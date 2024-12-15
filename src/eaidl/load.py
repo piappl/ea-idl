@@ -391,6 +391,11 @@ class ModelParser:
 
         connections = self.get_object_connections(parent_class.object_id, mode="source")
         for connection in connections:
+            if connection.connector_type != "Association":
+                continue
+            if connection.destination.role != attribute.name:
+                continue
+            # inspect(connection)
             # We can gent object from database, but we probably prefer to find it in our structure
             # right now it might not be there yet... but still we can find right connection
             # and have to look up actual class later.
