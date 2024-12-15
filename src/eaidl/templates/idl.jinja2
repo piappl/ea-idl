@@ -11,20 +11,20 @@ struct {{ cls.name }} {
 {% endif %}
 {% for attr in cls.attributes -%}
 {{ gen_attribute(module, cls, attr) }}{% endfor -%}
-}
+};
 {% endmacro -%}
 {% macro gen_class(module, cls) -%}
 {% if "idlEnum" in cls.stereotypes %}
 enum {{ cls.name }} {
 {%- for item in cls.attributes %}
     {{item.name}};{% endfor %}
-}
+};
 {% elif "idlUnion" in cls.stereotypes %}
 union {{ cls.name }} switch (int8)  {
 {%- for item in cls.attributes %}
     case {{loop.index}}:
         {{ "::".join(cls.namespace) ~ "::" ~ item.type}} {{item.name}};{% endfor %}
-}
+};
 {% elif "idlTypedef" in cls.stereotypes %}
     typedef {{cls.parent_type}} {{cls.name}};
 {% else %}
@@ -39,13 +39,13 @@ module {{ module.name }} {
 {% for cls in module.classes %}
 {{ gen_class(module, cls)|indent(4, False) }}
 {% endfor %}
-} /* {{module.name}} */
+}; /* {{module.name}} */
 {%- endmacro -%}
 
 
 
-{{package.name}} {
+module {{package.name}} {
 {% for child in package.packages recursive -%}
 {{ gen_module(child, loop)|indent(4, False) }}
 {% endfor -%}
-} /* {{package.name}} */
+}; /* {{package.name}} */
