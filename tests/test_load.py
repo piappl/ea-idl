@@ -29,11 +29,11 @@ def test_reflect():
         "t_package": 6,
         "t_object": 26,
         "t_attribute": 5,
-        "t_connector": 8,
+        "t_connector": 9,
         "t_connectortag": 0,
         "t_diagram": 2,
         "t_diagramobjects": 19,
-        "t_diagramlinks": 8,
+        "t_diagramlinks": 9,
         "t_objectproperties": 22,
     }
 
