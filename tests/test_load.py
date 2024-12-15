@@ -1,4 +1,4 @@
-from eaidl.load import load
+from eaidl.load import ModelParser
 from eaidl.utils import Configuration
 from sqlalchemy import create_engine
 from sqlalchemy import text
@@ -46,5 +46,6 @@ def test_reflect():
 
 
 def test_load():
-    ret = load(Configuration())
-    inspect(ret)
+    ret = ModelParser(Configuration())
+    model = ret.load()
+    inspect(model)

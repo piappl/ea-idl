@@ -1,5 +1,5 @@
 import click
-from eaidl.load import load
+from eaidl.load import ModelParser
 from eaidl.utils import load_config
 from eaidl.generate import generate
 
@@ -8,7 +8,8 @@ from eaidl.generate import generate
 @click.option("--config", default="config.yaml", help="Configuration file.")
 def run(config):
     config = load_config(config)
-    model = load(config)
+    parser = ModelParser(config)
+    model = parser.load()
     ret = generate(config, model)
     print(ret)
 
