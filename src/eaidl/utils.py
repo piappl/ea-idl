@@ -30,6 +30,12 @@ class Configuration(BaseModel):
         "string",
         "wstring",
     ]
+    properties: List[str] = [
+        "max",
+        "exclusiveMaximum",
+        "min",
+        "exclusiveMinimum",
+    ]
 
 
 def load_config_file(path: str | Path) -> JSON:

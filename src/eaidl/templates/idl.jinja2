@@ -32,6 +32,7 @@ enum {{ cls.name }} {
 union {{ cls.name }};
 {%- elif "idlTypedef" in cls.stereotypes %}
 {{ gen_notes(cls) }}
+{% for key, value in cls.properties.items() %}@{{key}}({{value}}) {% endfor %}
 typedef {{cls.parent_type}} {{cls.name}};
 {%- elif "idlStruct" in cls.stereotypes %}
 {{ gen_notes(cls) }}

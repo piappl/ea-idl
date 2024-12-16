@@ -5,7 +5,7 @@ from typing import Optional
 import sqlalchemy
 from sqlalchemy.orm import Session
 from rich import inspect
-from typing import Any, List, Literal, Deque
+from typing import Any, List, Literal, Deque, Dict
 import logging
 import re
 import copy
@@ -98,6 +98,7 @@ class ModelClass(LocalBaseModel):
     generalization: Optional[List[str]] = None
     depends_on: List[int] = []
     parent_type: Optional[str] = None
+    properties: Dict[str, float | str | int] = {}
 
 
 class ModelPackageInfo(LocalBaseModel):
@@ -573,4 +574,14 @@ class ModelParser:
         t_attributes = self.session.query(TAttribute).filter(TAttribute.attr_object_id == model_class.object_id).all()
         for t_attribute in t_attributes:
             model_class.attributes.append(self.attribute_parse(parent_package, model_class, t_attribute))
+
+        TObjectProperties = base.classes.t_objectproperties
+        t_properties = (
+            self.session.query(TObjectProperties)
+            .filter(TObjectProperties.attr_object_id == model_class.object_id)
+            .all()
+        )
+        for t_property in t_properties:
+            if t_property.attr_property in self.config.properties:
+                model_class.properties[t_property.attr_property] = t_property.attr_value
         return model_class
