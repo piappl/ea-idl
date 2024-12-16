@@ -32,8 +32,10 @@ class Configuration(BaseModel):
     ]
     properties: List[str] = [
         "max",
+        "maximum",
         "exclusiveMaximum",
         "min",
+        "minimum",
         "exclusiveMinimum",
     ]
 
