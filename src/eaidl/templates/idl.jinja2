@@ -1,78 +1,94 @@
 {% macro gen_attribute(module, cls, attr) -%}
-{% if attr.is_collection %}    sequence<{{ "::".join(attr.namespace + [attr.type])}}> {{attr.name}};
-{% else %}    {{ "::".join(attr.namespace + [attr.type])}} {{attr.name}};
+{% if attr.notes %}/** {{attr.notes | wordwrap(78) }} **/ {% endif %}
+{% if attr.is_collection %}sequence<{{ "::".join(attr.namespace + [attr.type])}}> {{attr.name}};
+{% else %}{{ "::".join(attr.namespace + [attr.type])}} {{attr.name}};
 {% endif -%}
-{% endmacro -%}
+{%- endmacro -%}
+{% macro gen_notes(cls) -%}
+{% if cls.notes %}/**
+    {{cls.notes | wordwrap(78) | indent(4)}}
+**/ {% endif %}
+{%- endmacro -%}
 {% macro get_struct(module, cls) -%}
 {% if cls.generalization %}
 struct {{ cls.name }}: {{ "::".join(cls.generalization) }} {
-{% else %}
+{%- else %}
 struct {{ cls.name }} {
-{% endif %}
+{%- endif %}
 {% for attr in cls.attributes -%}
-{{ gen_attribute(module, cls, attr) }}{% endfor -%}
+{{ gen_attribute(module, cls, attr) | indent(4, True) }}{% endfor -%}
 };
-{% endmacro -%}
+{%- endmacro -%}
 {% macro gen_class_declaration(module, cls) -%}
-{% if "idlEnum" in cls.stereotypes %}
+{%- if "idlEnum" in cls.stereotypes %}
+{{ gen_notes(cls) }}
 enum {{ cls.name }} {
 {% for item in cls.attributes %}{% if loop.revindex0 == 0 %}    {{item.name}}
 {% else %}    {{item.name}},
 {% endif -%}{% endfor -%}};
-{% elif "idlUnion" in cls.stereotypes %}
+{%- elif "idlUnion" in cls.stereotypes %}
+{{ gen_notes(cls) }}
 union {{ cls.name }};
-{% elif "idlTypedef" in cls.stereotypes %}
+{%- elif "idlTypedef" in cls.stereotypes %}
+{{ gen_notes(cls) }}
 typedef {{cls.parent_type}} {{cls.name}};
-{% elif "idlStruct" in cls.stereotypes %}
+{%- elif "idlStruct" in cls.stereotypes %}
+{{ gen_notes(cls) }}
 struct {{ cls.name }};
-{% endif %}
-{% endmacro -%}
+{%- endif -%}
+{%- endmacro -%}
 {% macro gen_class(module, cls) -%}
-
-{% if "idlEnum" in cls.stereotypes -%}
-{# Already outputted in definition part #}
-{% elif "idlUnion" in cls.stereotypes %}
+{%- if "idlUnion" in cls.stereotypes %}
+{{ gen_notes(cls) }}
 union {{ cls.name }} switch (int8)  {
 {%- for item in cls.attributes %}
     case {{loop.index}}:
         {{ "::".join(item.namespace + [item.type])}} {{item.name}};{% endfor %}
 };
-{% elif "idlTypedef" in cls.stereotypes -%}
-{# Already outputted in definition part #}
-{% elif "idlStruct" in cls.stereotypes %}
+{%- elif "idlStruct" in cls.stereotypes -%}
+{{ gen_notes(cls) }}
 {{ get_struct(module, cls) }}
-{% endif %}
-{% endmacro -%}
-{% macro gen_module_declaration(module, loop) %}
+{%- endif -%}
+{% endmacro %}
+{%- macro gen_module_declaration(module, loop) %}
+{{ gen_notes(module) }}
 module {{ module.name }} {
-{% for submodule in module.packages %}
+{%- for submodule in module.packages -%}
 {{ gen_module_declaration(submodule, loop)|indent(4, False) }}
-{% endfor %}
-{% for cls in module.classes %}
+{%- endfor -%}
+{%- for cls in module.classes -%}
 {{ gen_class_declaration(module, cls)|indent(4, False) }}
-{% endfor %}
+{%- endfor %}
 }; /* {{module.name}} */
 {%- endmacro -%}
 {% macro gen_module(module, loop) %}
-{% if module.info.create_definition == True %}
+{%- if module.info.create_definition == True %}
+{{ gen_notes(module) }}
 module {{ module.name }} {
-{% for submodule in module.packages %}
+{%- for submodule in module.packages -%}
 {{ gen_module(submodule, loop)|indent(4, False) }}
-{% endfor %}
-{% for cls in module.classes %}
+{%- endfor -%}
+{%- for cls in module.classes -%}
 {{ gen_class(module, cls)|indent(4, False) }}
-{% endfor %}
+{%- endfor %}
 }; /* {{module.name}} */
-{% endif %}
+{%- endif %}
 {%- endmacro -%}
 
 
 
 module {{package.name}} {
-{% for child in package.packages recursive -%}
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Declarations
+    ////////////////////////////////////////////////////////////////////////////
+{%- for child in package.packages recursive -%}
 {{ gen_module_declaration(child, loop)|indent(4, False) }}
-{% endfor -%}
-{% for child in package.packages recursive -%}
+{% endfor %}
+    ////////////////////////////////////////////////////////////////////////////
+    // Definitions
+    ////////////////////////////////////////////////////////////////////////////
+{%- for child in package.packages recursive -%}
 {{ gen_module(child, loop)|indent(4, False) }}
 {% endfor -%}
 }; /* {{package.name}} */
