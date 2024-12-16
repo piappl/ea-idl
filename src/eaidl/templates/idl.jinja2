@@ -28,6 +28,7 @@ struct {{ cls.name }};
 {% endif %}
 {% endmacro -%}
 {% macro gen_class(module, cls) -%}
+
 {% if "idlEnum" in cls.stereotypes -%}
 {# Already outputted in definition part #}
 {% elif "idlUnion" in cls.stereotypes %}
@@ -53,6 +54,7 @@ module {{ module.name }} {
 }; /* {{module.name}} */
 {%- endmacro -%}
 {% macro gen_module(module, loop) %}
+{% if module.info.create_definition == True %}
 module {{ module.name }} {
 {% for submodule in module.packages %}
 {{ gen_module(submodule, loop)|indent(4, False) }}
@@ -61,6 +63,7 @@ module {{ module.name }} {
 {{ gen_class(module, cls)|indent(4, False) }}
 {% endfor %}
 }; /* {{module.name}} */
+{% endif %}
 {%- endmacro -%}
 
 

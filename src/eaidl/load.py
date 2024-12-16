@@ -94,10 +94,20 @@ class ModelClass(LocalBaseModel):
     alias: Optional[str] = None
     stereotype: Optional[str] = None
     attributes: List["ModelAttribute"] = []
-    stereotypes: Optional[List[str]] = None
+    stereotypes: List[str] = []
     generalization: Optional[List[str]] = None
     depends_on: List[int] = []
     parent_type: Optional[str] = None
+
+
+class ModelPackageInfo(LocalBaseModel):
+    structs: int = 0
+    typedefs: int = 0
+    unions: int = 0
+    enums: int = 0
+    packages: int = 0
+    create_definition: bool = False
+    create_declaration: bool = False
 
 
 class ModelPackage(LocalBaseModel):
@@ -109,6 +119,7 @@ class ModelPackage(LocalBaseModel):
     packages: List["ModelPackage"] = []
     classes: List[ModelClass] = []
     depends_on: List[int] = []
+    info: ModelPackageInfo = ModelPackageInfo()
 
 
 class ModelAttribute(LocalBaseModel):
@@ -284,7 +295,6 @@ class ModelParser:
         packages: Deque[ModelPackage] = deque([])
         for child_t_object in child_t_objects:
             # inspect(child_t_object)
-
             if child_t_object.attr_object_type == "Package":
                 stmt = sqlalchemy.select(TPackage).where(TPackage.attr_ea_guid == child_t_object.attr_ea_guid)
                 t_package = self.session.execute(stmt).scalars().first()
@@ -295,6 +305,7 @@ class ModelParser:
                 cls: ModelClass = self.class_parse(parent_package, child_t_object)
                 if cls.name is not None:
                     classes.append(cls)
+
             elif child_t_object.attr_object_type in [
                 "Note",
                 "Text",
@@ -317,7 +328,7 @@ class ModelParser:
         # Now we need to sort stuff. Do classes, those have depends_on list, which
         # means those need to go first.
         while len(classes) > 0:
-            # If there is something wrong we might infinite loop here with while.
+            # FIXME, if there is something wrong we might infinite loop here with while.
             item: ModelClass = classes.popleft()
             ready = True
             for dependant in item.depends_on:
@@ -331,8 +342,31 @@ class ModelParser:
                     break
             if ready:
                 parent_package.classes.append(item)
+
         # FIXME, packages need sorting to.
         parent_package.packages = [item for item in packages]
+
+        # Do some statictics that templates can use later
+        for item in parent_package.classes:
+            if "idlStruct" in item.stereotypes:
+                parent_package.info.structs += 1
+            if "idlTypedef" in item.stereotypes:
+                parent_package.info.typedefs += 1
+            if "idlUnion" in item.stereotypes:
+                parent_package.info.unions += 1
+            if "idlEnum" in item.stereotypes:
+                parent_package.info.enums += 1
+        parent_package.info.packages = len(parent_package.packages)
+        # We have to know when to create packages, otherwise IDL parser
+        # doesn't like empty ones.
+        if parent_package.info.packages + parent_package.info.unions + parent_package.info.structs:
+            parent_package.info.create_definition = True
+        parent_package.info.create_declaration = True
+
+        # if parent_package.info.create_definition is False:
+        #     print(parent_package.namespace)
+        #     print(parent_package.name)
+        #     inspect(parent_package.info)
 
     def get_object(self, object_id: int) -> Any:
         TObject = base.classes.t_object
