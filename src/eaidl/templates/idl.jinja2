@@ -23,7 +23,7 @@ enum {{ cls.name }} {
 union {{ cls.name }};
 {% elif "idlTypedef" in cls.stereotypes %}
 typedef {{cls.parent_type}} {{cls.name}};
-{% else %}
+{% elif "idlStruct" in cls.stereotypes %}
 struct {{ cls.name }};
 {% endif %}
 {% endmacro -%}
@@ -38,7 +38,7 @@ union {{ cls.name }} switch (int8)  {
 };
 {% elif "idlTypedef" in cls.stereotypes -%}
 {# Already outputted in definition part #}
-{% else %}
+{% elif "idlStruct" in cls.stereotypes %}
 {{ get_struct(module, cls) }}
 {% endif %}
 {% endmacro -%}
