@@ -329,32 +329,64 @@ class ModelParser:
         # means those need to go first.
         while len(classes) > 0:
             # FIXME, if there is something wrong we might infinite loop here with while.
-            item: ModelClass = classes.popleft()
+            c2: ModelClass = classes.popleft()
             ready = True
-            for dependant in item.depends_on:
-                for obj in classes:
-                    if obj.object_id == dependant:
+            for obj in classes:
+                if obj.object_id in c2.depends_on:
+                    # We are not ready for that one, put it back on another end
+                    classes.append(c2)
+                    ready = False
+                    break
+            if ready:
+                parent_package.classes.append(c2)
+
+        # FIXME, packages need sorting to.
+        # parent_package.packages = [item for item in packages]
+        # print([package.name for package in packages])
+
+        # We want to know on what classes _outside_ of this package this package
+        # depends on.
+        depends_on = []
+        for p2 in parent_package.packages:
+            for c3 in p2.classes:
+                depends_on += c3.depends_on
+        # print(parent_package.namespace, parent_package.name, depends_on)
+        for c2 in parent_package.classes:
+            depends_on += c2.depends_on
+        # print(parent_package.namespace, parent_package.name, depends_on)
+        # Now we know what we depend on including internal ones
+        for item in depends_on:
+            if item not in self.get_all_class_id(parent_package) and item not in parent_package.depends_on:
+                parent_package.depends_on.append(item)
+
+        # print(parent_package.namespace, parent_package.name, parent_package.depends_on)
+
+        while len(packages) > 0:
+            # FIXME, if there is something wrong we might infinite loop here with while.
+            current_package: ModelPackage = packages.popleft()
+            ready = True
+            for package in packages:
+                for dependant in current_package.depends_on:
+                    if dependant in self.get_all_class_id(package):
                         # We are not ready for that one, put it back on another end
-                        classes.append(item)
+                        packages.append(current_package)
                         ready = False
                         break
                 if not ready:
                     break
             if ready:
-                parent_package.classes.append(item)
-
-        # FIXME, packages need sorting to.
-        parent_package.packages = [item for item in packages]
+                parent_package.packages.append(current_package)
+        # print([package.name for package in parent_package.packages])
 
         # Do some statictics that templates can use later
-        for item in parent_package.classes:
-            if "idlStruct" in item.stereotypes:
+        for cls in parent_package.classes:
+            if "idlStruct" in cls.stereotypes:
                 parent_package.info.structs += 1
-            if "idlTypedef" in item.stereotypes:
+            if "idlTypedef" in cls.stereotypes:
                 parent_package.info.typedefs += 1
-            if "idlUnion" in item.stereotypes:
+            if "idlUnion" in cls.stereotypes:
                 parent_package.info.unions += 1
-            if "idlEnum" in item.stereotypes:
+            if "idlEnum" in cls.stereotypes:
                 parent_package.info.enums += 1
         parent_package.info.packages = len(parent_package.packages)
         # We have to know when to create packages, otherwise IDL parser
@@ -371,6 +403,14 @@ class ModelParser:
     def get_object(self, object_id: int) -> Any:
         TObject = base.classes.t_object
         return self.session.query(TObject).filter(TObject.attr_object_id == object_id).scalar()
+
+    def get_all_class_id(self, parent_package: ModelPackage) -> List[int]:
+        ret = []
+        for package in parent_package.packages:
+            ret += self.get_all_class_id(package)
+        for cls in parent_package.classes:
+            ret.append(cls.object_id)
+        return ret
 
     def get_namespace(self, bottom_package_id: int) -> List[str]:
         """Get namespace given package identifier.
@@ -438,9 +478,6 @@ class ModelParser:
 
             # We are really interested in namespace here. So we need to go up.
             attribute.namespace = self.get_namespace(destination.attr_package_id)
-            # We create dependency, so we can sort packages later
-            if destination.attr_package_id not in parent_package.depends_on:
-                parent_package.depends_on.append(destination.attr_package_id)
             if destination.attr_name == attribute.type:
                 attribute.connector = connection
                 break
