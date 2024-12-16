@@ -1,4 +1,4 @@
-from eaidl.utils import Configuration
+from eaidl.utils import Configuration, is_lower_snake_case, is_camel_case
 from sqlalchemy.ext.automap import automap_base
 from pydantic import BaseModel
 from typing import Optional
@@ -274,7 +274,8 @@ class ModelParser:
             guid=t_package.attr_ea_guid,
             parent=parent_package,
         )
-
+        if not is_lower_snake_case(package.name):
+            log.warning("Package name has wrong case, expected lower snake case: %s", package.name)
         if parent_package is None:
             package.namespace = [package.name]
         else:
@@ -491,7 +492,6 @@ class ModelParser:
             # In normal condition we weed connector for all attributes, leading
             # to a type of this attribute. Exceptions are for enumeration and
             # attributes that are of primitive types.
-            print(self.config.primitive_types)
             log.warning(
                 "No connector found for attribute %s %s %s",
                 parent_class.name,
@@ -524,6 +524,12 @@ class ModelParser:
                 parent_class.name,
                 attribute.name,
             )
+        if (
+            attribute.name is None
+            or not is_lower_snake_case(attribute.name)
+            and "idlEnum" not in parent_class.stereotypes
+        ):
+            log.warning("Attribute name has wrong case, expected snake case %s", attribute.name)
         return attribute
 
     def get_stereotypes(self, guid: str) -> List[str]:
@@ -542,6 +548,8 @@ class ModelParser:
             object_id=t_object.attr_object_id,
             parent=parent_package,
         )
+        if not is_camel_case(model_class.name):
+            log.warning("Class name has wrong case, expected camel case %s", model_class.name)
         model_class.namespace = parent_package.namespace
         model_class.stereotype = t_object.attr_stereotype
         model_class.stereotypes = self.get_stereotypes(t_object.attr_ea_guid)

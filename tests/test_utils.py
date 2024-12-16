@@ -1,4 +1,4 @@
-from eaidl.utils import load_config
+from eaidl.utils import load_config, is_camel_case, is_lower_camel_case, is_snake_case, is_lower_snake_case
 from pathlib import Path
 import pytest
 
@@ -25,3 +25,48 @@ def test_load_file_wrong_data() -> None:
     path = Path(__file__).parent / "data" / "wrong.yaml"
     with pytest.raises(ValueError):
         load_config(path)
+
+
+def test_is_camel_case() -> None:
+    assert is_camel_case("") is False
+    assert is_camel_case(" ") is False
+    assert is_camel_case("core module") is False
+    assert is_camel_case("coreModule") is False
+    assert is_camel_case("coreModule1") is False
+    assert is_camel_case("CoreModule1") is True
+    assert is_camel_case("CoreModule_1") is False
+    assert is_camel_case("Quaternion") is True
+
+
+def test_is_lower_camel_case() -> None:
+    assert is_lower_camel_case("") is False
+    assert is_lower_camel_case(" ") is False
+    assert is_lower_camel_case("core module") is False
+    assert is_lower_camel_case("coreModule") is True
+    assert is_lower_camel_case("coreModule1") is True
+    assert is_lower_camel_case("coreModule_1") is False
+    assert is_lower_camel_case("CoreModule") is False
+
+
+def test_is_snake_case() -> None:
+    assert is_snake_case("") is False
+    assert is_snake_case(" ") is False
+    assert is_snake_case("core module") is False
+    assert is_snake_case("coreModule") is True
+    assert is_snake_case("coreModule1") is False
+    assert is_snake_case("coreModule_1") is True
+    assert is_snake_case("CoreModule") is True
+    assert is_snake_case("core_module") is True
+
+
+def test_is_lower_snake_case() -> None:
+    assert is_lower_snake_case("") is False
+    assert is_lower_snake_case(" ") is False
+    assert is_lower_snake_case("core module") is False
+    assert is_lower_snake_case("coreModule") is False
+    assert is_lower_snake_case("coreModule1") is False
+    assert is_lower_snake_case("coreModule_1") is False
+    assert is_lower_snake_case("CoreModule") is False
+    assert is_lower_snake_case("core_module_1") is True
+    assert is_lower_snake_case("core_module") is True
+    assert is_lower_snake_case("core") is True
