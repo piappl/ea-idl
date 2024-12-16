@@ -1,15 +1,14 @@
 {% macro gen_attribute(module, cls, attr) -%}
-
-{% if attr.notes %}/** {{attr.notes | wordwrap(78) }} **/ {% endif %}
+{% if attr.notes %}/* {{attr.notes | wordwrap(78) }} */ {% endif %}
 {%- if attr.is_optional %}@optional {% endif %}
 {% if attr.is_collection %}sequence<{{ "::".join(attr.namespace + [attr.type])}}> {{attr.name}};
 {% else %}{{ "::".join(attr.namespace + [attr.type])}} {{attr.name}};
 {% endif -%}
 {%- endmacro -%}
 {% macro gen_notes(cls) -%}
-{% if cls.notes %}/**
+{% if cls.notes %}/*
     {{cls.notes | wordwrap(78) | indent(4)}}
-**/ {% endif %}
+*/ {% endif %}
 {%- endmacro -%}
 {% macro get_struct(module, cls) -%}
 {% if cls.generalization %}
@@ -76,20 +75,16 @@ module {{ module.name }} {
 }; /* {{module.name}} */
 {%- endif %}
 {%- endmacro -%}
-
-
-
 module {{package.name}} {
-
-    ////////////////////////////////////////////////////////////////////////////
-    // Declarations
-    ////////////////////////////////////////////////////////////////////////////
+    /* ---------------------------------------------------------------------- */
+    /* Declarations                                                           */
+    /* ---------------------------------------------------------------------- */
 {%- for child in package.packages recursive -%}
 {{ gen_module_declaration(child, loop)|indent(4, False) }}
 {% endfor %}
-    ////////////////////////////////////////////////////////////////////////////
-    // Definitions
-    ////////////////////////////////////////////////////////////////////////////
+    /* ---------------------------------------------------------------------- */
+    /* Definitions                                                            */
+    /* ---------------------------------------------------------------------- */
 {%- for child in package.packages recursive -%}
 {{ gen_module(child, loop)|indent(4, False) }}
 {% endfor -%}
