@@ -483,8 +483,21 @@ class ModelParser:
                 break
 
         # There is some validation
-        if attribute.connector is None:
-            log.warning("No connector found for attribute %s %s", parent_class.name, attribute.name)
+        if (
+            attribute.connector is None
+            and "idlEnum" not in parent_class.stereotypes
+            and attribute.type not in self.config.primitive_types
+        ):
+            # In normal condition we weed connector for all attributes, leading
+            # to a type of this attribute. Exceptions are for enumeration and
+            # attributes that are of primitive types.
+            print(self.config.primitive_types)
+            log.warning(
+                "No connector found for attribute %s %s %s",
+                parent_class.name,
+                attribute.type,
+                attribute.name,
+            )
         if parent_class.object_id != attribute.attribute_id:
             log.warning(
                 "Validation issue: attribute parent is different %d %d in %s %s",
@@ -500,7 +513,11 @@ class ModelParser:
                 parent_class.name,
                 attribute.name,
             )
-        if not attribute.is_collection and attribute.upper_bound not in [None, "1", "0"]:
+        if not attribute.is_collection and attribute.upper_bound not in [
+            None,
+            "1",
+            "0",
+        ]:
             log.warning(
                 "Validation issue: attribute is not collection, but upper bound is in %s %s.%s",
                 attribute.upper_bound,
@@ -526,11 +543,6 @@ class ModelParser:
             parent=parent_package,
         )
         model_class.namespace = parent_package.namespace
-        TAttribute = base.classes.t_attribute
-        t_attributes = self.session.query(TAttribute).filter(TAttribute.attr_object_id == model_class.object_id).all()
-        for t_attribute in t_attributes:
-            model_class.attributes.append(self.attribute_parse(parent_package, model_class, t_attribute))
-
         model_class.stereotype = t_object.attr_stereotype
         model_class.stereotypes = self.get_stereotypes(t_object.attr_ea_guid)
         model_class.is_abstract = to_bool(t_object.attr_abstract)
@@ -548,4 +560,9 @@ class ModelParser:
                 namespace.append(destination.attr_name)
                 model_class.generalization = namespace
                 model_class.depends_on.append(connection.end_object_id)
+        # Add attributes
+        TAttribute = base.classes.t_attribute
+        t_attributes = self.session.query(TAttribute).filter(TAttribute.attr_object_id == model_class.object_id).all()
+        for t_attribute in t_attributes:
+            model_class.attributes.append(self.attribute_parse(parent_package, model_class, t_attribute))
         return model_class
