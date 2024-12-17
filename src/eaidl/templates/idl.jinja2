@@ -22,21 +22,17 @@ struct {{ cls.name }} {
 {% endmacro -%}
 {% macro gen_class_declaration(module, cls) -%}
 {%- if "idlEnum" in cls.stereotypes %}
-{{ gen_notes(cls) }}
 enum {{ cls.name }} {
 {% for item in cls.attributes %}{% if loop.revindex0 == 0 %}    {{item.name}}
 {% else %}    {{item.name}},
 {% endif -%}{% endfor -%}};
 {%- elif "idlUnion" in cls.stereotypes %}
-{{ gen_notes(cls) }}
 union {{ cls.name }};
 {%- elif "idlTypedef" in cls.stereotypes %}
-{{ gen_notes(cls) }}
 {% for key, value in cls.properties.items() %}{{key}}({{value}})
 {% endfor -%}
 typedef {{cls.parent_type}} {{cls.name}};
 {%- elif "idlStruct" in cls.stereotypes %}
-{{ gen_notes(cls) }}
 struct {{ cls.name }};
 {%- endif -%}
 {%- endmacro -%}
