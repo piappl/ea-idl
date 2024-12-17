@@ -55,6 +55,12 @@ ConnectorType = Literal[
 ]
 
 
+class ModelPropertyType(BaseModel):
+    property: str
+    notes: Optional[str] = None
+    property_types: List[str] = []
+
+
 class ModelConnectionEnd(LocalBaseModel):
     cardinality: Optional[str] = None
     access: Optional[ModelScope] = None
@@ -121,6 +127,7 @@ class ModelPackage(LocalBaseModel):
     classes: List[ModelClass] = []
     depends_on: List[int] = []
     info: ModelPackageInfo = ModelPackageInfo()
+    property_types: List[ModelPropertyType] = []
 
 
 class ModelAttribute(LocalBaseModel):
@@ -189,7 +196,33 @@ class ModelParser:
             root = self.session.query(TPackage).filter(TPackage.attr_name == self.config.root_package).scalar()
         if root is None:
             raise ValueError("Root package not found, check configuration")
-        return self.package_parse(root)
+
+        whole = self.package_parse(root)
+        # We can get property types from model, but it somehow lacks information...
+        # TPropertytypes = base.classes.t_propertytypes
+        # p_propertytypes = self.session.query(TPropertytypes).all()
+        # for property in p_propertytypes:
+        #     name = property.attr_property
+        #     if name not in self.config.properties:
+        #         continue
+        #     if name in self.config.properties_map.keys():
+        #         name = self.config.properties_map[name]
+        #     property_type = ModelPropertyType(
+        #         property=name,
+        #         description=property.attr_description,
+        #         notes=property.attr_notes,
+        #     )
+        #     whole.property_types.append(property_type)
+        # So we take them from config
+        for name, prop in self.config.properties.items():
+            if prop.idl_default is True:
+                continue
+            if prop.idl_name is not None:
+                name = prop.idl_name
+            property_type = ModelPropertyType(property=name, notes=prop.description, property_types=prop.idl_types)
+            whole.property_types.append(property_type)
+
+        return whole
 
     def get_object_connections(
         self, object_id: int, mode: Literal["source", "destination", "both"]
@@ -582,9 +615,10 @@ class ModelParser:
             .all()
         )
         for t_property in t_properties:
-            if t_property.attr_property in self.config.properties:
-                if t_property.attr_property in self.config.properties_map.keys():
-                    model_class.properties[self.config.properties_map[t_property.attr_property]] = t_property.attr_value
+            if t_property.attr_property in self.config.properties.keys():
+                prop_config = self.config.properties[t_property.attr_property]
+                if prop_config.idl_name is not None:
+                    model_class.properties[prop_config.idl_name] = t_property.attr_value
                 else:
                     model_class.properties[t_property.attr_property] = t_property.attr_value
         return model_class

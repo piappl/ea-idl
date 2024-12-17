@@ -78,6 +78,12 @@ module {{ module.name }} {
 {%- endif %}
 {%- endmacro -%}
 module {{package.name}} {
+{%- for property_type in package.property_types recursive %}
+    {{ gen_notes(property_type) }}
+    @annotation {{property_type.property}} {
+        {% for type in property_type.property_types recursive %}{{type}}{% endfor %}
+    };
+{% endfor %}
     /* ---------------------------------------------------------------------- */
     /* Declarations                                                           */
     /* ---------------------------------------------------------------------- */
