@@ -1,7 +1,7 @@
 import json
 import yaml
 from pydantic import BaseModel, ConfigDict, ValidationError
-from typing import TypeAlias, List
+from typing import TypeAlias, List, Dict
 from pathlib import Path
 import re
 
@@ -31,13 +31,15 @@ class Configuration(BaseModel):
         "wstring",
     ]
     properties: List[str] = [
-        "max",
         "maximum",
         "exclusiveMaximum",
-        "min",
         "minimum",
         "exclusiveMinimum",
+        "unit",
     ]
+    #: If property exists in properties list, we might also have it in here.
+    #: This will convert property name.
+    properties_map: Dict[str, str] = {"maximum": "max", "minimum": "min"}
 
 
 def load_config_file(path: str | Path) -> JSON:

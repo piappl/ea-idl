@@ -583,5 +583,8 @@ class ModelParser:
         )
         for t_property in t_properties:
             if t_property.attr_property in self.config.properties:
-                model_class.properties[t_property.attr_property] = t_property.attr_value
+                if t_property.attr_property in self.config.properties_map.keys():
+                    model_class.properties[self.config.properties_map[t_property.attr_property]] = t_property.attr_value
+                else:
+                    model_class.properties[t_property.attr_property] = t_property.attr_value
         return model_class
