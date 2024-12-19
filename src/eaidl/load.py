@@ -620,5 +620,5 @@ class ModelParser:
                 if prop_config.idl_name is not None:
                     model_class.properties[prop_config.idl_name] = t_property.attr_value
                 else:
-                    model_class.properties[f"@ext::{t_property.attr_property}"] = t_property.attr_value
+                    model_class.properties[f"ext::{t_property.attr_property}"] = t_property.attr_value
         return model_class
