@@ -526,7 +526,7 @@ class ModelParser:
             # In normal condition we weed connector for all attributes, leading
             # to a type of this attribute. Exceptions are for enumeration and
             # attributes that are of primitive types.
-            log.warning(
+            log.error(
                 "No connector found for attribute %s %s %s",
                 parent_class.name,
                 attribute.type,
