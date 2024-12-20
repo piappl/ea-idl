@@ -601,6 +601,9 @@ class ModelParser:
                 namespace = self.get_namespace(destination.attr_package_id)
                 namespace.append(destination.attr_name)
                 model_class.generalization = namespace
+        connections = self.get_object_connections(model_class.object_id, mode="destination")
+        for connection in connections:
+            if connection.connector_type == "Generalization":
                 model_class.depends_on.append(connection.end_object_id)
         # Add attributes
         TAttribute = base.classes.t_attribute
