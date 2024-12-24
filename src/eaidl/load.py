@@ -184,6 +184,7 @@ class ModelParser:
         self.config = config
         self.engine = sqlalchemy.create_engine(config.database_url, echo=False, future=True)
         # Make base class field
+        self.root_package_guid: Optional[str] = None
         base.prepare(autoload_with=self.engine)
         self.session = Session(self.engine)
 
@@ -196,6 +197,7 @@ class ModelParser:
             root = self.session.query(TPackage).filter(TPackage.attr_name == self.config.root_package).scalar()
         if root is None:
             raise ValueError("Root package not found, check configuration")
+        self.root_package_guid = root.attr_ea_guid
 
         whole = self.package_parse(root)
         # We can get property types from model, but it somehow lacks information...
@@ -360,6 +362,7 @@ class ModelParser:
             else:
                 log.error("Not parsing %s", child_t_object.attr_object_type)
                 inspect(child_t_object)
+        log.debug("Sorting classes %s", parent_package.name)
         # Now we need to sort stuff. Do classes, those have depends_on list, which
         # means those need to go first.
         while len(classes) > 0:
@@ -374,6 +377,7 @@ class ModelParser:
                     break
             if ready:
                 parent_package.classes.append(c2)
+        log.debug("Sorting classes %s done", parent_package.name)
 
         # FIXME, packages need sorting to.
         # parent_package.packages = [item for item in packages]
@@ -395,7 +399,7 @@ class ModelParser:
                 parent_package.depends_on.append(item)
 
         # print(parent_package.namespace, parent_package.name, parent_package.depends_on)
-
+        log.debug("Sorting package %s", parent_package.name)
         while len(packages) > 0:
             # FIXME, if there is something wrong we might infinite loop here with while.
             current_package: ModelPackage = packages.popleft()
@@ -411,6 +415,7 @@ class ModelParser:
                     break
             if ready:
                 parent_package.packages.append(current_package)
+        log.debug("Sorting packages of %s is not done", parent_package.name)
         # print([package.name for package in parent_package.packages])
 
         # Do some statictics that templates can use later
@@ -464,11 +469,14 @@ class ModelParser:
             package = self.session.query(TPackage).filter(TPackage.attr_package_id == current_package_id).scalar()
             current_package_id = package.attr_parent_id
             namespace.append(package.attr_name)
-            if self.config.root_package == package.attr_ea_guid:
+            if self.root_package_guid == package.attr_ea_guid:
                 # We got to our configured top package
                 break
             if current_package_id in [0, None]:
-                # We got to top package
+                # We got to top package, this is not normal, as it is outside
+                # of root we are using.
+                log.warning("Namespace search never reached root_package")
+                namespace = []
                 break
         namespace.reverse()
         return namespace

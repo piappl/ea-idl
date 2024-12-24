@@ -1,7 +1,13 @@
 import click
+import logging
 from eaidl.load import ModelParser
-from eaidl.utils import load_config
+from eaidl.utils import load_config, LogFormatter
 from eaidl.generate import generate
+
+console = logging.StreamHandler()
+console.setFormatter(LogFormatter())
+console.setLevel(logging.DEBUG)
+logging.getLogger("").addHandler(console)
 
 
 @click.command()

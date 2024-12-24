@@ -1,5 +1,6 @@
 import json
 import yaml
+import logging
 from pydantic import BaseModel, ConfigDict, ValidationError
 from typing import TypeAlias, List, Dict, Optional
 from pathlib import Path
@@ -93,3 +94,51 @@ def is_snake_case(val: str) -> bool:
 
 def is_lower_snake_case(val: str) -> bool:
     return bool(re.match(LOWER_SNAKE_CASE_RE, val))
+
+
+class LogFormatter(logging.Formatter):
+    _grey = "\x1b[38;21m"
+    _green = "\x1b[32m"
+    _yellow = "\x1b[33;21m"
+    _red = "\x1b[31;21m"
+    _bold_red = "\x1b[31;1m"
+    _black = "\u001b[30m"
+    _yellow = "\u001b[33m"
+    _blue = "\u001b[34m"
+    _magenta = "\u001b[35m"
+    _cyan = "\u001b[36m"
+    _white = "\u001b[37m"
+    _reset = "\x1b[0m"
+    _bold = "\u001b[1m"
+    _prefix = (
+        _green
+        + "%(asctime)s  "
+        + _reset
+        + _blue
+        + "%(name)s "
+        + _reset
+        + _white
+        + "%(funcName)s "
+        + _reset
+        + _bold
+        + _grey
+        + "%(levelname)s "
+        + _reset
+    )
+    _message = "%(message)s"
+    _formats = {
+        logging.DEBUG: _prefix + _grey + _message + _reset,
+        logging.INFO: _prefix + _white + _message + _reset,
+        logging.WARNING: _prefix + _yellow + _message + _reset,
+        logging.ERROR: _prefix + _red + _message + _reset,
+        logging.CRITICAL: _prefix + _bold_red + _message + _reset,
+    }
+
+    def format(self, record):
+        log_fmt = self._formats.get(record.levelno)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+
+    @classmethod
+    def factory(cls):
+        return cls()
