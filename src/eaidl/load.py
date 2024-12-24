@@ -457,9 +457,13 @@ class ModelParser:
 
         It goes up the package chain.
 
-        :param session: session
-        :param base: base
-        :param destination: package identifier
+        Package identifier is `attr_package_id` field on package reflection.
+        For packages outside of `root_package` tree list will be empty, and warning will be reported.
+
+        .. note:: that this will walk up until `root_package` and `load()` needs
+            to be called before using it.
+
+        :param bottom_package_id: package identifier
         :return: namespace as a list of string
         """
         namespace = []
