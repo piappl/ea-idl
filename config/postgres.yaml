@@ -1,2 +1,2 @@
 database_url: postgresql+psycopg2://postgres:postgres@localhost/4817
-root_package: "{B36277F6-FEF5-4661-9FA1-5822D41AC56B}"  # catl high_bandwidth
+root_package: "{F8223B9B-2CE3-4abd-A93D-2946EE17ED9B}"

@@ -49,6 +49,7 @@ class Configuration(BaseModel):
         "unit": PropertyType(
             idl_default=True,
         ),
+        "isFinalSpecialization": PropertyType(idl_default=True, idl_name="final"),
     }
 
 

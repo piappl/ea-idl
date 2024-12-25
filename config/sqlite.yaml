@@ -1,1 +1,2 @@
 database_url: sqlite+pysqlite:///tests/data/nafv4.qea
+root_package: "{753A4DFC-7876-4b00-BB5A-6274AD3817C3}"

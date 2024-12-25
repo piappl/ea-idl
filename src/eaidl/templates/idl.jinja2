@@ -5,6 +5,15 @@
 {% else %}{{ "::".join(attr.namespace + [attr.type])}} {{attr.name}};
 {% endif -%}
 {%- endmacro -%}
+{%- macro gen_props(props) -%}
+{% for key, value in props.items() %}
+{% if value -%}
+@{{key}}({{value}})
+{%- else -%}
+@{{key}}
+{%- endif -%}
+{% endfor %}
+{%- endmacro -%}
 {% macro gen_notes(cls) -%}
 {% if cls.notes %}/**
     {{cls.notes | wordwrap(78) | indent(4)}}
@@ -29,11 +38,11 @@ enum {{ cls.name }} {
 {%- elif "idlUnion" in cls.stereotypes %}
 union {{ cls.name }};
 {%- elif "idlTypedef" in cls.stereotypes %}
-{% for key, value in cls.properties.items() %}@{{key}}({{value}})
-{% endfor -%}
+{{ gen_props(cls.properties) -}}
 {{ gen_notes(cls) }}
 typedef {{cls.parent_type}} {{cls.name}};
 {%- elif "idlStruct" in cls.stereotypes %}
+
 struct {{ cls.name }};
 {%- endif -%}
 {%- endmacro -%}
@@ -47,6 +56,7 @@ union {{ cls.name }} switch (int8)  {
 };
 {%- elif "idlStruct" in cls.stereotypes %}
 {{ gen_notes(cls) }}
+{{ gen_props(cls.properties) -}}
 {{ get_struct(module, cls) }}
 {%- endif -%}
 {% endmacro %}

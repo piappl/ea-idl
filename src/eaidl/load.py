@@ -4,7 +4,6 @@ from pydantic import BaseModel
 from typing import Optional
 import sqlalchemy
 from sqlalchemy.orm import Session
-from rich import inspect
 from typing import Any, List, Literal, Deque, Dict
 import logging
 import re
@@ -174,7 +173,7 @@ def column_reflect(inspector, table, column_info):
     column_info["key"] = "attr_%s" % column_info["name"].lower()
 
 
-def to_bool(val: bool | int | str) -> bool:
+def to_bool(val: bool | int | float | str) -> bool:
     if isinstance(val, str):
         if val.lower() in ["1", "true"]:
             return True
@@ -374,7 +373,7 @@ class ModelParser:
                 log.debug("Not parsing %s", child_t_object.attr_object_type)
             else:
                 log.error("Not parsing %s", child_t_object.attr_object_type)
-                inspect(child_t_object)
+                # inspect(child_t_object)
         log.debug("Sorting classes %s", parent_package.name)
         # Now we need to sort stuff. Do classes, those have depends_on list, which
         # means those need to go first.
@@ -609,7 +608,7 @@ class ModelParser:
             .filter(TXref.attr_name == "CustomProperties")
             .first()
         )
-        inspect(t_xref)
+        # inspect(t_xref)
         # @PROP=@NAME=isFinalSpecialization@ENDNAME;@TYPE=Boolean@ENDTYPE;@VALU=-1@ENDVALU;@PRMT=@ENDPRMT;@ENDPROP;
         if t_xref is not None:
             props: List[ModelCustomProperty] = []
@@ -648,6 +647,7 @@ class ModelParser:
                 destination = self.get_object(connection.end_object_id)
                 namespace = self.get_namespace(destination.attr_package_id)
                 namespace.append(destination.attr_name)
+                model_class.depends_on.append(connection.end_object_id)
                 model_class.generalization = namespace
         connections = self.get_object_connections(model_class.object_id, mode="destination")
         for connection in connections:
@@ -672,6 +672,22 @@ class ModelParser:
                     model_class.properties[prop_config.idl_name] = t_property.attr_value
                 else:
                     model_class.properties[f"ext::{t_property.attr_property}"] = t_property.attr_value
+            else:
+                log.warning("Custom Property %s is not configured", t_property.attr_property)
         for prop in self.get_custom_properties(t_object.attr_ea_guid):
-            model_class.properties[f"ext::{prop.name}"] = prop.value
+            if prop.name in self.config.properties.keys():
+                prop_config = self.config.properties[prop.name]
+                value = prop.value
+                if prop.type == "Boolean":
+                    # This does something silly with isFinalSpecialization
+                    # (as bool(-1) is True)
+                    value = to_bool(prop.value)
+                if value is False:
+                    pass
+                elif prop_config.idl_name is not None:
+                    model_class.properties[prop_config.idl_name] = value
+                else:
+                    model_class.properties[f"ext::{t_property.attr_property}"] = value
+            else:
+                log.warning("Custom Property %s is not configured", prop.name)
         return model_class
