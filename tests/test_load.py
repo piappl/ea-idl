@@ -35,7 +35,7 @@ def test_reflect():
     contents = {
         "t_package": 6,
         "t_object": 13,
-        "t_attribute": 8,
+        "t_attribute": 11,
         "t_connector": 8,
         "t_objectproperties": 24,
         "t_xref": 18,  # Stereotypes, properties

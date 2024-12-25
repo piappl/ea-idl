@@ -4,11 +4,9 @@ module ext {
         any value;
     };
 
-
     @annotation exclusiveMinimum {
         any value;
     };
-
 }; /* ext */
 
 module core {
@@ -68,23 +66,24 @@ module core {
         struct MessageHeader {
             @optional
             core::message::Time timestamp;
-
             core::message::MessageTypeEnum message_type;
         };
 
 
-
         struct Message {
-
             core::message::MessageHeader header;
         };
 
 
-
         struct DataMessage: core::message::Message {
-
             sequence<core::data::Measurement> body;
+            /** This is a sequence */
+            sequence<int> test_comment_seq;
+            /** This is optional */
+            @optional
+            boolean test_comment_optional;
+            /** This is comment */
+            double test_comment;
         };
-
     }; /* message */
 }; /* core */
