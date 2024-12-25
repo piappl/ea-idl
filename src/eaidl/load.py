@@ -55,6 +55,12 @@ ConnectorType = Literal[
 ]
 
 
+class ModelCustomProperty(BaseModel):
+    name: str
+    value: bool | int | float | str
+    type: str
+
+
 class ModelPropertyType(BaseModel):
     property: str
     notes: Optional[str] = None
@@ -177,6 +183,13 @@ def to_bool(val: bool | int | str) -> bool:
     if val:
         return True
     return False
+
+
+def get_prop(value: str, key: str) -> str:
+    match = re.match(f".*@{key}=(.*?)@END{key};", value)
+    if match is None or match.groups(0) is None or len(match.groups(0)) == 0:
+        return ""
+    return match.groups(0)[0]
 
 
 class ModelParser:
@@ -588,6 +601,29 @@ class ModelParser:
         else:
             return []
 
+    def get_custom_properties(self, guid: str) -> List[ModelCustomProperty]:
+        TXref = base.classes.t_xref
+        t_xref = (
+            self.session.query(TXref)
+            .filter(TXref.attr_client == guid)
+            .filter(TXref.attr_name == "CustomProperties")
+            .first()
+        )
+        inspect(t_xref)
+        # @PROP=@NAME=isFinalSpecialization@ENDNAME;@TYPE=Boolean@ENDTYPE;@VALU=-1@ENDVALU;@PRMT=@ENDPRMT;@ENDPROP;
+        if t_xref is not None:
+            props: List[ModelCustomProperty] = []
+            for prop in re.findall("@PROP=(.*?)@ENDPROP;", t_xref.attr_description):
+                # @NAME=isFinalSpecialization@ENDNAME;@TYPE=Boolean@ENDTYPE;@VALU=-1@ENDVALU;
+                props.append(
+                    ModelCustomProperty(
+                        name=get_prop(prop, "NAME"), value=get_prop(prop, "VALU"), type=get_prop(prop, "TYPE")
+                    )
+                )
+            return props
+        else:
+            return []
+
     def class_parse(self, parent_package: ModelPackage, t_object) -> ModelClass:
         model_class = ModelClass(
             name=t_object.attr_name,
@@ -636,4 +672,6 @@ class ModelParser:
                     model_class.properties[prop_config.idl_name] = t_property.attr_value
                 else:
                     model_class.properties[f"ext::{t_property.attr_property}"] = t_property.attr_value
+        for prop in self.get_custom_properties(t_object.attr_ea_guid):
+            model_class.properties[f"ext::{prop.name}"] = prop.value
         return model_class
