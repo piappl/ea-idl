@@ -16,7 +16,7 @@ def run(config):
     config = load_config(config)
     parser = ModelParser(config)
     model = parser.load()
-    generate(config, model)
+    print(generate(config, model))
 
 
 if __name__ == "__main__":

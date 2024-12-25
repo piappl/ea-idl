@@ -4,9 +4,7 @@ from eaidl.utils import Configuration
 # from rich import inspect
 
 
-def generate(config: Configuration, model: ModelPackage) -> None:
+def generate(config: Configuration, model: ModelPackage) -> str:
     env = Environment(loader=PackageLoader("eaidl"), autoescape=select_autoescape())
-    # inspect(model)
     template = env.get_template("idl.jinja2")
-    ret = template.render(package=model)
-    print(ret)
+    return template.render(package=model)
