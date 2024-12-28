@@ -1,56 +1,52 @@
 import json
 import yaml
 import logging
-from pydantic import BaseModel, ConfigDict, ValidationError
-from typing import TypeAlias, List, Dict, Optional
+from pydantic import ValidationError
 from pathlib import Path
+from eaidl.config import Configuration, JSON
 import re
 
-JSON: TypeAlias = dict[str, "JSON"] | list["JSON"] | str | int | float | bool | None
+
+def to_bool(val: bool | int | float | str) -> bool:
+    """Heuristic conversion to boolean value.
+
+    :param val: value to be converted
+    :return: boolean value
+    """
+    if isinstance(val, str):
+        if val.lower() in ["1", "true"]:
+            return True
+        else:
+            return False
+    if val:
+        return True
+    return False
 
 
-class PropertyType(BaseModel):
-    idl_name: Optional[str] = None
-    idl_default: bool
-    idl_types: List[str] = []
-    description: str = ""
+def get_prop(value: str, key: str) -> str:
+    """Extract property string from xref table fields.
+
+    We can use it to extract PROP first:
+
+    * value="@PROP=@NAME=isFinalSpecialization@ENDNAME;@TYPE=Boolean@ENDTYPE;@VALU=-1@ENDVALU;@PRMT=@ENDPRMT;@ENDPROP;"
+    * name="PROP"
+
+    Result of that is a single property, we can get value of:
+
+    * value="@NAME=isFinalSpecialization@ENDNAME;@TYPE=Boolean@ENDTYPE;@VALU=-1@ENDVALU;@PRMT=@ENDPRMT;"
+    * name="VALU"
+
+    Result of that is a string "-1"
 
 
-class Configuration(BaseModel):
-    model_config = ConfigDict(extra="forbid", validate_assignment=True)
-    database_url: str = "sqlite+pysqlite:///tests/data/nafv4.qea"
-    # This is guid or name of root package that we want to generate for.
-    root_package: str = "core"
-    primitive_types: List[str] = [
-        "short",
-        "unsigned short",
-        "long",
-        "unsigned long",
-        "long long",
-        "unsigned long long",
-        "float",
-        "double",
-        "long double",
-        "char",
-        "wchar",
-        "boolean",
-        "octet",
-        "string",
-        "wstring",
-    ]
-    properties: Dict[str, PropertyType] = {
-        "maximum": PropertyType(
-            idl_name="max",
-            idl_default=True,
-        ),
-        "exclusiveMaximum": PropertyType(idl_default=False, idl_types=["any value;"]),
-        "minimum": PropertyType(idl_name="min", idl_default=True),
-        "exclusiveMinimum": PropertyType(idl_default=False, idl_types=["any value;"]),
-        "unit": PropertyType(
-            idl_default=True,
-        ),
-        "isFinalSpecialization": PropertyType(idl_default=True, idl_name="final"),
-    }
+    :param value: value of field to be extracted from
+    :param key: key to be extracted
+    :return: value.
+    """
+    match = re.match(f".*@{key}=(.*?)@END{key};", value)
+    if match is None or match.groups(0) is None or len(match.groups(0)) == 0:
+        return ""
+    return match.groups("")[0]
 
 
 def load_config_file(path: str | Path) -> JSON:

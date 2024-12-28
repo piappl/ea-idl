@@ -1,5 +1,5 @@
-from eaidl.load import ModelParser, get_prop
-from eaidl.utils import Configuration
+from eaidl.load import ModelParser
+from eaidl.config import Configuration
 from sqlalchemy import create_engine
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -70,23 +70,6 @@ def test_get_stereotypes() -> None:
     assert len(ret) == 2
     assert ret[0] == "DataElement"
     assert ret[1] == "idlTypedef"
-
-
-def test_get_prop() -> None:
-    assert get_prop("", "NAME") == ""
-    assert (
-        get_prop(
-            "@PROP=@NAME=isFinalSpecialization@ENDNAME;@TYPE=Boolean@ENDTYPE;@VALU=-1@ENDVALU;@PRMT=@ENDPRMT;@ENDPROP;",
-            "PROP",
-        )
-        == "@NAME=isFinalSpecialization@ENDNAME;@TYPE=Boolean@ENDTYPE;@VALU=-1@ENDVALU;@PRMT=@ENDPRMT;"
-    )
-    assert (
-        get_prop("@NAME=isFinalSpecialization@ENDNAME;@TYPE=Boolean@ENDTYPE;@VALU=-1@ENDVALU;", "NAME")
-        == "isFinalSpecialization"
-    )
-    assert get_prop("@NAME=isFinalSpecialization@ENDNAME;@TYPE=Boolean@ENDTYPE;@VALU=-1@ENDVALU;", "TYPE") == "Boolean"
-    assert get_prop("@NAME=isFinalSpecialization@ENDNAME;@TYPE=Boolean@ENDTYPE;@VALU=-1@ENDVALU;", "VALU") == "-1"
 
 
 def test_get_properties() -> None:

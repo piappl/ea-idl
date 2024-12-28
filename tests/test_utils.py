@@ -1,4 +1,11 @@
-from eaidl.utils import load_config, is_camel_case, is_lower_camel_case, is_snake_case, is_lower_snake_case
+from eaidl.utils import (
+    load_config,
+    is_camel_case,
+    is_lower_camel_case,
+    is_snake_case,
+    is_lower_snake_case,
+    get_prop,
+)
 from pathlib import Path
 import pytest
 
@@ -70,3 +77,35 @@ def test_is_lower_snake_case() -> None:
     assert is_lower_snake_case("core_module_1") is True
     assert is_lower_snake_case("core_module") is True
     assert is_lower_snake_case("core") is True
+
+
+def test_get_prop() -> None:
+    assert get_prop("", "NAME") == ""
+    assert (
+        get_prop(
+            "@PROP=@NAME=isFinalSpecialization@ENDNAME;@TYPE=Boolean@ENDTYPE;@VALU=-1@ENDVALU;@PRMT=@ENDPRMT;@ENDPROP;",
+            "PROP",
+        )
+        == "@NAME=isFinalSpecialization@ENDNAME;@TYPE=Boolean@ENDTYPE;@VALU=-1@ENDVALU;@PRMT=@ENDPRMT;"
+    )
+    assert (
+        get_prop(
+            "@NAME=isFinalSpecialization@ENDNAME;@TYPE=Boolean@ENDTYPE;@VALU=-1@ENDVALU;",
+            "NAME",
+        )
+        == "isFinalSpecialization"
+    )
+    assert (
+        get_prop(
+            "@NAME=isFinalSpecialization@ENDNAME;@TYPE=Boolean@ENDTYPE;@VALU=-1@ENDVALU;",
+            "TYPE",
+        )
+        == "Boolean"
+    )
+    assert (
+        get_prop(
+            "@NAME=isFinalSpecialization@ENDNAME;@TYPE=Boolean@ENDTYPE;@VALU=-1@ENDVALU;",
+            "VALU",
+        )
+        == "-1"
+    )

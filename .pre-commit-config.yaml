@@ -14,3 +14,5 @@ repos:
         args: [--fix]
       # Run the formatter.
       - id: ruff-format
+# Templates are white-space sensitive, just leave them as those were created.
+exclude: src/eaidl/templates/.*

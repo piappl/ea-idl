@@ -1,154 +1,25 @@
-from eaidl.utils import Configuration, is_lower_snake_case, is_camel_case
+from eaidl.utils import is_lower_snake_case, is_camel_case, to_bool, get_prop
+from eaidl.config import Configuration
 from sqlalchemy.ext.automap import automap_base
-from pydantic import BaseModel
 from typing import Optional
 import sqlalchemy
 from sqlalchemy.orm import Session
-from typing import Any, List, Literal, Deque, Dict
+from typing import Any, List, Literal, Deque
 import logging
 import re
 import copy
 from collections import deque
+from eaidl.model import (
+    ModelClass,
+    ModelPackage,
+    ModelAttribute,
+    ModelConnection,
+    ModelConnectionEnd,
+    ModelPropertyType,
+    ModelCustomProperty,
+)
 
 log = logging.getLogger(__name__)
-
-ModelScope = Literal["Private", "Public", "Protected", "Package"]
-
-
-class LocalBaseModel(BaseModel):
-    notes: Optional[str] = None
-    namespace: List[str] = []
-
-
-ConnectorType = Literal[
-    "Abstraction",
-    "Aggregation",
-    "Assembly",
-    "Association",
-    "Collaboration",
-    "CommunicationPath",
-    "Connector",
-    "ControlFlow",
-    "Delegate",
-    "Dependency",
-    "Deployment",
-    "ERLink",
-    "Extension",
-    "Generalization",
-    "InformationFlow",
-    "Instantiation",
-    "InterruptFlow",
-    "Manifest",
-    "Nesting",
-    "NoteLink",
-    "ObjectFlow",
-    "Package",
-    "ProtocolConformance",
-    "ProtocolTransition",
-    "Realisation",
-    "Sequence",
-    "StateFlow",
-    "Substitution",
-    "Usage",
-    "UseCase",
-]
-
-
-class ModelCustomProperty(BaseModel):
-    name: str
-    value: bool | int | float | str
-    type: str
-
-
-class ModelPropertyType(BaseModel):
-    property: str
-    notes: Optional[str] = None
-    property_types: List[str] = []
-
-
-class ModelConnectionEnd(LocalBaseModel):
-    cardinality: Optional[str] = None
-    access: Optional[ModelScope] = None
-    element: Optional[str] = None
-    role: Optional[str] = None
-    role_type: Optional[str] = None
-    role_note: Optional[str] = None
-    containment: Optional[str] = None
-    is_aggregate: int = 0
-    is_ordered: int = 0
-    qualifier: Optional[str] = None
-
-
-class ModelConnection(LocalBaseModel):
-    connector_id: int
-    connector_type: ConnectorType
-    connector_sub_type: Optional[str] = None
-    direction: Optional[
-        Literal[
-            "Source -> Destination",
-            "Destination -> Source",
-            "Unspecified",
-            "Bi-Directional",
-        ]
-    ] = None
-    start_object_id: int
-    end_object_id: int
-    source: ModelConnectionEnd
-    destination: ModelConnectionEnd
-
-
-class ModelClass(LocalBaseModel):
-    name: str
-    parent: Optional["ModelPackage"] = None
-    object_id: int
-    is_abstract: Optional[bool] = None
-    alias: Optional[str] = None
-    stereotype: Optional[str] = None
-    attributes: List["ModelAttribute"] = []
-    stereotypes: List[str] = []
-    generalization: Optional[List[str]] = None
-    depends_on: List[int] = []
-    parent_type: Optional[str] = None
-    properties: Dict[str, float | str | int] = {}
-
-
-class ModelPackageInfo(LocalBaseModel):
-    structs: int = 0
-    typedefs: int = 0
-    unions: int = 0
-    enums: int = 0
-    packages: int = 0
-    create_definition: bool = False
-    create_declaration: bool = False
-
-
-class ModelPackage(LocalBaseModel):
-    package_id: int
-    object_id: int
-    parent: Optional["ModelPackage"] = None
-    name: str
-    guid: str
-    packages: List["ModelPackage"] = []
-    classes: List[ModelClass] = []
-    depends_on: List[int] = []
-    info: ModelPackageInfo = ModelPackageInfo()
-    property_types: List[ModelPropertyType] = []
-
-
-class ModelAttribute(LocalBaseModel):
-    name: Optional[str] = None
-    type: Optional[str] = None
-    attribute_id: int
-    parent: Optional["ModelClass"] = None
-    scope: Optional[ModelScope] = None
-    position: Optional[int] = None
-    is_optional: Optional[bool] = None
-    is_collection: Optional[bool] = None
-    is_ordered: Optional[bool] = None
-    is_static: Optional[bool] = None
-    lower_bound: Optional[str] = None
-    upper_bound: Optional[str] = None
-    connector: Optional[ModelConnection] = None
 
 
 #: We use automap and reflection for tables now. We could switch to declarative,
@@ -171,24 +42,6 @@ def column_reflect(inspector, table, column_info):
 
     """
     column_info["key"] = "attr_%s" % column_info["name"].lower()
-
-
-def to_bool(val: bool | int | float | str) -> bool:
-    if isinstance(val, str):
-        if val.lower() in ["1", "true"]:
-            return True
-        else:
-            return False
-    if val:
-        return True
-    return False
-
-
-def get_prop(value: str, key: str) -> str:
-    match = re.match(f".*@{key}=(.*?)@END{key};", value)
-    if match is None or match.groups(0) is None or len(match.groups(0)) == 0:
-        return ""
-    return match.groups(0)[0]
 
 
 class ModelParser:
@@ -228,7 +81,7 @@ class ModelParser:
         #     )
         #     whole.property_types.append(property_type)
         # So we take them from config
-        for name, prop in self.config.properties.items():
+        for name, prop in self.config.annotations.items():
             if prop.idl_default is True:
                 continue
             if prop.idl_name is not None:
@@ -666,8 +519,8 @@ class ModelParser:
             .all()
         )
         for t_property in t_properties:
-            if t_property.attr_property in self.config.properties.keys():
-                prop_config = self.config.properties[t_property.attr_property]
+            if t_property.attr_property in self.config.annotations.keys():
+                prop_config = self.config.annotations[t_property.attr_property]
                 if prop_config.idl_name is not None:
                     model_class.properties[prop_config.idl_name] = t_property.attr_value
                 else:
@@ -675,8 +528,8 @@ class ModelParser:
             else:
                 log.warning("Custom Property %s is not configured", t_property.attr_property)
         for prop in self.get_custom_properties(t_object.attr_ea_guid):
-            if prop.name in self.config.properties.keys():
-                prop_config = self.config.properties[prop.name]
+            if prop.name in self.config.annotations.keys():
+                prop_config = self.config.annotations[prop.name]
                 value = prop.value
                 if prop.type == "Boolean":
                     # This does something silly with isFinalSpecialization

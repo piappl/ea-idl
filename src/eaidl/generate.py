@@ -1,6 +1,6 @@
 from jinja2 import Environment, PackageLoader, select_autoescape
 from eaidl.load import ModelPackage
-from eaidl.utils import Configuration
+from eaidl.config import Configuration
 # from rich import inspect
 
 
