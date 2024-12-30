@@ -265,8 +265,10 @@ class ModelParser:
 
         # print(parent_package.namespace, parent_package.name, parent_package.depends_on)
         log.debug("Sorting package %s", parent_package.name)
+        edges = []
         while len(packages) > 0:
             # FIXME, if there is something wrong we might infinite loop here with while.
+            # print([package.name for package in packages])
             current_package: ModelPackage = packages.popleft()
             ready = True
             for package in packages:
@@ -274,13 +276,25 @@ class ModelParser:
                     if dependant in self.get_all_class_id(package):
                         # We are not ready for that one, put it back on another end
                         packages.append(current_package)
+                        if (current_package.name, package.name) not in edges and (
+                            package.name,
+                            current_package.name,
+                        ) not in edges:
+                            # This is new edge
+                            edges.append((current_package.name, package.name))
+                        elif (package.name, current_package.name) in edges:
+                            log.error(
+                                "Got circular dependency in packages %s and %s", package.name, current_package.name
+                            )
+                            return
+
                         ready = False
                         break
                 if not ready:
                     break
             if ready:
                 parent_package.packages.append(current_package)
-        log.debug("Sorting packages of %s is not done", parent_package.name)
+        log.debug("Sorting packages of %s done", parent_package.name)
         # print([package.name for package in parent_package.packages])
 
         # Do some statictics that templates can use later
@@ -487,6 +501,9 @@ class ModelParser:
         model_class.namespace = parent_package.namespace
         model_class.stereotype = t_object.attr_stereotype
         model_class.stereotypes = self.get_stereotypes(t_object.attr_ea_guid)
+        if model_class.stereotype not in model_class.stereotypes:
+            # We want all in in list
+            model_class.stereotypes.append(model_class.stereotypes)
         model_class.is_abstract = to_bool(t_object.attr_abstract)
         if t_object.attr_genlinks is not None:
             # We set parent for typedefs.
@@ -526,7 +543,9 @@ class ModelParser:
                 else:
                     model_class.properties[f"ext::{t_property.attr_property}"] = t_property.attr_value
             else:
-                log.warning("Custom Property %s is not configured", t_property.attr_property)
+                if t_property.attr_property not in ["URI", "isEncapsulated"]:
+                    # Those are set by EA on bunch of things, so lets skip the warning
+                    log.warning("Property %s is not configured", t_property.attr_property)
         for prop in self.get_custom_properties(t_object.attr_ea_guid):
             if prop.name in self.config.annotations.keys():
                 prop_config = self.config.annotations[prop.name]
@@ -542,5 +561,25 @@ class ModelParser:
                 else:
                     model_class.properties[f"ext::{t_property.attr_property}"] = value
             else:
-                log.warning("Custom Property %s is not configured", prop.name)
+                if prop.name not in []:
+                    # Those are set by EA on bunch of things, so lets skip the warning
+                    log.warning("Custom property %s is not configured", prop.name)
+        # Validation
+        # Check if we have one of proper stereotypes on all P7
+        if "DataElement" in model_class.stereotypes:
+            types = ["idlUnion", "idlStruct", "idlEnum", "idlTypedef"]
+            found = False
+            for t in types:
+                if t in model_class.stereotypes:
+                    found = True
+                    break
+            if not found:
+                log.error(
+                    "Model class %s doesn't have proper stereotypes %s", model_class.name, model_class.stereotypes
+                )
+        # We prefix enumerations (to make sure those are unique)
+        if "DataElement" in model_class.stereotypes and "idlEnum" in model_class.stereotypes:
+            for attribute in model_class.attributes:
+                if not attribute.name.startswith(model_class.name):
+                    log.error("No prefix in enumeration %s attribute %s", model_class.name, attribute.name)
         return model_class
