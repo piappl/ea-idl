@@ -67,5 +67,6 @@ class Configuration(BaseModel):
         "unit": AnnotationType(
             idl_default=True,
         ),
+        "pattern": AnnotationType(idl_default=False, idl_types=["string value;"]),
         "isFinalSpecialization": AnnotationType(idl_default=True, idl_name="final"),
     }
