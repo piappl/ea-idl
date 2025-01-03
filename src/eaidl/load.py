@@ -86,7 +86,7 @@ class ModelParser:
                 continue
             if prop.idl_name is not None:
                 name = prop.idl_name
-            property_type = ModelPropertyType(property=name, notes=prop.description, property_types=prop.idl_types)
+            property_type = ModelPropertyType(property=name, notes=prop.notes, property_types=prop.idl_types)
             whole.property_types.append(property_type)
 
         return whole

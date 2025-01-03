@@ -29,7 +29,7 @@ class AnnotationType(BaseModel):
     #: Types, needed for non IDL default attributes with values
     idl_types: List[str] = []
     #: Description, to comment out non IDL default attributes.
-    description: str = ""
+    notes: str = ""
 
 
 class Configuration(BaseModel):
@@ -67,6 +67,6 @@ class Configuration(BaseModel):
         "unit": AnnotationType(
             idl_default=True,
         ),
-        "pattern": AnnotationType(idl_default=False, idl_types=["string value;"]),
+        "pattern": AnnotationType(idl_default=False, idl_types=["string value;"], notes="Regular expression to match."),
         "isFinalSpecialization": AnnotationType(idl_default=True, idl_name="final"),
     }
