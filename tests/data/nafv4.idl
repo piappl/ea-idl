@@ -7,6 +7,13 @@ module ext {
     @annotation exclusiveMinimum {
         any value;
     };
+
+    /**
+        Regular expression to match.
+    */
+    @annotation pattern {
+        string value;
+    };
 }; /* ext */
 
 module core {
@@ -25,8 +32,8 @@ module core {
         union Measurement;
     }; /* data */
 
-
     module message {
+
         /**
             ISO timestamp
         */
@@ -35,14 +42,10 @@ module core {
             MessageTypeEnum_MEASUREMENT,
             MessageTypeEnum_EMPTY
         };
-
         struct MessageHeader;
-
         struct Message;
-
         struct DataMessage;
     }; /* message */
-
     /* ---------------------------------------------------------------------- */
     /* Definitions                                                            */
     /* ---------------------------------------------------------------------- */
@@ -57,15 +60,15 @@ module core {
         };
     }; /* data */
 
-
     module message {
+
         /**
             Message header
         */
-
         struct MessageHeader {
             @optional
             core::message::Time timestamp;
+
             core::message::MessageTypeEnum message_type;
         };
 
@@ -77,13 +80,23 @@ module core {
 
         struct DataMessage: core::message::Message {
             sequence<core::data::Measurement> body;
-            /** This is a sequence */
-            sequence<int> test_comment_seq;
-            /** This is optional */
+
+            /**
+                This is a sequence
+            */
+            sequence<long> test_comment_seq;
+
+            /**
+                This is optional
+            */
             @optional
             boolean test_comment_optional;
-            /** This is comment */
+
+            /**
+                This is comment
+            */
             double test_comment;
         };
+
     }; /* message */
 }; /* core */

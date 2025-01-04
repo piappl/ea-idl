@@ -1,9 +1,9 @@
 {% macro gen_notes(cls) %}
 {% if cls.notes %}
+
 /**
 {{ cls.notes | wordwrap(78) | indent(4, true)}}
-*/
-{%- endif %}
+*/{% endif %}
 {% endmacro %}
 {% macro gen_annotations(props) %}
 {% for key, value in props.items() %}
@@ -15,7 +15,7 @@
 {% endfor %}
 {% endmacro %}
 {% macro gen_attribute(module, cls, attr) %}
-{{ gen_notes(attr) }}
+{{ gen_notes(attr)  }}
 {% if attr.is_optional %}@optional
 {% endif %}
 {% if attr.is_collection %}
@@ -27,9 +27,9 @@ sequence<{{"::".join(attr.namespace + [attr.type])}}> {{attr.name}};
 {% macro get_struct(module, cls) -%}
 {% if cls.generalization %}
 struct {{ cls.name }}: {{ "::".join(cls.generalization) }} {
-{% else -%}
+{%- else %}
 struct {{ cls.name }} {
-{% endif %}
+{%- endif %}
 {% for attr in cls.attributes %}
 {{ gen_attribute(module, cls, attr) | indent(4, True) }}
 {% endfor %}
@@ -46,15 +46,15 @@ enum {{ cls.name }} {
 {% endif %}
 {% endfor %}
 };
-{%- elif "idlUnion" in cls.stereotypes %}
+{% elif "idlUnion" in cls.stereotypes %}
 union {{ cls.name }};
-{%- elif "idlTypedef" in cls.stereotypes %}
+{% elif "idlTypedef" in cls.stereotypes %}
 {{ gen_notes(cls) }}
 {{ gen_annotations(cls.properties) -}}
 typedef {{cls.parent_type}} {{cls.name}};
-{%- elif "idlStruct" in cls.stereotypes %}
+{% elif "idlStruct" in cls.stereotypes %}
 struct {{ cls.name }};
-{%- endif %}
+{% endif %}
 {% endmacro %}
 {% macro gen_class(module, cls) %}
 {% if "idlUnion" in cls.stereotypes %}
@@ -67,7 +67,7 @@ union {{ cls.name }} switch (int8)  {
 };
 {% elif "idlStruct" in cls.stereotypes %}
 {{ gen_notes(cls) }}
-{{ gen_annotations(cls.properties) }}
+{{ gen_annotations(cls.properties) -}}
 {{ get_struct(module, cls) }}
 {% endif %}
 {% endmacro %}
@@ -75,10 +75,10 @@ union {{ cls.name }} switch (int8)  {
 {{ gen_notes(module) }}
 module {{ module.name }} {
 {% for submodule in module.packages %}
-{{ gen_module_declaration(submodule, loop)|indent(4, true) }}
+{{ gen_module_declaration(submodule, loop)|indent(4, true) -}}
 {% endfor %}
-{% for cls in module.classes %}
-{{ gen_class_declaration(module, cls)|indent(4, true) }}
+{% for cls in module.classes -%}
+{{ gen_class_declaration(module, cls)|indent(4, true) -}}
 {% endfor %}
 }; /* {{module.name}} */
 {% endmacro %}
@@ -87,17 +87,16 @@ module {{ module.name }} {
 {{ gen_notes(module) }}
 module {{ module.name }} {
 {% for submodule in module.packages %}
-{{ gen_module(submodule, loop)|indent(4, true) }}
+{{ gen_module(submodule, loop)|indent(4, true) -}}
 {% endfor %}
 {% for cls in module.classes %}
-{{ gen_class(module, cls)|indent(4, true) }}
+{{ gen_class(module, cls)|indent(4, true) -}}
 {% endfor %}
 }; /* {{module.name}} */
 {% endif %}
 {% endmacro %}
-
 module ext {
-{% for property_type in package.property_types recursive %}
+{% for property_type in package.property_types recursive -%}
 {{ gen_notes(property_type) | indent(4, true) }}
     @annotation {{property_type.property}} {
 {% for type in property_type.property_types recursive %}
@@ -112,13 +111,13 @@ module {{package.name}} {
     /* Declarations                                                           */
     /* ---------------------------------------------------------------------- */
 {% for child in package.packages recursive %}
-{{ gen_module_declaration(child, loop) | indent(4, true) }}
+{{ gen_module_declaration(child, loop) | indent(4, true) -}}
 {% endfor %}
     /* ---------------------------------------------------------------------- */
     /* Definitions                                                            */
     /* ---------------------------------------------------------------------- */
 {% for child in package.packages recursive %}
-{{ gen_module(child, loop) | indent(4, true) }}
+{{ gen_module(child, loop) | indent(4, true) -}}
 {% endfor %}
 }; /* {{package.name}} */
 

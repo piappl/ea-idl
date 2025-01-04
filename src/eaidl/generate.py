@@ -5,6 +5,8 @@ from eaidl.config import Configuration
 
 
 def generate(config: Configuration, model: ModelPackage) -> str:
-    env = Environment(loader=PackageLoader("eaidl"), autoescape=select_autoescape(), trim_blocks=True)
+    env = Environment(
+        loader=PackageLoader("eaidl"), autoescape=select_autoescape(), trim_blocks=True, lstrip_blocks=True
+    )
     template = env.get_template("idl.jinja2")
     return template.render(package=model)
