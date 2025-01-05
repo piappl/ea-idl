@@ -63,8 +63,7 @@ class ModelParser:
         if root is None:
             raise ValueError("Root package not found, check configuration")
         self.root_package_guid = root.attr_ea_guid
-
-        whole = self.package_parse(root)
+        whole = self.package_parse(root, root=True)
         # We can get property types from model, but it somehow lacks information...
         # TPropertytypes = base.classes.t_propertytypes
         # p_propertytypes = self.session.query(TPropertytypes).all()
@@ -88,7 +87,6 @@ class ModelParser:
                 name = prop.idl_name
             property_type = ModelPropertyType(property=name, notes=prop.notes, property_types=prop.idl_types)
             whole.property_types.append(property_type)
-
         return whole
 
     def get_object_connections(
@@ -161,10 +159,7 @@ class ModelParser:
         return ret
 
     def package_parse(
-        self,
-        t_package: Any,
-        parent_package: Optional[ModelPackage] = None,
-        parse_children=True,
+        self, t_package: Any, parent_package: Optional[ModelPackage] = None, parse_children=True, root=False
     ) -> ModelPackage:
         TObject = base.classes.t_object
         t_package_object = self.session.query(TObject).filter(TObject.attr_ea_guid == t_package.attr_ea_guid).scalar()
@@ -175,6 +170,9 @@ class ModelParser:
             guid=t_package.attr_ea_guid,
             parent=parent_package,
         )
+        # Override root name?
+        if root and self.config.root_package_name is not None:
+            package.name = self.config.root_package_name
         if not is_lower_snake_case(package.name):
             log.warning("Package name has wrong case, expected lower snake case: %s", package.name)
         if parent_package is None:
@@ -200,6 +198,12 @@ class ModelParser:
             if child_t_object.attr_object_type == "Package":
                 stmt = sqlalchemy.select(TPackage).where(TPackage.attr_ea_guid == child_t_object.attr_ea_guid)
                 t_package = self.session.execute(stmt).scalars().first()
+                if t_package is None:
+                    log.error("Package not found %s", child_t_object.attr_ea_guid)
+                    continue
+                if child_t_object.attr_ea_guid in self.config.ignore_packages:
+                    log.error("Ignoring %s %s", child_t_object.attr_ea_guid, t_package.attr_name)
+                    continue
                 pkg = self.package_parse(t_package, parent_package)
                 packages.append(pkg)
 
@@ -351,7 +355,10 @@ class ModelParser:
             TPackage = base.classes.t_package
             package = self.session.query(TPackage).filter(TPackage.attr_package_id == current_package_id).scalar()
             current_package_id = package.attr_parent_id
-            namespace.append(package.attr_name)
+            if self.root_package_guid == package.attr_ea_guid and self.config.root_package_name is not None:
+                namespace.append(self.config.root_package_name)
+            else:
+                namespace.append(package.attr_name)
             if self.root_package_guid == package.attr_ea_guid:
                 # We got to our configured top package
                 break
