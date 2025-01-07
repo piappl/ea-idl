@@ -24,6 +24,10 @@ module core {
             @ext::exclusiveMaximum(100)
             typedef float TemperatureMeasurement;
         }; /* types */
+        enum MeasurementTypeEnum {
+            @value(1) MeasurementTypeEnum_TEMPERATURE_MEASUREMENT,
+            @value(0) MeasurementTypeEnum_STRING
+        };
         union Measurement;
     }; /* data */
     module message {
@@ -33,8 +37,8 @@ module core {
 
         typedef string Time;
         enum MessageTypeEnum {
-            MessageTypeEnum_MEASUREMENT,
-            MessageTypeEnum_EMPTY
+            @value(0) MessageTypeEnum_MEASUREMENT,
+            @value(1) MessageTypeEnum_EMPTY
         };
         struct MessageHeader;
         struct Message;
@@ -44,6 +48,7 @@ module core {
     /* Definitions                                                            */
     /* ---------------------------------------------------------------------- */
     module data {
+
 
         union Measurement switch (int8)  {
             case 1:
@@ -62,6 +67,7 @@ module core {
         struct MessageHeader {
             @optional
             core::message::Time timestamp;
+            @value(MessageTypeEnum_MEASUREMENT)
             core::message::MessageTypeEnum message_type;
         };
         struct Message {
@@ -72,6 +78,7 @@ module core {
             /**
                 This is a sequence
             */
+
             sequence<long> test_comment_seq;
             /**
                 This is optional
@@ -81,6 +88,7 @@ module core {
             /**
                 This is comment
             */
+
             double test_comment;
         };
     }; /* message */

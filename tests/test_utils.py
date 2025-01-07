@@ -5,6 +5,7 @@ from eaidl.utils import (
     is_snake_case,
     is_lower_snake_case,
     get_prop,
+    enum_name_from_union_attr,
 )
 from pathlib import Path
 import pytest
@@ -77,6 +78,15 @@ def test_is_lower_snake_case() -> None:
     assert is_lower_snake_case("core_module_1") is True
     assert is_lower_snake_case("core_module") is True
     assert is_lower_snake_case("core") is True
+
+
+def test_enum_name_from_union() -> None:
+    # Union Measurement has attribute a_temperature_measurement
+    # We need enum name (MeasurementTypeEnum)
+    # From that enumeration name is MeasurementTypeEnum_TEMPERATURE_MEASUREMENT
+    assert "MeasurementTypeEnum_TEMPERATURE_MEASUREMENT" == enum_name_from_union_attr(
+        enum_name="MeasurementTypeEnum", attr_type="a_temperature_measurement"
+    )
 
 
 def test_get_prop() -> None:

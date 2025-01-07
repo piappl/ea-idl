@@ -34,11 +34,11 @@ def test_reflect():
     # If this fails, just check the file and fix numbers here.
     contents = {
         "t_package": 6,
-        "t_object": 13,
-        "t_attribute": 11,
-        "t_connector": 8,
-        "t_objectproperties": 24,
-        "t_xref": 18,  # Stereotypes, properties
+        "t_object": 14,
+        "t_attribute": 13,
+        "t_connector": 9,
+        "t_objectproperties": 26,
+        "t_xref": 20,  # Stereotypes, properties
     }
 
     for key, value in contents.items():
@@ -54,8 +54,14 @@ def test_load():
     model = parser.load()
     # Core is default
     assert model.name == "core"
+    assert model.packages[0].name == "data"
+    assert model.packages[0].classes[0].name == "MeasurementTypeEnum"
+    assert model.packages[0].classes[1].name == "Measurement"
+    # This is union and its enumeration, both need to exist and have certain
+    # pattern of names.
+    inspect(model.packages[0].classes[0].attributes)
+    inspect(model.packages[0].classes[1].attributes)
     parser = ModelParser(Configuration(root_package="something not there"))
-    inspect(model)
     with pytest.raises(ValueError):
         parser.load()
 

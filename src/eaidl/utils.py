@@ -4,6 +4,7 @@ import logging
 from pydantic import ValidationError
 from pathlib import Path
 from eaidl.config import Configuration, JSON
+from typing import Any
 import re
 
 
@@ -21,6 +22,13 @@ def to_bool(val: bool | int | float | str) -> bool:
     if val:
         return True
     return False
+
+
+def try_cast(value: Any, value_type, default=None) -> Any:
+    try:
+        return value_type(value)
+    except ValueError:
+        return default
 
 
 def get_prop(value: str, key: str) -> str:
@@ -91,6 +99,11 @@ def is_snake_case(val: str) -> bool:
 
 def is_lower_snake_case(val: str) -> bool:
     return bool(re.match(LOWER_SNAKE_CASE_RE, val))
+
+
+def enum_name_from_union_attr(enum_name: str, attr_type: str) -> str:
+    attr_conv = "_".join([part.upper() for part in attr_type.split("_")][1:])
+    return f"{enum_name}_{attr_conv}"
 
 
 class LogFormatter(logging.Formatter):

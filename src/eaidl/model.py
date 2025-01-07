@@ -82,8 +82,18 @@ class ModelConnection(LocalBaseModel):
     ] = None
     start_object_id: int
     end_object_id: int
+    stereotype: Optional[str] = None
     source: ModelConnectionEnd
     destination: ModelConnectionEnd
+
+
+ModelAnnotationTypeLiteral = Literal["none", "str", "int", "float", "bool", "object"]
+ModelAnnotationType = int | float | str | bool | None
+
+
+class ModelAnnotation(LocalBaseModel):
+    value_type: ModelAnnotationTypeLiteral = "none"
+    value: ModelAnnotationType = None
 
 
 class ModelClass(LocalBaseModel):
@@ -98,7 +108,7 @@ class ModelClass(LocalBaseModel):
     generalization: Optional[List[str]] = None
     depends_on: List[int] = []
     parent_type: Optional[str] = None
-    properties: Dict[str, float | str | int] = {}
+    properties: Dict[str, ModelAnnotation] = {}
 
 
 class ModelPackageInfo(LocalBaseModel):
@@ -138,3 +148,5 @@ class ModelAttribute(LocalBaseModel):
     lower_bound: Optional[str] = None
     upper_bound: Optional[str] = None
     connector: Optional[ModelConnection] = None
+    properties: Dict[str, ModelAnnotation] = {}
+    union_key: Optional[str] = None

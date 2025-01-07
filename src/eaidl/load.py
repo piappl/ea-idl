@@ -1,4 +1,4 @@
-from eaidl.utils import is_lower_snake_case, is_camel_case, to_bool, get_prop
+from eaidl.utils import is_lower_snake_case, is_camel_case, to_bool, get_prop, enum_name_from_union_attr, try_cast
 from eaidl.config import Configuration
 from sqlalchemy.ext.automap import automap_base
 from typing import Optional
@@ -10,6 +10,9 @@ import re
 import copy
 from collections import deque
 from eaidl.model import (
+    ModelAnnotation,
+    ModelAnnotationType,
+    ModelAnnotationTypeLiteral,
     ModelClass,
     ModelPackage,
     ModelAttribute,
@@ -90,7 +93,7 @@ class ModelParser:
         return whole
 
     def get_object_connections(
-        self, object_id: int, mode: Literal["source", "destination", "both"]
+        self, object_id: int, mode: Literal["source", "destination", "both"] = "both"
     ) -> List[ModelConnection]:
         ret = []
         TConnector = base.classes.t_connector
@@ -130,6 +133,7 @@ class ModelParser:
                     connector_sub_type=t_connector.attr_subtype,
                     start_object_id=t_connector.attr_start_object_id,
                     end_object_id=t_connector.attr_end_object_id,
+                    stereotype=t_connector.attr_stereotype,
                     source=ModelConnectionEnd(
                         cardinality=t_connector.attr_sourcecard,
                         access=t_connector.attr_sourceaccess,
@@ -371,7 +375,19 @@ class ModelParser:
         namespace.reverse()
         return namespace
 
-    def attribute_parse(self, parent_package: ModelPackage, parent_class: ModelClass, t_attribute) -> ModelAttribute:
+    def create_annotation(self, value: ModelAnnotationType) -> ModelAnnotation:
+        value_type: ModelAnnotationTypeLiteral = "none"
+        if isinstance(value, str):
+            value_type = "str"
+        if isinstance(value, float):
+            value_type = "float"
+        if isinstance(value, int):
+            value_type = "int"
+        return ModelAnnotation(value=value, value_type=value_type)
+
+    def attribute_parse(
+        self, parent_package: Optional[ModelPackage], parent_class: ModelClass, t_attribute
+    ) -> ModelAttribute:
         attribute = ModelAttribute(
             name=t_attribute.attr_name,
             type=t_attribute.attr_type,
@@ -393,7 +409,18 @@ class ModelParser:
         attribute.is_ordered = to_bool(t_attribute.attr_isordered)
         attribute.is_static = to_bool(t_attribute.attr_isstatic)
         attribute.notes = t_attribute.attr_notes
-
+        if t_attribute.attr_default is not None:
+            if t_attribute.attr_type in ["str", "int", "float"]:
+                attribute.properties["value"] = ModelAnnotation(
+                    value=t_attribute.attr_default, value_type=t_attribute.attr_type
+                )
+            if t_attribute.attr_type is None:
+                attribute.properties["value"] = ModelAnnotation(value=None, value_type="none")
+            else:
+                attribute.properties["value"] = ModelAnnotation(value=t_attribute.attr_default, value_type="object")
+        if attribute.is_optional is True:
+            # This is optional when present
+            attribute.properties["optional"] = self.create_annotation(None)
         connections = self.get_object_connections(parent_class.object_id, mode="source")
         for connection in connections:
             if connection.connector_type != "Association":
@@ -497,7 +524,34 @@ class ModelParser:
         else:
             return []
 
-    def class_parse(self, parent_package: ModelPackage, t_object) -> ModelClass:
+    def check_union_and_enum(self, model_union: ModelClass, model_enum: ModelClass) -> None:
+        """Tries to fill stuff in union based on associated enumeration.
+
+        :param model_union: model for union
+        :param model_enum: model for enumeration
+        :raises ValueError: if something is not ok im model
+        """
+        assert "idlUnion" in model_union.stereotypes
+        assert "idlEnum" in model_enum.stereotypes
+        assert len(model_enum.attributes) == len(model_union.attributes)
+
+        for union_attr in model_union.attributes:
+            assert union_attr.name is not None
+            union_attr_name = enum_name_from_union_attr(model_enum.name, union_attr.name)
+            enum_attr = None
+            for item in model_enum.attributes:
+                if item.name == union_attr_name:
+                    log.debug("Found union member %s %s", item.name, union_attr_name)
+                    enum_attr = item
+            if enum_attr is None:
+                error = "Not found union member {union_attr_name}"
+                raise ValueError(error)
+            if "value" in item.properties:
+                union_attr.union_key = str(item.properties["value"].value)
+                # union_attr.properties["value"] = copy.copy(item.properties["value"])
+                # union_attr.properties["value"].value_type = "object"
+
+    def class_parse(self, parent_package: Optional[ModelPackage], t_object) -> ModelClass:
         model_class = ModelClass(
             name=t_object.attr_name,
             object_id=t_object.attr_object_id,
@@ -505,12 +559,14 @@ class ModelParser:
         )
         if not is_camel_case(model_class.name):
             log.warning("Class name has wrong case, expected camel case %s", model_class.name)
-        model_class.namespace = parent_package.namespace
+        if parent_package is not None:
+            model_class.namespace = parent_package.namespace
+
         model_class.stereotype = t_object.attr_stereotype
         model_class.stereotypes = self.get_stereotypes(t_object.attr_ea_guid)
-        if model_class.stereotype not in model_class.stereotypes:
+        if model_class.stereotype and model_class.stereotype not in model_class.stereotypes:
             # We want all in in list
-            model_class.stereotypes.append(model_class.stereotypes)
+            model_class.stereotypes.append(model_class.stereotype)
         model_class.is_abstract = to_bool(t_object.attr_abstract)
         if t_object.attr_genlinks is not None:
             # We set parent for typedefs.
@@ -530,11 +586,26 @@ class ModelParser:
         for connection in connections:
             if connection.connector_type == "Generalization":
                 model_class.depends_on.append(connection.end_object_id)
+
         # Add attributes
         TAttribute = base.classes.t_attribute
         t_attributes = self.session.query(TAttribute).filter(TAttribute.attr_object_id == model_class.object_id).all()
         for t_attribute in t_attributes:
             model_class.attributes.append(self.attribute_parse(parent_package, model_class, t_attribute))
+
+        if "idlUnion" in model_class.stereotypes:
+            # Check if we have enumeration for that union
+            connections = self.get_object_connections(model_class.object_id)
+            for connection in connections:
+                if connection.stereotype == "union":
+                    # Need to add dependency, we don't care for direction here
+                    if model_class.object_id != connection.end_object_id:
+                        enum_id = connection.end_object_id
+                    if model_class.object_id != connection.start_object_id:
+                        enum_id = connection.start_object_id
+                    model_class.depends_on.append(enum_id)
+
+                    self.check_union_and_enum(model_class, self.class_parse(None, self.get_object(enum_id)))
 
         TObjectProperties = base.classes.t_objectproperties
         t_properties = (
@@ -545,10 +616,14 @@ class ModelParser:
         for t_property in t_properties:
             if t_property.attr_property in self.config.annotations.keys():
                 prop_config = self.config.annotations[t_property.attr_property]
+                for item in [int, float, str]:
+                    val = try_cast(t_property.attr_value, item)
+                    if val is not None:
+                        break
                 if prop_config.idl_name is not None:
-                    model_class.properties[prop_config.idl_name] = t_property.attr_value
+                    model_class.properties[prop_config.idl_name] = self.create_annotation(val)
                 else:
-                    model_class.properties[f"ext::{t_property.attr_property}"] = t_property.attr_value
+                    model_class.properties[f"ext::{t_property.attr_property}"] = self.create_annotation(val)
             else:
                 if t_property.attr_property not in ["URI", "isEncapsulated"]:
                     # Those are set by EA on bunch of things, so lets skip the warning
@@ -564,9 +639,9 @@ class ModelParser:
                 if value is False:
                     pass
                 elif prop_config.idl_name is not None:
-                    model_class.properties[prop_config.idl_name] = value
+                    model_class.properties[prop_config.idl_name] = self.create_annotation(value)
                 else:
-                    model_class.properties[f"ext::{t_property.attr_property}"] = value
+                    model_class.properties[f"ext::{t_property.attr_property}"] = self.create_annotation(value)
             else:
                 if prop.name not in []:
                     # Those are set by EA on bunch of things, so lets skip the warning

@@ -8,24 +8,33 @@
 {# Macro for generating annotations, based on properties. #}
 {% macro gen_annotations(props) %}
 {% for key, value in props.items() %}
-{% if value %}
-@{{key | trim}}({{value | trim}})
-{% else %}
+{% if value.value_type == "str" %}
+@{{key | trim}}("{{value.value | trim}}")
+{% elif value.value_type == "none" %}
 @{{key | trim}}
+{% else %}
+@{{key | trim}}({{value.value | trim}})
 {% endif %}
 {% endfor %}
 {% endmacro -%}
 {# Macro for generating attributes. #}
 {% macro gen_attribute(module, cls, attr) %}
 {{ gen_notes(attr) }}
-{% if attr.is_optional %}@optional
-{% endif -%}
+{{ gen_annotations(attr.properties ) | trim }}
 {% if attr.is_collection %}
 sequence<{{"::".join(attr.namespace + [attr.type])}}> {{attr.name}};
 {% else %}
 {{"::".join(attr.namespace + [attr.type])}} {{attr.name}};
 {% endif %}
 {% endmacro -%}
+{# Generate enum entry #}
+{% macro gen_enum_entry(item, index) %}
+{% if "value" in item.properties and  item.properties["value"].value %}
+@value({{item.properties["value"].value | trim }}) {{item.name}}
+{% else %}
+@value({{index}}) {{item.name}}
+{% endif %}
+{% endmacro %}
 {# Macro for generating structure definition. #}
 {% macro gen_struct(module, cls) %}
 {% if cls.generalization %}
@@ -50,9 +59,9 @@ typedef {{cls.parent_type}} {{cls.name}};
 enum {{ cls.name }} {
 {% for item in cls.attributes %}
 {% if loop.revindex0 == 0 %}
-{{item.name | indent(4, true)}}
+{{ gen_enum_entry(item, loop.index0) | trim | indent(4, true) }}
 {% else %}
-{{item.name  | indent(4, true)}},
+{{ gen_enum_entry(item, loop.index0) | trim | indent(4, true) -}},
 {% endif %}
 {% endfor %}
 };
@@ -70,7 +79,11 @@ struct {{ cls.name }};
 {{ gen_notes(cls) }}
 union {{ cls.name }} switch (int8)  {
 {% for item in cls.attributes %}
+{% if item.value %}
+    case {{item.value}}:
+{% else %}
     case {{loop.index}}:
+{% endif %}
         {{ "::".join(item.namespace + [item.type])}} {{item.name}};
 {% endfor %}
 };
