@@ -1,9 +1,11 @@
+{# Macro for generating notes for object, need notes field. #}
 {% macro gen_notes(cls) %}
 {% if cls.notes %}
 /**
 {{ cls.notes | wordwrap(78) | indent(4, true)}}
 */{% endif %}
 {% endmacro -%}
+{# Macro for generating annotations, based on properties. #}
 {% macro gen_annotations(props) %}
 {% for key, value in props.items() %}
 {% if value %}
@@ -13,17 +15,19 @@
 {% endif %}
 {% endfor %}
 {% endmacro %}
+{# Macro for generating attributes. #}
 {% macro gen_attribute(module, cls, attr) %}
 {{ gen_notes(attr) }}
 {% if attr.is_optional %}@optional
 {% endif %}
 {% if attr.is_collection %}
 sequence<{{"::".join(attr.namespace + [attr.type])}}> {{attr.name}};
-{%- else %}
+{% else %}
 {{"::".join(attr.namespace + [attr.type])}} {{attr.name}};
-{%- endif %}
+{% endif %}
 {% endmacro %}
-{% macro get_struct(module, cls) %}
+{# Macro for generating structure definition. #}
+{% macro gen_struct(module, cls) %}
 {% if cls.generalization %}
 struct {{ cls.name }}: {{ "::".join(cls.generalization) }} {
 {% else %}
@@ -34,6 +38,7 @@ struct {{ cls.name }} {
 {% endfor %}
 };
 {% endmacro %}
+{# Macro for generating class declaration. #}
 {% macro gen_class_declaration(module, cls) %}
 {% if "idlEnum" in cls.stereotypes %}
 enum {{ cls.name }} {
@@ -49,13 +54,14 @@ enum {{ cls.name }} {
 union {{ cls.name }};
 {% elif "idlTypedef" in cls.stereotypes %}
 {{ gen_notes(cls) }}
-{{ gen_annotations(cls.properties) -}}
+{{ gen_annotations(cls.properties) }}
 typedef {{cls.parent_type}} {{cls.name}};
 {% elif "idlStruct" in cls.stereotypes %}
 struct {{ cls.name }};
 {% endif %}
 {% endmacro %}
-{% macro gen_class(module, cls) %}
+{# Macro for generating class definition. #}
+{% macro gen_class_definition(module, cls) %}
 {% if "idlUnion" in cls.stereotypes %}
 {{ gen_notes(cls) }}
 union {{ cls.name }} switch (int8)  {
@@ -67,35 +73,38 @@ union {{ cls.name }} switch (int8)  {
 {% elif "idlStruct" in cls.stereotypes %}
 {{ gen_notes(cls) }}
 {{ gen_annotations(cls.properties) -}}
-{{ get_struct(module, cls) }}
+{{ gen_struct(module, cls) }}
 {% endif %}
 {% endmacro %}
+{# Create module declaration, recursively. #}
 {% macro gen_module_declaration(module, loop) %}
 {{ gen_notes(module) }}
 module {{ module.name }} {
 {% for submodule in module.packages %}
-{{ gen_module_declaration(submodule, loop)|indent(4, true) -}}
+{{ gen_module_declaration(submodule, loop)|trim|indent(4, true) }}
 {% endfor %}
 {% for cls in module.classes -%}
-{{ gen_class_declaration(module, cls)|indent(4, true) -}}
+{{ gen_class_declaration(module, cls)|trim|indent(4, true) }}
 {% endfor %}
 }; /* {{module.name}} */
 {% endmacro %}
-{% macro gen_module(module, loop) %}
+{# Create module definition, recursively. #}
+{% macro gen_module_definition(module, loop) %}
 {% if module.info.create_definition == True %}
 {{ gen_notes(module) }}
 module {{ module.name }} {
 {% for submodule in module.packages %}
-{{ gen_module(submodule, loop)|indent(4, true) -}}
+{{ gen_module_definition(submodule, loop)|trim|indent(4, true) }}
 {% endfor %}
 {% for cls in module.classes %}
-{{ gen_class(module, cls)|indent(4, true) -}}
+{{ gen_class_definition(module, cls)|trim|indent(4, true) }}
 {% endfor %}
 }; /* {{module.name}} */
 {% endif %}
 {% endmacro %}
+{# Generate definitions for our custom annotations. #}
 module ext {
-{% for property_type in package.property_types recursive -%}
+{% for property_type in package.property_types recursive %}
 {{ gen_notes(property_type) | indent(4, true) }}
     @annotation {{property_type.property}} {
 {% for type in property_type.property_types recursive %}
@@ -105,6 +114,7 @@ module ext {
 {% endfor %}
 }; /* ext */
 
+{# We start with top level module, and create definitions than declarations. #}
 module {{package.name}} {
     /* ---------------------------------------------------------------------- */
     /* Declarations                                                           */
@@ -116,7 +126,7 @@ module {{package.name}} {
     /* Definitions                                                            */
     /* ---------------------------------------------------------------------- */
 {% for child in package.packages recursive %}
-{{ gen_module(child, loop) | indent(4, true) -}}
+{{ gen_module_definition(child, loop) | indent(4, true) -}}
 {% endfor %}
 }; /* {{package.name}} */
 
