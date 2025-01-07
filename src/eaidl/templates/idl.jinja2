@@ -1,10 +1,9 @@
 {% macro gen_notes(cls) %}
 {% if cls.notes %}
-
 /**
 {{ cls.notes | wordwrap(78) | indent(4, true)}}
 */{% endif %}
-{% endmacro %}
+{% endmacro -%}
 {% macro gen_annotations(props) %}
 {% for key, value in props.items() %}
 {% if value %}
@@ -15,7 +14,7 @@
 {% endfor %}
 {% endmacro %}
 {% macro gen_attribute(module, cls, attr) %}
-{{ gen_notes(attr)  }}
+{{ gen_notes(attr) }}
 {% if attr.is_optional %}@optional
 {% endif %}
 {% if attr.is_collection %}
@@ -24,12 +23,12 @@ sequence<{{"::".join(attr.namespace + [attr.type])}}> {{attr.name}};
 {{"::".join(attr.namespace + [attr.type])}} {{attr.name}};
 {%- endif %}
 {% endmacro %}
-{% macro get_struct(module, cls) -%}
+{% macro get_struct(module, cls) %}
 {% if cls.generalization %}
 struct {{ cls.name }}: {{ "::".join(cls.generalization) }} {
-{%- else %}
+{% else %}
 struct {{ cls.name }} {
-{%- endif %}
+{% endif %}
 {% for attr in cls.attributes %}
 {{ gen_attribute(module, cls, attr) | indent(4, True) }}
 {% endfor %}
