@@ -2,30 +2,30 @@
 {% macro gen_notes(cls) %}
 {% if cls.notes %}
 /**
-{{ cls.notes | wordwrap(78) | indent(4, true)}}
+{{ cls.notes  | trim | wordwrap(78) | indent(4, true) }}
 */{% endif %}
 {% endmacro -%}
 {# Macro for generating annotations, based on properties. #}
 {% macro gen_annotations(props) %}
 {% for key, value in props.items() %}
 {% if value %}
-@{{key}}({{value}})
+@{{key | trim}}({{value | trim}})
 {% else %}
-@{{key}}
+@{{key | trim}}
 {% endif %}
 {% endfor %}
-{% endmacro %}
+{% endmacro -%}
 {# Macro for generating attributes. #}
 {% macro gen_attribute(module, cls, attr) %}
 {{ gen_notes(attr) }}
 {% if attr.is_optional %}@optional
-{% endif %}
+{% endif -%}
 {% if attr.is_collection %}
 sequence<{{"::".join(attr.namespace + [attr.type])}}> {{attr.name}};
 {% else %}
 {{"::".join(attr.namespace + [attr.type])}} {{attr.name}};
 {% endif %}
-{% endmacro %}
+{% endmacro -%}
 {# Macro for generating structure definition. #}
 {% macro gen_struct(module, cls) %}
 {% if cls.generalization %}
@@ -34,9 +34,15 @@ struct {{ cls.name }}: {{ "::".join(cls.generalization) }} {
 struct {{ cls.name }} {
 {% endif %}
 {% for attr in cls.attributes %}
-{{ gen_attribute(module, cls, attr) | indent(4, True) }}
+{{ gen_attribute(module, cls, attr) | trim | indent(4, True) }}
 {% endfor %}
 };
+{% endmacro -%}
+{# Generate union declaration. #}
+{% macro gen_typedef_declaration(cls) %}
+{{ gen_notes(cls) }}
+{{ gen_annotations(cls.properties) | trim }}
+typedef {{cls.parent_type}} {{cls.name}};
 {% endmacro %}
 {# Macro for generating class declaration. #}
 {% macro gen_class_declaration(module, cls) %}
@@ -53,13 +59,11 @@ enum {{ cls.name }} {
 {% elif "idlUnion" in cls.stereotypes %}
 union {{ cls.name }};
 {% elif "idlTypedef" in cls.stereotypes %}
-{{ gen_notes(cls) }}
-{{ gen_annotations(cls.properties) }}
-typedef {{cls.parent_type}} {{cls.name}};
+{{ gen_typedef_declaration(cls) }}
 {% elif "idlStruct" in cls.stereotypes %}
 struct {{ cls.name }};
 {% endif %}
-{% endmacro %}
+{% endmacro -%}
 {# Macro for generating class definition. #}
 {% macro gen_class_definition(module, cls) %}
 {% if "idlUnion" in cls.stereotypes %}
@@ -72,10 +76,10 @@ union {{ cls.name }} switch (int8)  {
 };
 {% elif "idlStruct" in cls.stereotypes %}
 {{ gen_notes(cls) }}
-{{ gen_annotations(cls.properties) -}}
-{{ gen_struct(module, cls) }}
+{{ gen_annotations(cls.properties) | trim }}
+{{ gen_struct(module, cls) | trim}}
 {% endif %}
-{% endmacro %}
+{% endmacro -%}
 {# Create module declaration, recursively. #}
 {% macro gen_module_declaration(module, loop) %}
 {{ gen_notes(module) }}
@@ -83,29 +87,29 @@ module {{ module.name }} {
 {% for submodule in module.packages %}
 {{ gen_module_declaration(submodule, loop)|trim|indent(4, true) }}
 {% endfor %}
-{% for cls in module.classes -%}
+{% for cls in module.classes %}
 {{ gen_class_declaration(module, cls)|trim|indent(4, true) }}
 {% endfor %}
 }; /* {{module.name}} */
-{% endmacro %}
+{% endmacro -%}
 {# Create module definition, recursively. #}
 {% macro gen_module_definition(module, loop) %}
 {% if module.info.create_definition == True %}
 {{ gen_notes(module) }}
 module {{ module.name }} {
 {% for submodule in module.packages %}
-{{ gen_module_definition(submodule, loop)|trim|indent(4, true) }}
+{{ gen_module_definition(submodule, loop) | trim | indent(4, true) }}
 {% endfor %}
 {% for cls in module.classes %}
-{{ gen_class_definition(module, cls)|trim|indent(4, true) }}
+{{ gen_class_definition(module, cls) | trim | indent(4, true) }}
 {% endfor %}
 }; /* {{module.name}} */
 {% endif %}
-{% endmacro %}
+{% endmacro -%}
 {# Generate definitions for our custom annotations. #}
 module ext {
 {% for property_type in package.property_types recursive %}
-{{ gen_notes(property_type) | indent(4, true) }}
+{{ gen_notes(property_type) | trim | indent(4, true, false) }}
     @annotation {{property_type.property}} {
 {% for type in property_type.property_types recursive %}
         {{type}}
@@ -113,20 +117,19 @@ module ext {
     };
 {% endfor %}
 }; /* ext */
-
 {# We start with top level module, and create definitions than declarations. #}
 module {{package.name}} {
     /* ---------------------------------------------------------------------- */
     /* Declarations                                                           */
     /* ---------------------------------------------------------------------- */
-{% for child in package.packages recursive %}
-{{ gen_module_declaration(child, loop) | indent(4, true) -}}
+{% for child in package.packages recursive -%}
+{{ gen_module_declaration(child, loop) | trim | indent(4, true) }}
 {% endfor %}
     /* ---------------------------------------------------------------------- */
     /* Definitions                                                            */
     /* ---------------------------------------------------------------------- */
 {% for child in package.packages recursive %}
-{{ gen_module_definition(child, loop) | indent(4, true) -}}
+{{ gen_module_definition(child, loop) | trim | indent(4, true) }}
 {% endfor %}
 }; /* {{package.name}} */
 
