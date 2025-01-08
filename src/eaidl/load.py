@@ -446,10 +446,13 @@ class ModelParser:
                 attribute.properties["value"] = ModelAnnotation(
                     value=t_attribute.attr_default, value_type=t_attribute.attr_type
                 )
-            if t_attribute.attr_type is None:
-                attribute.properties["value"] = ModelAnnotation(value=None, value_type="none")
-            else:
+            elif t_attribute.attr_type is not None and t_attribute.attr_default != "":
                 attribute.properties["value"] = ModelAnnotation(value=t_attribute.attr_default, value_type="object")
+            else:
+                pass
+                # We don't set anything here
+                # attribute.properties["value"] = ModelAnnotation(value=None, value_type="none")
+
         if attribute.is_optional is True:
             # This is optional when present
             attribute.properties["optional"] = self.create_annotation(None)
@@ -524,14 +527,18 @@ class ModelParser:
         return attribute
 
     def get_stereotypes(self, guid: str) -> List[str]:
+        stereotypes = []
         TXref = base.classes.t_xref
         t_xref = (
             self.session.query(TXref).filter(TXref.attr_client == guid).filter(TXref.attr_name == "Stereotypes").first()
         )
         if t_xref is not None:
-            return re.findall("@STEREO;Name=(.*?);", t_xref.attr_description)
-        else:
-            return []
+            stereotypes = re.findall("@STEREO;Name=(.*?);", t_xref.attr_description)
+        TObject = base.classes.t_object
+        t_object = self.session.query(TObject).filter(TObject.attr_ea_guid == guid).scalar()
+        if t_object.attr_stereotype and t_object.attr_stereotype not in stereotypes:
+            stereotypes.append(t_object.attr_stereotype)
+        return stereotypes
 
     def get_custom_properties(self, guid: str) -> List[ModelCustomProperty]:
         TXref = base.classes.t_xref
@@ -559,13 +566,15 @@ class ModelParser:
     def check_union_and_enum(self, model_union: ModelClass, model_enum: ModelClass) -> None:
         """Tries to fill stuff in union based on associated enumeration.
 
+        Also does some checks if those are correctly modelled.
+
         :param model_union: model for union
         :param model_enum: model for enumeration
         :raises ValueError: if something is not ok im model
         """
         assert "idlUnion" in model_union.stereotypes
         assert "idlEnum" in model_enum.stereotypes
-        assert len(model_enum.attributes) == len(model_union.attributes)
+        assert len(model_enum.attributes) >= len(model_union.attributes)
         model_union.union_enum = "::".join(model_enum.namespace + [model_enum.name])
         for union_attr in model_union.attributes:
             assert union_attr.name is not None
@@ -576,12 +585,9 @@ class ModelParser:
                     log.debug("Found union member %s %s", item.name, union_attr_name)
                     enum_attr = item
             if enum_attr is None:
-                error = "Not found union member {union_attr_name}"
+                error = f"Not found union member {union_attr_name}"
                 raise ValueError(error)
-
             union_attr.union_key = enum_attr.name
-            # union_attr.properties["value"] = copy.copy(item.properties["value"])
-            # union_attr.properties["value"].value_type = "object"
 
     def class_parse(self, parent_package: Optional[ModelPackage], t_object) -> ModelClass:
         model_class = ModelClass(
@@ -596,9 +602,7 @@ class ModelParser:
 
         model_class.stereotype = t_object.attr_stereotype
         model_class.stereotypes = self.get_stereotypes(t_object.attr_ea_guid)
-        if model_class.stereotype and model_class.stereotype not in model_class.stereotypes:
-            # We want all in in list
-            model_class.stereotypes.append(model_class.stereotype)
+
         model_class.is_abstract = to_bool(t_object.attr_abstract)
         if t_object.attr_genlinks is not None:
             # We set parent for typedefs.
@@ -694,6 +698,10 @@ class ModelParser:
         # We prefix enumerations (to make sure those are unique)
         if "DataElement" in model_class.stereotypes and "idlEnum" in model_class.stereotypes:
             for attribute in model_class.attributes:
+                if attribute.name is None:
+                    log.error("No name in enumeration %s attribute %s", model_class.name, attribute.name)
+                    continue
                 if not attribute.name.startswith(model_class.name):
                     log.error("No prefix in enumeration %s attribute %s", model_class.name, attribute.name)
+                    continue
         return model_class
