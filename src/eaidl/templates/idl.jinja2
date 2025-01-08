@@ -77,10 +77,14 @@ struct {{ cls.name }};
 {% macro gen_class_definition(module, cls) %}
 {% if "idlUnion" in cls.stereotypes %}
 {{ gen_notes(cls) }}
+{% if cls.union_enum %}
+union {{ cls.name }} switch ({{cls.union_enum}})  {
+{% else %}
 union {{ cls.name }} switch (int8)  {
+{% endif %}
 {% for item in cls.attributes %}
-{% if item.value %}
-    case {{item.value}}:
+{% if item.union_key %}
+    case {{item.union_key}}:
 {% else %}
     case {{loop.index}}:
 {% endif %}

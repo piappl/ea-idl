@@ -109,6 +109,8 @@ class ModelClass(LocalBaseModel):
     depends_on: List[int] = []
     parent_type: Optional[str] = None
     properties: Dict[str, ModelAnnotation] = {}
+    #: It this is union, there can be a enumeration specified here
+    union_enum: Optional[str] = None
 
 
 class ModelPackageInfo(LocalBaseModel):

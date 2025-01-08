@@ -47,6 +47,17 @@ def column_reflect(inspector, table, column_info):
     column_info["key"] = "attr_%s" % column_info["name"].lower()
 
 
+def find_class(tree: ModelPackage, object_id: int) -> Optional[ModelClass]:
+    for cls in tree.classes:
+        if cls.object_id == object_id:
+            return cls
+    for package in tree.packages:
+        ret = find_class(package, object_id)
+        if ret is not None:
+            return ret
+    return None
+
+
 class ModelParser:
     def __init__(self, config: Configuration) -> None:
         self.config = config
@@ -90,7 +101,28 @@ class ModelParser:
                 name = prop.idl_name
             property_type = ModelPropertyType(property=name, notes=prop.notes, property_types=prop.idl_types)
             whole.property_types.append(property_type)
+        self.get_union_connections(whole)
         return whole
+
+    def get_union_connections(self, tree: ModelPackage) -> Any:
+        TConnector = base.classes.t_connector
+        t_connectors = self.session.query(TConnector).filter(TConnector.attr_stereotype == "union").all()
+        for connector in t_connectors:
+            for object_id in [connector.attr_start_object_id, connector.attr_end_object_id]:
+                obj = self.get_object(object_id)
+                stereotypes = self.get_stereotypes(obj.attr_ea_guid)
+                if "idlUnion" in stereotypes:
+                    union_obj = obj
+                elif "idlEnum" in stereotypes:
+                    enum_obj = obj
+                else:
+                    log.error("Wrong union connection")
+            union_class = find_class(tree, union_obj.attr_object_id)
+            enum_class = find_class(tree, enum_obj.attr_object_id)
+            if union_class is None or enum_class is None:
+                log.error("Cannot connect union to enum")
+                continue
+            self.check_union_and_enum(union_class, enum_class)
 
     def get_object_connections(
         self, object_id: int, mode: Literal["source", "destination", "both"] = "both"
@@ -534,7 +566,7 @@ class ModelParser:
         assert "idlUnion" in model_union.stereotypes
         assert "idlEnum" in model_enum.stereotypes
         assert len(model_enum.attributes) == len(model_union.attributes)
-
+        model_union.union_enum = "::".join(model_enum.namespace + [model_enum.name])
         for union_attr in model_union.attributes:
             assert union_attr.name is not None
             union_attr_name = enum_name_from_union_attr(model_enum.name, union_attr.name)
@@ -546,10 +578,10 @@ class ModelParser:
             if enum_attr is None:
                 error = "Not found union member {union_attr_name}"
                 raise ValueError(error)
-            if "value" in item.properties:
-                union_attr.union_key = str(item.properties["value"].value)
-                # union_attr.properties["value"] = copy.copy(item.properties["value"])
-                # union_attr.properties["value"].value_type = "object"
+
+            union_attr.union_key = enum_attr.name
+            # union_attr.properties["value"] = copy.copy(item.properties["value"])
+            # union_attr.properties["value"].value_type = "object"
 
     def class_parse(self, parent_package: Optional[ModelPackage], t_object) -> ModelClass:
         model_class = ModelClass(
@@ -604,8 +636,8 @@ class ModelParser:
                     if model_class.object_id != connection.start_object_id:
                         enum_id = connection.start_object_id
                     model_class.depends_on.append(enum_id)
-
-                    self.check_union_and_enum(model_class, self.class_parse(None, self.get_object(enum_id)))
+                    # We want to do this later, when our tree is build
+                    # self.check_union_and_enum(model_class, self.class_parse(None, self.get_object(enum_id)))
 
         TObjectProperties = base.classes.t_objectproperties
         t_properties = (

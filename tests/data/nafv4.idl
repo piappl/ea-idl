@@ -50,10 +50,10 @@ module core {
     module data {
 
 
-        union Measurement switch (int8)  {
-            case 1:
+        union Measurement switch (core::data::MeasurementTypeEnum)  {
+            case MeasurementTypeEnum_TEMPERATURE_MEASUREMENT:
                 core::data::types::TemperatureMeasurement a_temperature_measurement;
-            case 2:
+            case MeasurementTypeEnum_STRING:
                 string a_string;
         };
     }; /* data */
