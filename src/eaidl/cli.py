@@ -4,15 +4,17 @@ from eaidl.load import ModelParser
 from eaidl.utils import load_config, LogFormatter
 from eaidl.generate import generate
 
-console = logging.StreamHandler()
-console.setFormatter(LogFormatter())
-console.setLevel(logging.DEBUG)
-logging.getLogger("").addHandler(console)
+log = logging.getLogger(__name__)
 
 
 @click.command()
 @click.option("--config", default="config.yaml", help="Configuration file.")
-def run(config):
+@click.option("--debug", default=False, is_flag=True, help="Enable debug.")
+def run(config, debug):
+    log_handler = logging.StreamHandler()
+    log_handler.setFormatter(LogFormatter())
+    logging.basicConfig(level=logging.DEBUG if debug else logging.WARNING, handlers=[log_handler])
+    log.debug("Debug mode")
     config = load_config(config)
     parser = ModelParser(config)
     model = parser.load()
