@@ -55,7 +55,7 @@ typedef {{cls.parent_type}} {{cls.name}};
 {% endmacro %}
 {# Macro for generating class declaration. #}
 {% macro gen_class_declaration(module, cls) %}
-{% if "idlEnum" in cls.stereotypes %}
+{% if cls.is_enum %}
 enum {{ cls.name }} {
 {% for item in cls.attributes %}
 {% if loop.revindex0 == 0 %}
@@ -65,17 +65,17 @@ enum {{ cls.name }} {
 {% endif %}
 {% endfor %}
 };
-{% elif "idlUnion" in cls.stereotypes %}
+{% elif cls.is_union %}
 union {{ cls.name }};
-{% elif "idlTypedef" in cls.stereotypes %}
+{% elif cls.is_typedef %}
 {{ gen_typedef_declaration(cls) }}
-{% elif "idlStruct" in cls.stereotypes %}
+{% elif cls.is_struct %}
 struct {{ cls.name }};
 {% endif %}
 {% endmacro -%}
 {# Macro for generating class definition. #}
 {% macro gen_class_definition(module, cls) %}
-{% if "idlUnion" in cls.stereotypes %}
+{% if cls.is_union %}
 {{ gen_notes(cls) }}
 {% if cls.union_enum %}
 union {{ cls.name }} switch ({{cls.union_enum}})  {
@@ -91,7 +91,7 @@ union {{ cls.name }} switch (int8)  {
         {{ "::".join(item.namespace + [item.type])}} {{item.name}};
 {% endfor %}
 };
-{% elif "idlStruct" in cls.stereotypes %}
+{% elif cls.is_struct %}
 {{ gen_notes(cls) }}
 {{ gen_annotations(cls.properties) | trim }}
 {{ gen_struct(module, cls) | trim}}

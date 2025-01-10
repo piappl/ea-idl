@@ -1,4 +1,11 @@
-from eaidl.utils import is_lower_snake_case, is_camel_case, to_bool, get_prop, enum_name_from_union_attr, try_cast
+from eaidl.utils import (
+    is_lower_snake_case,
+    is_camel_case,
+    to_bool,
+    get_prop,
+    enum_name_from_union_attr,
+    try_cast,
+)
 from eaidl.config import Configuration
 from sqlalchemy.ext.automap import automap_base
 from typing import Optional
@@ -108,12 +115,15 @@ class ModelParser:
         TConnector = base.classes.t_connector
         t_connectors = self.session.query(TConnector).filter(TConnector.attr_stereotype == "union").all()
         for connector in t_connectors:
-            for object_id in [connector.attr_start_object_id, connector.attr_end_object_id]:
+            for object_id in [
+                connector.attr_start_object_id,
+                connector.attr_end_object_id,
+            ]:
                 obj = self.get_object(object_id)
                 stereotypes = self.get_stereotypes(obj.attr_ea_guid)
-                if "idlUnion" in stereotypes:
+                if self.config.stereotypes.idl_union in stereotypes:
                     union_obj = obj
-                elif "idlEnum" in stereotypes:
+                elif self.config.stereotypes.idl_enum in stereotypes:
                     enum_obj = obj
                 else:
                     log.error("Wrong union connection")
@@ -195,7 +205,11 @@ class ModelParser:
         return ret
 
     def package_parse(
-        self, t_package: Any, parent_package: Optional[ModelPackage] = None, parse_children=True, root=False
+        self,
+        t_package: Any,
+        parent_package: Optional[ModelPackage] = None,
+        parse_children=True,
+        root=False,
     ) -> ModelPackage:
         TObject = base.classes.t_object
         t_package_object = self.session.query(TObject).filter(TObject.attr_ea_guid == t_package.attr_ea_guid).scalar()
@@ -210,7 +224,10 @@ class ModelParser:
         if root and self.config.root_package_name is not None:
             package.name = self.config.root_package_name
         if not is_lower_snake_case(package.name):
-            log.warning("Package name has wrong case, expected lower snake case: %s", package.name)
+            log.warning(
+                "Package name has wrong case, expected lower snake case: %s",
+                package.name,
+            )
         if parent_package is None:
             package.namespace = [package.name]
         else:
@@ -238,7 +255,11 @@ class ModelParser:
                     log.error("Package not found %s", child_t_object.attr_ea_guid)
                     continue
                 if child_t_object.attr_ea_guid in self.config.ignore_packages:
-                    log.error("Ignoring %s %s", child_t_object.attr_ea_guid, t_package.attr_name)
+                    log.error(
+                        "Ignoring %s %s",
+                        child_t_object.attr_ea_guid,
+                        t_package.attr_name,
+                    )
                     continue
                 pkg = self.package_parse(t_package, parent_package)
                 packages.append(pkg)
@@ -324,7 +345,9 @@ class ModelParser:
                             edges.append((current_package.name, package.name))
                         elif (package.name, current_package.name) in edges:
                             log.error(
-                                "Got circular dependency in packages %s and %s", package.name, current_package.name
+                                "Got circular dependency in packages %s and %s",
+                                package.name,
+                                current_package.name,
                             )
                             return
 
@@ -339,13 +362,13 @@ class ModelParser:
 
         # Do some statictics that templates can use later
         for cls in parent_package.classes:
-            if "idlStruct" in cls.stereotypes:
+            if self.config.stereotypes.idl_struct in cls.stereotypes:
                 parent_package.info.structs += 1
-            if "idlTypedef" in cls.stereotypes:
+            if self.config.stereotypes.idl_typedef in cls.stereotypes:
                 parent_package.info.typedefs += 1
-            if "idlUnion" in cls.stereotypes:
+            if self.config.stereotypes.idl_union in cls.stereotypes:
                 parent_package.info.unions += 1
-            if "idlEnum" in cls.stereotypes:
+            if self.config.stereotypes.idl_enum in cls.stereotypes:
                 parent_package.info.enums += 1
         parent_package.info.packages = len(parent_package.packages)
         # We have to know when to create packages, otherwise IDL parser
@@ -418,7 +441,10 @@ class ModelParser:
         return ModelAnnotation(value=value, value_type=value_type)
 
     def attribute_parse(
-        self, parent_package: Optional[ModelPackage], parent_class: ModelClass, t_attribute
+        self,
+        parent_package: Optional[ModelPackage],
+        parent_class: ModelClass,
+        t_attribute,
     ) -> ModelAttribute:
         attribute = ModelAttribute(
             name=t_attribute.attr_name,
@@ -480,7 +506,7 @@ class ModelParser:
         # There is some validation
         if (
             attribute.connector is None
-            and "idlEnum" not in parent_class.stereotypes
+            and self.config.stereotypes.idl_enum not in parent_class.stereotypes
             and attribute.type not in self.config.primitive_types
         ):
             # In normal condition we weed connector for all attributes, leading
@@ -521,7 +547,7 @@ class ModelParser:
         if (
             attribute.name is None
             or not is_lower_snake_case(attribute.name)
-            and "idlEnum" not in parent_class.stereotypes
+            and self.config.stereotypes.idl_enum not in parent_class.stereotypes
         ):
             log.warning("Attribute name has wrong case, expected snake case %s", attribute.name)
         return attribute
@@ -556,7 +582,9 @@ class ModelParser:
                 # @NAME=isFinalSpecialization@ENDNAME;@TYPE=Boolean@ENDTYPE;@VALU=-1@ENDVALU;
                 props.append(
                     ModelCustomProperty(
-                        name=get_prop(prop, "NAME"), value=get_prop(prop, "VALU"), type=get_prop(prop, "TYPE")
+                        name=get_prop(prop, "NAME"),
+                        value=get_prop(prop, "VALU"),
+                        type=get_prop(prop, "TYPE"),
                     )
                 )
             return props
@@ -572,8 +600,8 @@ class ModelParser:
         :param model_enum: model for enumeration
         :raises ValueError: if something is not ok im model
         """
-        assert "idlUnion" in model_union.stereotypes
-        assert "idlEnum" in model_enum.stereotypes
+        assert self.config.stereotypes.idl_union in model_union.stereotypes
+        assert self.config.stereotypes.idl_enum in model_enum.stereotypes
         assert len(model_enum.attributes) >= len(model_union.attributes)
         model_union.union_enum = "::".join(model_enum.namespace + [model_enum.name])
         for union_attr in model_union.attributes:
@@ -629,7 +657,7 @@ class ModelParser:
         for t_attribute in t_attributes:
             model_class.attributes.append(self.attribute_parse(parent_package, model_class, t_attribute))
 
-        if "idlUnion" in model_class.stereotypes:
+        if self.config.stereotypes.idl_enum in model_class.stereotypes:
             # Check if we have enumeration for that union
             connections = self.get_object_connections(model_class.object_id)
             for connection in connections:
@@ -682,26 +710,47 @@ class ModelParser:
                 if prop.name not in []:
                     # Those are set by EA on bunch of things, so lets skip the warning
                     log.warning("Custom property %s is not configured", prop.name)
-        # Validation
+
         # Check if we have one of proper stereotypes on all P7
-        if "DataElement" in model_class.stereotypes:
-            types = ["idlUnion", "idlStruct", "idlEnum", "idlTypedef"]
-            found = False
-            for t in types:
-                if t in model_class.stereotypes:
-                    found = True
-                    break
-            if not found:
+        if self.config.stereotypes.main_class in model_class.stereotypes:
+            count = 0
+            if self.config.stereotypes.idl_union in model_class.stereotypes:
+                model_class.is_union = True
+                count += 1
+            if self.config.stereotypes.idl_struct in model_class.stereotypes:
+                model_class.is_struct = True
+                count += 1
+            if self.config.stereotypes.idl_enum in model_class.stereotypes:
+                model_class.is_enum = True
+                count += 1
+            if self.config.stereotypes.idl_typedef in model_class.stereotypes:
+                model_class.is_typedef = True
+                count += 1
+            if count != 1:
                 log.error(
-                    "Model class %s doesn't have proper stereotypes %s", model_class.name, model_class.stereotypes
+                    "Model class %s doesn't have proper stereotypes %s",
+                    model_class.name,
+                    model_class.stereotypes,
                 )
+
         # We prefix enumerations (to make sure those are unique)
-        if "DataElement" in model_class.stereotypes and "idlEnum" in model_class.stereotypes:
+        if (
+            self.config.stereotypes.main_class in model_class.stereotypes
+            and self.config.stereotypes.idl_enum in model_class.stereotypes
+        ):
             for attribute in model_class.attributes:
                 if attribute.name is None:
-                    log.error("No name in enumeration %s attribute %s", model_class.name, attribute.name)
+                    log.error(
+                        "No name in enumeration %s attribute %s",
+                        model_class.name,
+                        attribute.name,
+                    )
                     continue
                 if not attribute.name.startswith(model_class.name):
-                    log.error("No prefix in enumeration %s attribute %s", model_class.name, attribute.name)
+                    log.error(
+                        "No prefix in enumeration %s attribute %s",
+                        model_class.name,
+                        attribute.name,
+                    )
                     continue
         return model_class

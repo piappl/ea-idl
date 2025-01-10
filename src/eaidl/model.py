@@ -111,6 +111,10 @@ class ModelClass(LocalBaseModel):
     properties: Dict[str, ModelAnnotation] = {}
     #: It this is union, there can be a enumeration specified here
     union_enum: Optional[str] = None
+    is_union: bool = False
+    is_enum: bool = False
+    is_typedef: bool = False
+    is_struct: bool = False
 
 
 class ModelPackageInfo(LocalBaseModel):

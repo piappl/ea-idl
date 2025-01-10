@@ -55,8 +55,8 @@ def test_load():
     # Core is default
     assert model.name == "core"
     assert model.packages[0].name == "data"
-    assert model.packages[0].classes[0].name == "MeasurementTypeEnum"
-    assert model.packages[0].classes[1].name == "Measurement"
+    assert model.packages[0].classes[0].name == "Measurement"
+    assert model.packages[0].classes[1].name == "MeasurementTypeEnum"
     # This is union and its enumeration, both need to exist and have certain
     # pattern of names.
     inspect(model.packages[0].classes[0].attributes)

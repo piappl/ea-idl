@@ -32,7 +32,22 @@ class AnnotationType(BaseModel):
     notes: str = ""
 
 
+class ConfigurationStereotypes(BaseModel):
+    """Configuration for stereotypes.
+
+    We assume that all "class" like types have a common stereotype.
+    Second stereotype should be IDL related.
+    """
+
+    main_class: str = "DataElement"
+    idl_struct: str = "idlStruct"
+    idl_union: str = "idlUnion"
+    idl_enum: str = "idlEnum"
+    idl_typedef: str = "idlTypedef"
+
+
 class Configuration(BaseModel):
+    stereotypes: ConfigurationStereotypes = ConfigurationStereotypes()
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
     #: Database connection string, see https://docs.sqlalchemy.org/en/20/core/connections.html
     database_url: str = "sqlite+pysqlite:///tests/data/nafv4.qea"
