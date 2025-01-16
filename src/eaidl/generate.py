@@ -8,5 +8,5 @@ def generate(config: Configuration, model: ModelPackage) -> str:
     env = Environment(
         loader=PackageLoader("eaidl"), autoescape=select_autoescape(), trim_blocks=True, lstrip_blocks=True
     )
-    template = env.get_template("idl.jinja2")
+    template = env.get_template(config.template)
     return template.render(package=model)

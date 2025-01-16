@@ -1,0 +1,76 @@
+module ext {
+
+    @annotation exclusiveMaximum {
+        any value;
+    };
+
+    @annotation exclusiveMinimum {
+        any value;
+    };
+    /**
+        Regular expression to match.
+    */
+    @annotation pattern {
+        string value;
+    };
+}; /* ext */
+    module data {
+        module types {
+            @min(-40)
+            @ext::exclusiveMaximum(100)
+            typedef float TemperatureMeasurement;
+        }; /* types */
+        enum MeasurementTypeEnum {
+            @value(1) MeasurementTypeEnum_TEMPERATURE_MEASUREMENT,
+            @value(0) MeasurementTypeEnum_STRING
+        };
+        union Measurement switch (core::data::MeasurementTypeEnum)  {
+            case MeasurementTypeEnum_TEMPERATURE_MEASUREMENT:
+                core::data::types::TemperatureMeasurement a_temperature_measurement;
+            case MeasurementTypeEnum_STRING:
+                string a_string;
+        };
+    }; /* data */
+    module message {
+        /**
+            ISO timestamp
+        */
+
+        typedef string Time;
+        enum MessageTypeEnum {
+            @value(0) MessageTypeEnum_MEASUREMENT,
+            @value(1) MessageTypeEnum_EMPTY
+        };
+        /**
+            Message header
+        */
+
+        struct MessageHeader {
+            @optional
+            core::message::Time timestamp;
+            @value(MessageTypeEnum_MEASUREMENT)
+            core::message::MessageTypeEnum message_type;
+        };
+        struct Message {
+            core::message::MessageHeader header;
+        };
+        struct DataMessage: core::message::Message {
+            sequence<core::data::Measurement> body;
+            /**
+                This is a sequence
+            */
+
+            sequence<long> test_comment_seq;
+            /**
+                This is optional
+            */
+            @optional
+            boolean test_comment_optional;
+            /**
+                This is comment
+            */
+
+            double test_comment;
+        };
+    }; /* message */
+}; /* core */

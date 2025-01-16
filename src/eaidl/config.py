@@ -53,6 +53,8 @@ class Configuration(BaseModel):
     database_url: str = "sqlite+pysqlite:///tests/data/nafv4.qea"
     #: Globally unique identifier (GUID) or name of root package that we want to generate for.
     root_package: str = "core"
+    #: Name of template
+    template: str = "idl.jinja2"
     #: Name of root package - it will override whatever is in model
     root_package_name: Optional[str] = None
     #: List of packages to ignore
