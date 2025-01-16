@@ -657,7 +657,7 @@ class ModelParser:
         for t_attribute in t_attributes:
             model_class.attributes.append(self.attribute_parse(parent_package, model_class, t_attribute))
 
-        if self.config.stereotypes.idl_enum in model_class.stereotypes:
+        if self.config.stereotypes.idl_union in model_class.stereotypes:
             # Check if we have enumeration for that union
             connections = self.get_object_connections(model_class.object_id)
             for connection in connections:
