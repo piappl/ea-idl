@@ -124,6 +124,8 @@ module ext {
     };
 {% endfor %}
 }; /* ext */
+{# We start with top level module, and create definitions. #}
+module {{package.name}} {
 {% for child in package.packages recursive %}
 {{ gen_module_definition(child, loop) | trim | indent(4, true) }}
 {% endfor %}
