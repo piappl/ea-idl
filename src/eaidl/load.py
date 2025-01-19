@@ -460,7 +460,13 @@ class ModelParser:
         if t_attribute.attr_default is not None:
             # @default Annotation
             #           This annotation allows specifying a default value for the annotated element.
-            if t_attribute.attr_type in ["str", "int", "float"]:
+            #
+            if t_attribute.attr_type in ["str"]:
+                # We allow for empty strings
+                attribute.properties["default"] = ModelAnnotation(
+                    value=t_attribute.attr_default, value_type=t_attribute.attr_type
+                )
+            if t_attribute.attr_type in ["int", "float"] and t_attribute.attr_default != "":
                 attribute.properties["default"] = ModelAnnotation(
                     value=t_attribute.attr_default, value_type=t_attribute.attr_type
                 )
