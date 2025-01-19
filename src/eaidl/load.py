@@ -305,26 +305,6 @@ class ModelParser:
                 parent_package.classes.append(c2)
         log.debug("Sorting classes %s done", parent_package.name)
 
-        # FIXME, packages need sorting to.
-        # parent_package.packages = [item for item in packages]
-        # print([package.name for package in packages])
-
-        # We want to know on what classes _outside_ of this package this package
-        # depends on.
-        depends_on = []
-        for p2 in parent_package.packages:
-            for c3 in p2.classes:
-                depends_on += c3.depends_on
-        # print(parent_package.namespace, parent_package.name, depends_on)
-        for c2 in parent_package.classes:
-            depends_on += c2.depends_on
-        # print(parent_package.namespace, parent_package.name, depends_on)
-        # Now we know what we depend on including internal ones
-        for item in depends_on:
-            if item not in self.get_all_class_id(parent_package) and item not in parent_package.depends_on:
-                parent_package.depends_on.append(item)
-
-        # print(parent_package.namespace, parent_package.name, parent_package.depends_on)
         log.debug("Sorting package %s", parent_package.name)
         edges = []
         while len(packages) > 0:
@@ -333,7 +313,7 @@ class ModelParser:
             current_package: ModelPackage = packages.popleft()
             ready = True
             for package in packages:
-                for dependant in current_package.depends_on:
+                for dependant in self.get_all_depends_on(current_package):
                     if dependant in self.get_all_class_id(package):
                         # We are not ready for that one, put it back on another end
                         packages.append(current_package)
@@ -393,6 +373,16 @@ class ModelParser:
         for cls in parent_package.classes:
             ret.append(cls.object_id)
         return ret
+
+    def get_all_depends_on(self, parent_package: ModelPackage) -> List[int]:
+        ret = []
+        for package in parent_package.packages:
+            ret += package.depends_on
+            ret += self.get_all_depends_on(package)
+        for cls in parent_package.classes:
+            ret += cls.depends_on
+
+        return list(set(ret))
 
     def get_namespace(self, bottom_package_id: int) -> List[str]:
         """Get namespace given package identifier.
@@ -648,10 +638,6 @@ class ModelParser:
                 namespace.append(destination.attr_name)
                 model_class.depends_on.append(connection.end_object_id)
                 model_class.generalization = namespace
-        connections = self.get_object_connections(model_class.object_id, mode="destination")
-        for connection in connections:
-            if connection.connector_type == "Generalization":
-                model_class.depends_on.append(connection.end_object_id)
 
         # Add attributes
         TAttribute = base.classes.t_attribute
