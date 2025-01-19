@@ -29,8 +29,8 @@ sequence<{{"::".join(attr.namespace + [attr.type])}}> {{attr.name}};
 {% endmacro -%}
 {# Generate enum entry #}
 {% macro gen_enum_entry(item, index) %}
-{% if "value" in item.properties and  item.properties["value"].value %}
-@value({{item.properties["value"].value | trim }}) {{item.name}}
+{% if "default" in item.properties and  item.properties["default"].value %}
+@value({{item.properties["default"].value | trim }}) {{item.name}}
 {% else %}
 @value({{index}}) {{item.name}}
 {% endif %}

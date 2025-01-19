@@ -67,7 +67,7 @@ module core {
         struct MessageHeader {
             @optional
             core::message::Time timestamp;
-            @value(MessageTypeEnum_MEASUREMENT)
+            @default(MessageTypeEnum_MEASUREMENT)
             core::message::MessageTypeEnum message_type;
         };
         struct Message {

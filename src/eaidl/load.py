@@ -468,12 +468,14 @@ class ModelParser:
         attribute.is_static = to_bool(t_attribute.attr_isstatic)
         attribute.notes = t_attribute.attr_notes
         if t_attribute.attr_default is not None:
+            # @default Annotation
+            #           This annotation allows specifying a default value for the annotated element.
             if t_attribute.attr_type in ["str", "int", "float"]:
-                attribute.properties["value"] = ModelAnnotation(
+                attribute.properties["default"] = ModelAnnotation(
                     value=t_attribute.attr_default, value_type=t_attribute.attr_type
                 )
             elif t_attribute.attr_type is not None and t_attribute.attr_default != "":
-                attribute.properties["value"] = ModelAnnotation(value=t_attribute.attr_default, value_type="object")
+                attribute.properties["default"] = ModelAnnotation(value=t_attribute.attr_default, value_type="object")
             else:
                 pass
                 # We don't set anything here
