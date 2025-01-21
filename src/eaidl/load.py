@@ -1,6 +1,4 @@
 from eaidl.utils import (
-    is_lower_snake_case,
-    is_camel_case,
     to_bool,
     get_prop,
     enum_name_from_union_attr,
@@ -28,9 +26,9 @@ from eaidl.model import (
     ModelPropertyType,
     ModelCustomProperty,
 )
+from eaidl import validation
 
 log = logging.getLogger(__name__)
-
 
 #: We use automap and reflection for tables now. We could switch to declarative,
 #: but most of the fields are useless anyway, and because we don't have good
@@ -223,21 +221,17 @@ class ModelParser:
         # Override root name?
         if root and self.config.root_package_name is not None:
             package.name = self.config.root_package_name
-        if not is_lower_snake_case(package.name):
-            log.warning(
-                "Package name has wrong case, expected lower snake case: %s",
-                package.name,
-            )
         if parent_package is None:
             package.namespace = [package.name]
         else:
             package.namespace = copy.copy(parent_package.namespace)
             package.namespace.append(package.name)
         package.notes = t_package_object.attr_note
-
+        package.stereotypes = self.get_stereotypes(package.guid)
         if parse_children:
             self.package_parse_children(package)
-
+        # There is some validation
+        validation.base.run("package", self.config, package=package)
         return package
 
     def package_parse_children(self, parent_package: ModelPackage):
@@ -357,11 +351,6 @@ class ModelParser:
             parent_package.info.create_definition = True
         parent_package.info.create_declaration = True
 
-        # if parent_package.info.create_definition is False:
-        #     print(parent_package.namespace)
-        #     print(parent_package.name)
-        #     inspect(parent_package.info)
-
     def get_object(self, object_id: int) -> Any:
         TObject = base.classes.t_object
         return self.session.query(TObject).filter(TObject.attr_object_id == object_id).scalar()
@@ -439,6 +428,7 @@ class ModelParser:
         attribute = ModelAttribute(
             name=t_attribute.attr_name,
             type=t_attribute.attr_type,
+            guid=t_attribute.attr_ea_guid,
             attribute_id=t_attribute.attr_object_id,
             parent=parent_class,
         )
@@ -452,7 +442,7 @@ class ModelParser:
 
         attribute.lower_bound = t_attribute.attr_lowerbound
         attribute.upper_bound = t_attribute.attr_upperbound
-
+        attribute.stereotypes = self.get_stereotypes(attribute.guid)
         attribute.is_collection = to_bool(t_attribute.attr_iscollection)
         attribute.is_ordered = to_bool(t_attribute.attr_isordered)
         attribute.is_static = to_bool(t_attribute.attr_isstatic)
@@ -502,52 +492,7 @@ class ModelParser:
                 break
 
         # There is some validation
-        if (
-            attribute.connector is None
-            and self.config.stereotypes.idl_enum not in parent_class.stereotypes
-            and attribute.type not in self.config.primitive_types
-        ):
-            # In normal condition we weed connector for all attributes, leading
-            # to a type of this attribute. Exceptions are for enumeration and
-            # attributes that are of primitive types.
-            log.error(
-                "No connector found for attribute %s %s %s",
-                parent_class.name,
-                attribute.type,
-                attribute.name,
-            )
-        if parent_class.object_id != attribute.attribute_id:
-            log.warning(
-                "Validation issue: attribute parent is different %d %d in %s %s",
-                parent_class.object_id,
-                attribute.attribute_id,
-                parent_class.name,
-                attribute.name,
-            )
-        if attribute.is_collection and attribute.upper_bound in [None, "1", "0"]:
-            log.warning(
-                "Validation issue: attribute is collection, but upper bound is %s in %s.%s",
-                attribute.upper_bound,
-                parent_class.name,
-                attribute.name,
-            )
-        if not attribute.is_collection and attribute.upper_bound not in [
-            None,
-            "1",
-            "0",
-        ]:
-            log.warning(
-                "Validation issue: attribute is not collection, but upper bound is in %s %s.%s",
-                attribute.upper_bound,
-                parent_class.name,
-                attribute.name,
-            )
-        if (
-            attribute.name is None
-            or not is_lower_snake_case(attribute.name)
-            and self.config.stereotypes.idl_enum not in parent_class.stereotypes
-        ):
-            log.warning("Attribute name has wrong case, expected snake case %s", attribute.name)
+        validation.base.run("attribute", self.config, attribute=attribute, cls=parent_class)
         return attribute
 
     def get_stereotypes(self, guid: str) -> List[str]:
@@ -560,7 +505,9 @@ class ModelParser:
             stereotypes = re.findall("@STEREO;Name=(.*?);", t_xref.attr_description)
         TObject = base.classes.t_object
         t_object = self.session.query(TObject).filter(TObject.attr_ea_guid == guid).scalar()
-        if t_object.attr_stereotype and t_object.attr_stereotype not in stereotypes:
+        if t_object is not None and t_object.attr_stereotype and t_object.attr_stereotype not in stereotypes:
+            # We might be looking for stereotypes of something that is not an object,
+            # so we can get t_object == None here.
             stereotypes.append(t_object.attr_stereotype)
         return stereotypes
 
@@ -621,12 +568,9 @@ class ModelParser:
             object_id=t_object.attr_object_id,
             parent=parent_package,
         )
-        if not is_camel_case(model_class.name):
-            log.warning("Class name has wrong case, expected camel case %s", model_class.name)
         if parent_package is not None:
             model_class.namespace = parent_package.namespace
 
-        model_class.stereotype = t_object.attr_stereotype
         model_class.stereotypes = self.get_stereotypes(t_object.attr_ea_guid)
 
         model_class.is_abstract = to_bool(t_object.attr_abstract)
@@ -707,44 +651,15 @@ class ModelParser:
 
         # Check if we have one of proper stereotypes on all P7
         if self.config.stereotypes.main_class in model_class.stereotypes:
-            count = 0
             if self.config.stereotypes.idl_union in model_class.stereotypes:
                 model_class.is_union = True
-                count += 1
             if self.config.stereotypes.idl_struct in model_class.stereotypes:
                 model_class.is_struct = True
-                count += 1
             if self.config.stereotypes.idl_enum in model_class.stereotypes:
                 model_class.is_enum = True
-                count += 1
             if self.config.stereotypes.idl_typedef in model_class.stereotypes:
                 model_class.is_typedef = True
-                count += 1
-            if count != 1:
-                log.error(
-                    "Model class %s doesn't have proper stereotypes %s",
-                    model_class.name,
-                    model_class.stereotypes,
-                )
 
-        # We prefix enumerations (to make sure those are unique)
-        if (
-            self.config.stereotypes.main_class in model_class.stereotypes
-            and self.config.stereotypes.idl_enum in model_class.stereotypes
-        ):
-            for attribute in model_class.attributes:
-                if attribute.name is None:
-                    log.error(
-                        "No name in enumeration %s attribute %s",
-                        model_class.name,
-                        attribute.name,
-                    )
-                    continue
-                if not attribute.name.startswith(model_class.name):
-                    log.error(
-                        "No prefix in enumeration %s attribute %s",
-                        model_class.name,
-                        attribute.name,
-                    )
-                    continue
+        # There is some validation
+        validation.base.run("struct", self.config, cls=model_class)
         return model_class

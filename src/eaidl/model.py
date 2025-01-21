@@ -102,7 +102,6 @@ class ModelClass(LocalBaseModel):
     object_id: int
     is_abstract: Optional[bool] = None
     alias: Optional[str] = None
-    stereotype: Optional[str] = None
     attributes: List["ModelAttribute"] = []
     stereotypes: List[str] = []
     generalization: Optional[List[str]] = None
@@ -134,6 +133,7 @@ class ModelPackage(LocalBaseModel):
     name: str
     guid: str
     packages: List["ModelPackage"] = []
+    stereotypes: List[str] = []
     classes: List[ModelClass] = []
     depends_on: List[int] = []
     info: ModelPackageInfo = ModelPackageInfo()
@@ -141,12 +141,14 @@ class ModelPackage(LocalBaseModel):
 
 
 class ModelAttribute(LocalBaseModel):
-    name: Optional[str] = None
+    name: str
     type: Optional[str] = None
     attribute_id: int
+    guid: str
     parent: Optional["ModelClass"] = None
     scope: Optional[ModelScope] = None
     position: Optional[int] = None
+    stereotypes: List[str] = []
     is_optional: Optional[bool] = None
     is_collection: Optional[bool] = None
     is_ordered: Optional[bool] = None

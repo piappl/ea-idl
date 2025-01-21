@@ -1,4 +1,5 @@
 import click
+import json
 import logging
 from eaidl.load import ModelParser
 from eaidl.utils import load_config, LogFormatter
@@ -14,8 +15,9 @@ def run(config, debug):
     log_handler = logging.StreamHandler()
     log_handler.setFormatter(LogFormatter())
     logging.basicConfig(level=logging.DEBUG if debug else logging.WARNING, handlers=[log_handler])
-    log.debug("Debug mode")
     config = load_config(config)
+    if debug:
+        log.debug(json.dumps(config.model_dump(), indent=4))
     parser = ModelParser(config)
     model = parser.load()
     print(generate(config, model))

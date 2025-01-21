@@ -40,6 +40,7 @@ class ConfigurationStereotypes(BaseModel):
     """
 
     main_class: str = "DataElement"
+    package: str = "DataModel"
     idl_struct: str = "idlStruct"
     idl_union: str = "idlUnion"
     idl_enum: str = "idlEnum"
@@ -88,6 +89,33 @@ class Configuration(BaseModel):
         "unit": AnnotationType(
             idl_default=True,
         ),
-        "pattern": AnnotationType(idl_default=False, idl_types=["string value;"], notes="Regular expression to match."),
+        "pattern": AnnotationType(
+            idl_default=False,
+            idl_types=["string value;"],
+            notes="Regular expression to match.",
+        ),
         "isFinalSpecialization": AnnotationType(idl_default=True, idl_name="final"),
     }
+    #: List of validation runs fail generation
+    validators_fail: List[str] = [
+        "attribute.name_for_reserved_worlds",
+        "struct.name_for_reserved_worlds",
+        "struct.stereotypes",
+        "struct.enum_prefix",
+    ]
+    #: List of validation runs that produce error
+    validators_error: List[str] = [
+        "attribute.connector_leads_to_type",
+        "attribute.parent_class_id_match",
+        "attribute.collection_configured",
+    ]
+    #: List of validation runs that produce warning
+    validators_warn: List[str] = [
+        "attribute.name_snake_convention",
+        "attribute.notes",
+        "struct.name_camel_convention",
+        "struct.notes",
+        "package.stereotypes",
+        "package.name_snake_convention",
+        "package.notes",
+    ]
