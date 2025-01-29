@@ -44,6 +44,7 @@ class ConfigurationStereotypes(BaseModel):
     idl_struct: str = "idlStruct"
     idl_union: str = "idlUnion"
     idl_enum: str = "idlEnum"
+    idl_map: str = "idlMap"
     idl_typedef: str = "idlTypedef"
 
 

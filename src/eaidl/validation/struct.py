@@ -5,7 +5,7 @@ from .base import validator, RESERVED_NAMES
 
 
 def context(cls: ModelClass) -> str:
-    return f"(in {".".join(cls.namespace)}{cls.name})"
+    return f"(in {".".join(cls.namespace)}.{cls.name})"
 
 
 @validator
@@ -40,6 +40,10 @@ def stereotypes(config: Configuration, cls: ModelClass):
         if config.stereotypes.idl_typedef in cls.stereotypes:
             if cls.is_typedef is not True:
                 raise ValueError(f"Class doesn't have proper is_typedef flag {context(cls)}")
+            count += 1
+        if config.stereotypes.idl_map in cls.stereotypes:
+            if cls.is_map is not True:
+                raise ValueError(f"Class doesn't have proper is_map flag {context(cls)}")
             count += 1
         if count != 1:
             raise ValueError(f"Class doesn't have proper stereotypes {cls.stereotypes} {context(cls)}")

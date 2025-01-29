@@ -35,6 +35,9 @@ sequence<{{"::".join(attr.namespace + [attr.type])}}> {{attr.name}};
 @value({{index}}) {{item.name}}
 {% endif %}
 {% endmacro %}
+{% macro gen_map(module, cls) %}
+map<{{}}
+{% endmacro %}
 {# Macro for generating structure definition. #}
 {% macro gen_struct(module, cls) %}
 {% if cls.generalization %}
@@ -73,6 +76,10 @@ union {{ cls.name }} switch (int8)  {
 {{ gen_notes(cls) }}
 {{ gen_annotations(cls.properties) | trim }}
 {{ gen_struct(module, cls) | trim}}
+{% elif cls.is_map %}
+{{ gen_notes(cls) }}
+{{ gen_annotations(cls.properties) | trim }}
+{{ gen_map(module, cls) | trim}}
 {% elif cls.is_enum %}
 enum {{ cls.name }} {
 {% for item in cls.attributes %}

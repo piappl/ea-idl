@@ -124,7 +124,7 @@ class ModelParser:
                 elif self.config.stereotypes.idl_enum in stereotypes:
                     enum_obj = obj
                 else:
-                    log.error("Wrong union connection")
+                    log.error("Wrong union connection, expected enum and map or struct, got %s", stereotypes)
             union_class = find_class(tree, union_obj.attr_object_id)
             enum_class = find_class(tree, enum_obj.attr_object_id)
             if union_class is None or enum_class is None:
@@ -338,6 +338,8 @@ class ModelParser:
         for cls in parent_package.classes:
             if self.config.stereotypes.idl_struct in cls.stereotypes:
                 parent_package.info.structs += 1
+            if self.config.stereotypes.idl_map in cls.stereotypes:
+                parent_package.info.maps += 1
             if self.config.stereotypes.idl_typedef in cls.stereotypes:
                 parent_package.info.typedefs += 1
             if self.config.stereotypes.idl_union in cls.stereotypes:
@@ -655,6 +657,8 @@ class ModelParser:
                 model_class.is_union = True
             if self.config.stereotypes.idl_struct in model_class.stereotypes:
                 model_class.is_struct = True
+            if self.config.stereotypes.idl_map in model_class.stereotypes:
+                model_class.is_map = True
             if self.config.stereotypes.idl_enum in model_class.stereotypes:
                 model_class.is_enum = True
             if self.config.stereotypes.idl_typedef in model_class.stereotypes:

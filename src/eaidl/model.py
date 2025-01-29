@@ -114,12 +114,14 @@ class ModelClass(LocalBaseModel):
     is_enum: bool = False
     is_typedef: bool = False
     is_struct: bool = False
+    is_map: bool = False
 
 
 class ModelPackageInfo(LocalBaseModel):
     structs: int = 0
     typedefs: int = 0
     unions: int = 0
+    maps: int = 0
     enums: int = 0
     packages: int = 0
     create_definition: bool = False
