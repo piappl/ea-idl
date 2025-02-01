@@ -478,7 +478,6 @@ class ModelParser:
                 continue
             if connection.destination.role != attribute.name:
                 continue
-            # inspect(connection)
             # We can gent object from database, but we probably prefer to find it in our structure
             # right now it might not be there yet... but still we can find right connection
             # and have to look up actual class later.
@@ -486,7 +485,6 @@ class ModelParser:
             # We create dependency, so we can sort classes later
             if connection.end_object_id not in parent_class.depends_on:
                 parent_class.depends_on.append(connection.end_object_id)
-
             # We are really interested in namespace here. So we need to go up.
             attribute.namespace = self.get_namespace(destination.attr_package_id)
             if destination.attr_name == attribute.type:

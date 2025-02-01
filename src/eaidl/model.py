@@ -83,8 +83,8 @@ class ModelConnection(LocalBaseModel):
     start_object_id: int
     end_object_id: int
     stereotype: Optional[str] = None
-    source: ModelConnectionEnd
-    destination: ModelConnectionEnd
+    source: ModelConnectionEnd = ModelConnectionEnd()
+    destination: ModelConnectionEnd = ModelConnectionEnd()
 
 
 ModelAnnotationTypeLiteral = Literal["none", "str", "int", "float", "bool", "object"]
@@ -155,6 +155,12 @@ class ModelAttribute(LocalBaseModel):
     is_collection: Optional[bool] = None
     is_ordered: Optional[bool] = None
     is_static: Optional[bool] = None
+    #: Set to true if this attribute is a map
+    is_map: Optional[bool] = None
+    #: If this attribute is a map (is_map==True) this is kye type
+    map_key_type: Optional[str] = None
+    #: If this attribute is a map (is_map==True) this is value type
+    map_value_type: Optional[str] = None
     lower_bound: Optional[str] = None
     upper_bound: Optional[str] = None
     connector: Optional[ModelConnection] = None

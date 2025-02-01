@@ -31,4 +31,7 @@ module {{package.name}} {
 {% for child in package.packages recursive %}
 {{ gen_module_definition(child, loop) | trim | indent(4, true) }}
 {% endfor %}
+{% for cls in package.classes %}
+{{ gen_class_definition_full(module, cls) | trim | indent(4, true) }}
+{% endfor %}
 }; /* {{package.name}} */

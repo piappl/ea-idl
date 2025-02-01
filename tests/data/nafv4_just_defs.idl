@@ -70,7 +70,7 @@ module core {
                 This is comment
             */
             double test_comment;
-            core::message::Options extra;
+            map<string, core::message::OptionValue>;
         };
     }; /* message */
 }; /* core */

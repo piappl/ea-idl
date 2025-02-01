@@ -45,6 +45,8 @@ class ConfigurationStereotypes(BaseModel):
     idl_union: str = "idlUnion"
     idl_enum: str = "idlEnum"
     idl_map: str = "idlMap"
+    idl_map_key: str = "key"
+    idl_map_value: str = "value"
     idl_typedef: str = "idlTypedef"
 
 
@@ -59,6 +61,8 @@ class Configuration(BaseModel):
     template: str = "idl.jinja2"
     #: Name of root package - it will override whatever is in model
     root_package_name: Optional[str] = None
+    #: Enable map post process
+    enable_maps: bool = True
     #: List of packages to ignore
     ignore_packages: List[str] = []
     #: List of supported primitive types. For those types we don't look for connection in attribute.
