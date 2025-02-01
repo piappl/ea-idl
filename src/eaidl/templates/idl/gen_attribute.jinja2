@@ -1,0 +1,12 @@
+{% from "idl/gen_notes.jinja2" import gen_notes %}
+{% from "idl/gen_annotations.jinja2" import gen_annotations %}
+{# Macro for generating attributes. #}
+{% macro gen_attribute(module, cls, attr) %}
+{{ gen_notes(attr) -}}
+{{ gen_annotations(attr.properties ) -}}
+{% if attr.is_collection %}
+sequence<{{"::".join(attr.namespace + [attr.type])}}> {{attr.name}};
+{% else %}
+{{"::".join(attr.namespace + [attr.type])}} {{attr.name}};
+{% endif %}
+{% endmacro -%}

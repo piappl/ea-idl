@@ -1,0 +1,11 @@
+{% from "idl/gen_notes.jinja2" import gen_notes %}
+{% from "idl/gen_annotations.jinja2" import gen_annotations %}
+{# 
+    Generate tyoedef declaration.
+    Typedef appears only once, either in declaration or definition section.
+#}
+{% macro gen_typedef(cls) %}
+{{ gen_notes(cls) -}}
+{{ gen_annotations(cls.properties) -}}
+typedef {{cls.parent_type}} {{cls.name}};
+{%- endmacro %}

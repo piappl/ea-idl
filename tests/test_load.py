@@ -34,11 +34,11 @@ def test_reflect():
     # If this fails, just check the file and fix numbers here.
     contents = {
         "t_package": 6,
-        "t_object": 14,
-        "t_attribute": 13,
-        "t_connector": 9,
-        "t_objectproperties": 26,
-        "t_xref": 20,  # Stereotypes, properties
+        "t_object": 16,
+        "t_attribute": 16,
+        "t_connector": 11,
+        "t_objectproperties": 30,
+        "t_xref": 22,  # Stereotypes, properties
     }
 
     for key, value in contents.items():

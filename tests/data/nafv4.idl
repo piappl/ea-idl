@@ -34,14 +34,15 @@ module core {
         /**
             ISO timestamp
         */
-
         typedef string Time;
         enum MessageTypeEnum {
             @value(0) MessageTypeEnum_MEASUREMENT,
             @value(1) MessageTypeEnum_EMPTY
         };
+        typedef string OptionValue;
         struct MessageHeader;
         struct Message;
+
         struct DataMessage;
     }; /* message */
     /* ---------------------------------------------------------------------- */
@@ -50,7 +51,7 @@ module core {
     module data {
 
 
-        union Measurement switch (core::data::MeasurementTypeEnum)  {
+        union Measurement switch (core::data::MeasurementTypeEnum) {
             case MeasurementTypeEnum_TEMPERATURE_MEASUREMENT:
                 core::data::types::TemperatureMeasurement a_temperature_measurement;
             case MeasurementTypeEnum_STRING:
@@ -60,10 +61,10 @@ module core {
     module message {
 
 
+
         /**
             Message header
         */
-
         struct MessageHeader {
             @optional
             core::message::Time timestamp;
@@ -73,12 +74,12 @@ module core {
         struct Message {
             core::message::MessageHeader header;
         };
+
         struct DataMessage: core::message::Message {
             sequence<core::data::Measurement> body;
             /**
                 This is a sequence
             */
-
             sequence<long> test_comment_seq;
             /**
                 This is optional
@@ -88,8 +89,8 @@ module core {
             /**
                 This is comment
             */
-
             double test_comment;
+            core::message::Options extra;
         };
     }; /* message */
 }; /* core */

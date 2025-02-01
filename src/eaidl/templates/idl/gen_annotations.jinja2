@@ -1,0 +1,15 @@
+{# Macro for generating annotations, based on properties. #}
+{% macro _gen_annotations(props) %}
+{% for key, value in props.items() %}
+{% if value.value_type == "str" %}
+@{{key | trim}}({{value.value | trim}})
+{% elif value.value_type == "none" %}
+@{{key | trim}}
+{% else %}
+@{{key | trim}}({{value.value | trim}})
+{% endif %}
+{% endfor %}
+{% endmacro %}
+{% macro gen_annotations(props) %}
+{{ _gen_annotations(props)  }}
+{%- endmacro %}

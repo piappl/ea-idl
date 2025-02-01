@@ -1,0 +1,21 @@
+{% from "idl/gen_notes.jinja2" import gen_notes %}
+{% from "idl/gen_annotations.jinja2" import gen_annotations %}
+{% from "idl/gen_attribute.jinja2" import gen_attribute %}
+{# Macro for generating structure declaration. #}
+{% macro gen_struct_declaration(module, cls) %}
+struct {{ cls.name }};
+{%- endmacro %}
+{# Macro for generating structure definition. #}
+{% macro gen_struct_definition(module, cls) %}
+{{ gen_notes(cls) -}}
+{{ gen_annotations(cls.properties) -}}
+{% if cls.generalization %}
+struct {{ cls.name }}: {{ "::".join(cls.generalization) }} {
+{% else %}
+struct {{ cls.name }} {
+{% endif %}
+{% for attr in cls.attributes %}
+{{ gen_attribute(module, cls, attr) | trim | indent(4, True) }}
+{% endfor %}
+};
+{%- endmacro -%}

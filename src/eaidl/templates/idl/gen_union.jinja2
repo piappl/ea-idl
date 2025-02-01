@@ -1,0 +1,23 @@
+{% from "idl/gen_notes.jinja2" import gen_notes %}
+{% from "idl/gen_annotations.jinja2" import gen_annotations %}
+{% macro gen_union_declaration(cls) %}
+union {{ cls.name }};
+{%- endmacro %}
+{% macro gen_union_definition(cls) %}
+{{ gen_notes(cls) -}}
+{{ gen_annotations(cls.properties) -}}
+{% if cls.union_enum %}
+union {{ cls.name }} switch ({{cls.union_enum}}) {
+{% else %}
+union {{ cls.name }} switch (int8) {
+{% endif %}
+{% for item in cls.attributes %}
+{% if item.union_key %}
+    case {{item.union_key}}:
+{% else %}
+    case {{loop.index}}:
+{% endif %}
+        {{ "::".join(item.namespace + [item.type])}} {{item.name}};
+{% endfor %}
+};
+{%- endmacro %}

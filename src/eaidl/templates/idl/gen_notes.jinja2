@@ -1,0 +1,8 @@
+{# Macro for generating notes for object, need notes field. #}
+{% macro gen_notes(cls) %}
+{% if cls.notes %}
+/**
+{{ cls.notes  | trim | wordwrap(78) | indent(4, true) }}
+*/
+{% endif %}
+{% endmacro %}

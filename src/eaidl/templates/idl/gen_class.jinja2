@@ -1,0 +1,42 @@
+{% from "idl/gen_annotations.jinja2" import gen_annotations %}
+{% from "idl/gen_enum.jinja2" import gen_enum %}
+{% from "idl/gen_map.jinja2" import gen_map %}
+{% from "idl/gen_union.jinja2" import gen_union_declaration, gen_union_definition %}
+{% from "idl/gen_struct.jinja2" import gen_struct_definition, gen_struct_declaration %}
+{% from "idl/gen_typedef.jinja2" import gen_typedef %}
+{# Macro for generating class declaration. #}
+{% macro gen_class_declaration(module, cls) %}
+{% if cls.is_enum %}
+{{ gen_enum(cls) -}}
+{% elif cls.is_union %}
+{{ gen_union_declaration(cls) -}}
+{% elif cls.is_typedef %}
+{{ gen_typedef(cls) -}}
+{% elif cls.is_struct %}
+{{ gen_struct_declaration(modulem, cls) -}}
+{% endif %}
+{% endmacro %}
+{# Macro for generating class definition. #}
+{% macro gen_class_definition(module, cls) %}
+{% if cls.is_union %}
+{{ gen_union_definition(cls) -}}
+{% elif cls.is_map %}
+{{ gen_map(module, cls) -}}
+{% elif cls.is_struct %}
+{{ gen_struct_definition(module, cls) -}}
+{% endif %}
+{% endmacro -%}
+{# Create full class definition, to be used in cases when no declaration was done #}
+{% macro gen_class_definition_full(module, cls) %}
+{% if cls.is_union %}
+{{ gen_union_definition(cls) -}}
+{% elif cls.is_struct %}
+{{ gen_struct_definition(module, cls) -}}
+{% elif cls.is_map %}
+{{ gen_map(module, cls) -}}
+{% elif cls.is_enum %}
+{{ gen_enum(cls) -}}
+{% elif cls.is_typedef %}
+{{ gen_typedef(cls) -}}
+{% endif %}
+{% endmacro -%}

@@ -1,0 +1,24 @@
+{% from "idl/gen_notes.jinja2" import gen_notes %}
+{% from "idl/gen_annotations.jinja2" import gen_annotations %}
+{# Generate enum entry #}
+{% macro gen_enum_entry(item, index) %}
+{% if "default" in item.properties and  item.properties["default"].value %}
+@value({{item.properties["default"].value | trim }}) {{item.name}}
+{% else %}
+@value({{index}}) {{item.name}}
+{% endif %}
+{% endmacro %}
+{# Generate enum #}
+{% macro gen_enum(cls) %}
+{{ gen_notes(cls) -}}
+{{ gen_annotations(cls.properties) -}}
+enum {{ cls.name }} {
+{% for item in cls.attributes %}
+{% if loop.revindex0 == 0 %}
+{{ gen_enum_entry(item, loop.index0) | trim | indent(4, true) }}
+{% else %}
+{{ gen_enum_entry(item, loop.index0) | trim | indent(4, true) -}},
+{% endif %}
+{% endfor %}
+};
+{%- endmacro %}
