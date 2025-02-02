@@ -1,20 +1,40 @@
 """Some methods that transform model into something else."""
 
-from typing import Optional
+from typing import Optional, Callable, List
 
 from eaidl.model import ModelPackage, ModelClass, ModelAttribute
 from eaidl.config import Configuration
 
 
-def find_class(root: ModelPackage, target_object_id: int) -> Optional[ModelClass]:
+def find_class(root: ModelPackage, condition: Callable[[ModelClass], bool]) -> Optional[ModelClass]:
     for cls in root.classes:
-        if cls.object_id == target_object_id:
+        if condition(cls):
             return cls
     for pkg in root.packages:
-        sub = find_class(pkg, target_object_id)
+        sub = find_class(pkg, condition)
         if sub is not None:
             return sub
     return None
+
+
+def remove_attr(root: ModelPackage, condition: Callable[[ModelAttribute], bool]) -> None:
+    for cls in root.classes:
+        for attr in cls.attributes[:]:
+            if condition(attr):
+                cls.attributes.remove(attr)
+    for pkg in root.packages:
+        remove_attr(pkg, condition)
+
+
+def get_attrs(root: ModelPackage, condition: Callable[[ModelAttribute], bool]) -> List[ModelAttribute]:
+    attrs = []
+    for cls in root.classes:
+        for attr in cls.attributes[:]:
+            if condition(attr):
+                attrs.append(attr)
+    for pkg in root.packages:
+        attrs += get_attrs(pkg, condition)
+    return attrs
 
 
 def attr_by_name(cls: ModelClass, name: str) -> ModelAttribute:
@@ -33,7 +53,7 @@ def _convert_map_stereotype(
         for attr in cls.attributes:
             if attr.connector is not None:
                 # It can be none for primitive types
-                dest = find_class(root, attr.connector.end_object_id)
+                dest = find_class(root, lambda c: c.object_id == attr.connector.end_object_id)  # type: ignore
                 if dest is None:
                     raise AttributeError(f"End not found for attribute {attr.name}")
                 if config.stereotypes.idl_map in dest.stereotypes:
@@ -60,3 +80,83 @@ def convert_map_stereotype(
     :param config: configuration
     """
     _convert_map_stereotype(root, root, config)
+
+
+def _filter_stereotypes(root: ModelPackage, current: ModelPackage, config: Configuration) -> None:
+    if config.filter_stereotypes is None:
+        return
+    for cls in current.classes[:]:
+        # Fist try to remove whole classes tagged with stereotypes that
+        # is configured to be removed.
+        for filter in config.filter_stereotypes:
+            if filter in cls.stereotypes:
+                current.classes.remove(cls)
+            # Not we still have to remove all attributes that reference it...
+            remove_attr(
+                root,
+                lambda a: a.connector is not None and a.connector.end_object_id == cls.object_id,
+            )
+    for cls in current.classes:
+        # Now we look at remaining attributes, and remove those tagged
+        for attr in cls.attributes[:]:
+            for filter in config.filter_stereotypes:
+                if filter in attr.stereotypes:
+                    cls.attributes.remove(attr)
+    for pkg in current.packages:
+        _filter_stereotypes(root, pkg, config)
+
+
+def filter_stereotypes(
+    root: ModelPackage,
+    config: Configuration,
+) -> None:
+    """Walks through model filters out attributes with configured stereotypes.
+
+    :param root: model root package
+    :param config: configuration
+    """
+    _filter_stereotypes(root, root, config)
+
+
+def _filter_empty_unions(root: ModelPackage, current: ModelPackage, config: Configuration) -> None:
+    for cls in current.classes[:]:
+        if cls.is_union and cls.attributes is None or len(cls.attributes) == 0:
+            # This is empty union
+            remove_attr(
+                root,
+                lambda a: a.connector is not None and a.connector.end_object_id == cls.object_id,
+            )
+            current.classes.remove(cls)
+        elif cls.is_union and (cls.attributes is not None and len(cls.attributes) == 1):
+            # This is union of one element, two way to go, we can replace with
+            # primitive or other class
+            attrs = get_attrs(
+                root,
+                lambda a: a.connector is not None and a.connector.end_object_id == cls.object_id,
+            )
+            if cls.attributes[0].connector is None:
+                # Primitive
+                for attr in attrs:
+                    attr.type = cls.attributes[0].type
+            else:
+                for attr in attrs:
+                    attr.type = cls.attributes[0].type
+                    old = attr.connector
+                    attr.connector = cls.attributes[0].connector
+                    attr.connector.connector_id = old.connector_id  # type: ignore
+                    attr.connector.start_object_id = old.start_object_id  # type: ignore
+            current.classes.remove(cls)
+    for pkg in current.packages:
+        _filter_empty_unions(root, pkg, config)
+
+
+def filter_empty_unions(
+    root: ModelPackage,
+    config: Configuration,
+) -> None:
+    """Walks through model filters unions that are empty or have one option.
+
+    :param root: model root package
+    :param config: configuration
+    """
+    _filter_empty_unions(root, root, config)

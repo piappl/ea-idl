@@ -63,6 +63,8 @@ class Configuration(BaseModel):
     root_package_name: Optional[str] = None
     #: Enable map post process
     enable_maps: bool = True
+    #: List of stereotypes to filter out
+    filter_stereotypes: Optional[List[str]] = None
     #: List of packages to ignore
     ignore_packages: List[str] = []
     #: List of supported primitive types. For those types we don't look for connection in attribute.

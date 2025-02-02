@@ -90,7 +90,7 @@ module core {
                 This is comment
             */
             double test_comment;
-            map<string, core::message::OptionValue>;
+            map<string, core::message::OptionValue> extra;
         };
     }; /* message */
 }; /* core */

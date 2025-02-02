@@ -38,7 +38,7 @@ def test_reflect():
         "t_attribute": 16,
         "t_connector": 11,
         "t_objectproperties": 30,
-        "t_xref": 22,  # Stereotypes, properties
+        "t_xref": 24,  # Stereotypes, properties
     }
 
     for key, value in contents.items():
