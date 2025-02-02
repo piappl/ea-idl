@@ -437,7 +437,7 @@ class ModelParser:
         # Note that we cannot fill namespace here - this is namespace for class that
         # has this attribute, we need to fill with namespace for type of this attribute
         attribute.namespace = []
-        if t_attribute.attr_lowerbound == "0" and t_attribute.attr_upperbound == "1":
+        if t_attribute.attr_lowerbound == "0":
             attribute.is_optional = True
         else:
             attribute.is_optional = False

@@ -60,6 +60,7 @@ module core {
             /**
                 This is a sequence
             */
+            @optional
             sequence<long> test_comment_seq;
             /**
                 This is optional
