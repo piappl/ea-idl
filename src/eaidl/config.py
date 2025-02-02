@@ -93,6 +93,8 @@ class Configuration(BaseModel):
         "exclusiveMaximum": AnnotationType(idl_default=False, idl_types=["any value;"]),
         "minimum": AnnotationType(idl_name="min", idl_default=True),
         "exclusiveMinimum": AnnotationType(idl_default=False, idl_types=["any value;"]),
+        "maxItems": AnnotationType(idl_default=False, idl_types=["unsigned long value;"]),
+        "minItems": AnnotationType(idl_default=False, idl_types=["unsigned long value;"]),
         "unit": AnnotationType(
             idl_default=True,
         ),

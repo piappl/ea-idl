@@ -444,8 +444,19 @@ class ModelParser:
 
         attribute.lower_bound = t_attribute.attr_lowerbound
         attribute.upper_bound = t_attribute.attr_upperbound
-        attribute.stereotypes = self.get_stereotypes(attribute.guid)
         attribute.is_collection = to_bool(t_attribute.attr_iscollection)
+        if attribute.is_collection:
+            if attribute.lower_bound is not None and attribute.lower_bound != "*":
+                attribute.lower_bound_number = int(attribute.lower_bound)
+                if attribute.lower_bound_number != 0:
+                    # When == 0 it will just be @optional
+                    attribute.properties["minItems"] = ModelAnnotation(
+                        value=attribute.lower_bound_number, value_type="int"
+                    )
+            if attribute.upper_bound is not None and attribute.upper_bound != "*":
+                attribute.upper_bound_number = int(attribute.upper_bound)
+                attribute.properties["maxItems"] = ModelAnnotation(value=attribute.upper_bound_number, value_type="int")
+        attribute.stereotypes = self.get_stereotypes(attribute.guid)
         attribute.is_ordered = to_bool(t_attribute.attr_isordered)
         attribute.is_static = to_bool(t_attribute.attr_isstatic)
         attribute.notes = t_attribute.attr_notes

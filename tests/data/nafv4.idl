@@ -7,6 +7,14 @@ module ext {
     @annotation exclusiveMinimum {
         any value;
     };
+
+    @annotation maxItems {
+        int value;
+    };
+
+    @annotation minItems {
+        int value;
+    };
     /**
         Regular expression to match.
     */
@@ -76,10 +84,13 @@ module core {
         };
 
         struct DataMessage: core::message::Message {
-            sequence<core::data::Measurement> body;
+            @minItems(1)
+            @maxItems(5)
+            sequence<core::data::Measurement, 5> body;
             /**
                 This is a sequence
             */
+            @minItems(0)
             @optional
             sequence<long> test_comment_seq;
             /**

@@ -162,7 +162,11 @@ class ModelAttribute(LocalBaseModel):
     #: If this attribute is a map (is_map==True) this is value type
     map_value_type: Optional[str] = None
     lower_bound: Optional[str] = None
+    #: Lower bound converted to integer if that is possible, false otherwise
+    lower_bound_number: Optional[int] = None
     upper_bound: Optional[str] = None
+    #: Upper bound converted to integer if that is possible, false otherwise
+    upper_bound_number: Optional[int] = None
     connector: Optional[ModelConnection] = None
     properties: Dict[str, ModelAnnotation] = {}
     union_key: Optional[str] = None
