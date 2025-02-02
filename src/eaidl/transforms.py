@@ -1,9 +1,12 @@
 """Some methods that transform model into something else."""
 
+import logging
 from typing import Optional, Callable, List
 
 from eaidl.model import ModelPackage, ModelClass, ModelAttribute
 from eaidl.config import Configuration
+
+log = logging.getLogger(__name__)
 
 
 def find_class(root: ModelPackage, condition: Callable[[ModelClass], bool]) -> Optional[ModelClass]:
@@ -85,22 +88,29 @@ def convert_map_stereotype(
 def _filter_stereotypes(root: ModelPackage, current: ModelPackage, config: Configuration) -> None:
     if config.filter_stereotypes is None:
         return
-    for cls in current.classes[:]:
-        # Fist try to remove whole classes tagged with stereotypes that
-        # is configured to be removed.
-        for filter in config.filter_stereotypes:
+    for filter in config.filter_stereotypes:
+        for cls in current.classes[:]:
+            # Fist try to remove whole classes tagged with stereotypes that
+            # is configured to be removed.
             if filter in cls.stereotypes:
+                log.warning("Filtering class based on stereotype " + "::".join(cls.namespace + [cls.name]))
                 current.classes.remove(cls)
-            # Not we still have to remove all attributes that reference it...
-            remove_attr(
-                root,
-                lambda a: a.connector is not None and a.connector.end_object_id == cls.object_id,
-            )
+                # Not we still have to remove all attributes that reference it...
+                remove_attr(
+                    root,
+                    lambda a: a.connector is not None and a.connector.end_object_id == cls.object_id,
+                )
     for cls in current.classes:
         # Now we look at remaining attributes, and remove those tagged
         for attr in cls.attributes[:]:
             for filter in config.filter_stereotypes:
                 if filter in attr.stereotypes:
+                    log.warning(
+                        "Filtering attribute based on stereotype "
+                        + "::".join(cls.namespace + [cls.name])
+                        + "."
+                        + attr.name
+                    )
                     cls.attributes.remove(attr)
     for pkg in current.packages:
         _filter_stereotypes(root, pkg, config)
@@ -120,7 +130,7 @@ def filter_stereotypes(
 
 def _filter_empty_unions(root: ModelPackage, current: ModelPackage, config: Configuration) -> None:
     for cls in current.classes[:]:
-        if cls.is_union and cls.attributes is None or len(cls.attributes) == 0:
+        if cls.is_union and (cls.attributes is None or len(cls.attributes) == 0):
             # This is empty union
             remove_attr(
                 root,
