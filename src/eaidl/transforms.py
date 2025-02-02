@@ -148,9 +148,12 @@ def _filter_empty_unions(root: ModelPackage, current: ModelPackage, config: Conf
                 # Primitive
                 for attr in attrs:
                     attr.type = cls.attributes[0].type
+                    attr.namespace = cls.attributes[0].namespace
+                    attr.connector = None
             else:
                 for attr in attrs:
                     attr.type = cls.attributes[0].type
+                    attr.namespace = cls.attributes[0].namespace
                     old = attr.connector
                     attr.connector = cls.attributes[0].connector
                     attr.connector.connector_id = old.connector_id  # type: ignore

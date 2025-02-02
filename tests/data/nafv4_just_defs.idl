@@ -9,11 +9,11 @@ module ext {
     };
 
     @annotation maxItems {
-        int value;
+        unsigned long value;
     };
 
     @annotation minItems {
-        int value;
+        unsigned long value;
     };
     /**
         Regular expression to match.
@@ -70,7 +70,6 @@ module core {
             /**
                 This is a sequence
             */
-            @minItems(0)
             @optional
             sequence<long> test_comment_seq;
             /**
