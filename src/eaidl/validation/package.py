@@ -11,18 +11,18 @@ def context(package: ModelPackage) -> str:
 @validator
 def name_snake_convention(config: Configuration, package: ModelPackage):
     if not is_lower_snake_case(package.name):
-        raise ValueError(f"Package name has wrong case, expected lower snake case: {context(package)}")
+        raise ValueError(f"Package {package.name} has wrong case, expected lower snake case: {context(package)}")
 
 
 @validator
 def stereotypes(config: Configuration, package: ModelPackage):
     if config.stereotypes.package not in package.stereotypes:
         raise ValueError(
-            f"Package has wrong stereotypes, found {package.stereotypes} expected {config.stereotypes.package} {context(package)}"
+            f"Package {package.name} has wrong stereotypes, found {package.stereotypes} expected {config.stereotypes.package} {context(package)}"
         )
 
 
 @validator
 def notes(config: Configuration, package: ModelPackage):
     if package.notes is None or package.notes.strip() == "":
-        raise ValueError(f"Package name has no description/comment/notes {context(package)}")
+        raise ValueError(f"Package {package.name} has no description/comment/notes {context(package)}")

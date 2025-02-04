@@ -11,7 +11,7 @@ def context(cls: ModelClass) -> str:
 @validator
 def name_for_reserved_worlds(config: Configuration, cls: ModelClass) -> None:
     if cls.name in RESERVED_NAMES:
-        raise ValueError(f"Class name '{cls.name}' is on reserved world list {context(cls)}")
+        raise ValueError(f"Class name is on reserved world list {context(cls)}")
 
 
 @validator
@@ -63,4 +63,4 @@ def enum_prefix(config: Configuration, cls: ModelClass):
 @validator
 def notes(config: Configuration, cls: ModelClass):
     if cls.notes is None or cls.notes.strip() == "":
-        raise ValueError(f"Class name has no description/comment/notes {context(cls)}")
+        raise ValueError(f"Class '{cls.name}' has no description/comment/notes {context(cls)}")
