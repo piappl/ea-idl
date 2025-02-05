@@ -51,17 +51,17 @@ def test_reflect():
 
 def test_load():
     parser = ModelParser(Configuration())
-    model = parser.load()
+    packages = parser.load()
     # Core is default
-    assert model.name == "core"
-    assert model.packages[0].name == "data"
-    assert model.packages[0].classes[1].name == "Measurement"
-    assert model.packages[0].classes[0].name == "MeasurementTypeEnum"
+    assert packages[1].name == "core"
+    assert packages[1].packages[0].name == "data"
+    assert packages[1].packages[0].classes[1].name == "Measurement"
+    assert packages[1].packages[0].classes[0].name == "MeasurementTypeEnum"
     # This is union and its enumeration, both need to exist and have certain
     # pattern of names.
-    inspect(model.packages[0].classes[0].attributes)
-    inspect(model.packages[0].classes[1].attributes)
-    parser = ModelParser(Configuration(root_package="something not there"))
+    inspect(packages[1].packages[0].classes[0].attributes)
+    inspect(packages[1].packages[0].classes[1].attributes)
+    parser = ModelParser(Configuration(root_packages=["something not there"]))
     with pytest.raises(ValueError):
         parser.load()
 
@@ -97,7 +97,7 @@ def test_get_namespace() -> None:
     assert parser.get_namespace(3) == ["core"]
     assert parser.get_namespace(9) == ["core", "data"]
     assert parser.get_namespace(11) == ["core", "data", "types"]
-    config.root_package = CORE_PACKAGE_GUID
+    config.root_packages = [CORE_PACKAGE_GUID]
     parser = ModelParser(config)
     parser.load()
     assert parser.get_namespace(2) == []  # Model
@@ -105,7 +105,7 @@ def test_get_namespace() -> None:
     assert parser.get_namespace(3) == ["core"]
     assert parser.get_namespace(9) == ["core", "data"]
     assert parser.get_namespace(11) == ["core", "data", "types"]
-    config.root_package = "L7"
+    config.root_packages = ["L7"]
     parser = ModelParser(config)
     parser.load()
     assert parser.get_namespace(2) == []  # Model

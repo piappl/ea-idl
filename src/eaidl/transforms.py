@@ -9,14 +9,15 @@ from eaidl.config import Configuration
 log = logging.getLogger(__name__)
 
 
-def find_class(root: ModelPackage, condition: Callable[[ModelClass], bool]) -> Optional[ModelClass]:
-    for cls in root.classes:
-        if condition(cls):
-            return cls
-    for pkg in root.packages:
-        sub = find_class(pkg, condition)
-        if sub is not None:
-            return sub
+def find_class(roots: List[ModelPackage], condition: Callable[[ModelClass], bool]) -> Optional[ModelClass]:
+    for root in roots:
+        for cls in root.classes:
+            if condition(cls):
+                return cls
+        for pkg in root.packages:
+            sub = find_class([pkg], condition)
+            if sub is not None:
+                return sub
     return None
 
 
@@ -48,7 +49,7 @@ def attr_by_name(cls: ModelClass, name: str) -> ModelAttribute:
 
 
 def _convert_map_stereotype(
-    root: ModelPackage,
+    root: List[ModelPackage],
     current: ModelPackage,
     config: Configuration,
 ) -> None:
@@ -58,7 +59,7 @@ def _convert_map_stereotype(
                 # It can be none for primitive types
                 dest = find_class(root, lambda c: c.object_id == attr.connector.end_object_id)  # type: ignore
                 if dest is None:
-                    raise AttributeError(f"End not found for attribute {attr.name}")
+                    raise AttributeError(f"End not found for attribute {'::'.join(attr.namespace)}.{attr.name}")
                 if config.stereotypes.idl_map in dest.stereotypes:
                     attr.is_map = True
                     k = attr_by_name(dest, config.stereotypes.idl_map_key)
@@ -74,7 +75,7 @@ def _convert_map_stereotype(
 
 
 def convert_map_stereotype(
-    root: ModelPackage,
+    packages: List[ModelPackage],
     config: Configuration,
 ) -> None:
     """Walks through model and adds stuff needed for using maps.
@@ -82,7 +83,8 @@ def convert_map_stereotype(
     :param root: model root package
     :param config: configuration
     """
-    _convert_map_stereotype(root, root, config)
+    for package in packages:
+        _convert_map_stereotype(packages, package, config)
 
 
 def _filter_stereotypes(root: ModelPackage, current: ModelPackage, config: Configuration) -> None:
@@ -117,7 +119,7 @@ def _filter_stereotypes(root: ModelPackage, current: ModelPackage, config: Confi
 
 
 def filter_stereotypes(
-    root: ModelPackage,
+    packages: List[ModelPackage],
     config: Configuration,
 ) -> None:
     """Walks through model filters out attributes with configured stereotypes.
@@ -125,46 +127,49 @@ def filter_stereotypes(
     :param root: model root package
     :param config: configuration
     """
-    _filter_stereotypes(root, root, config)
+    for package in packages:
+        _filter_stereotypes(package, package, config)
 
 
-def _filter_empty_unions(root: ModelPackage, current: ModelPackage, config: Configuration) -> None:
+def _filter_empty_unions(roots: List[ModelPackage], current: ModelPackage, config: Configuration) -> None:
     for cls in current.classes[:]:
         if cls.is_union and (cls.attributes is None or len(cls.attributes) == 0):
             # This is empty union
-            remove_attr(
-                root,
-                lambda a: a.connector is not None and a.connector.end_object_id == cls.object_id,
-            )
+            for root in roots:
+                remove_attr(
+                    root,
+                    lambda a: a.connector is not None and a.connector.end_object_id == cls.object_id,
+                )
             current.classes.remove(cls)
         elif cls.is_union and (cls.attributes is not None and len(cls.attributes) == 1):
             # This is union of one element, two way to go, we can replace with
             # primitive or other class
-            attrs = get_attrs(
-                root,
-                lambda a: a.connector is not None and a.connector.end_object_id == cls.object_id,
-            )
-            if cls.attributes[0].connector is None:
-                # Primitive
-                for attr in attrs:
-                    attr.type = cls.attributes[0].type
-                    attr.namespace = cls.attributes[0].namespace
-                    attr.connector = None
-            else:
-                for attr in attrs:
-                    attr.type = cls.attributes[0].type
-                    attr.namespace = cls.attributes[0].namespace
-                    old = attr.connector
-                    attr.connector = cls.attributes[0].connector
-                    attr.connector.connector_id = old.connector_id  # type: ignore
-                    attr.connector.start_object_id = old.start_object_id  # type: ignore
+            for root in roots:
+                attrs = get_attrs(
+                    root,
+                    lambda a: a.connector is not None and a.connector.end_object_id == cls.object_id,
+                )
+                if cls.attributes[0].connector is None:
+                    # Primitive
+                    for attr in attrs:
+                        attr.type = cls.attributes[0].type
+                        attr.namespace = cls.attributes[0].namespace
+                        attr.connector = None
+                else:
+                    for attr in attrs:
+                        attr.type = cls.attributes[0].type
+                        attr.namespace = cls.attributes[0].namespace
+                        old = attr.connector
+                        attr.connector = cls.attributes[0].connector
+                        attr.connector.connector_id = old.connector_id  # type: ignore
+                        attr.connector.start_object_id = old.start_object_id  # type: ignore
             current.classes.remove(cls)
     for pkg in current.packages:
-        _filter_empty_unions(root, pkg, config)
+        _filter_empty_unions(roots, pkg, config)
 
 
 def filter_empty_unions(
-    root: ModelPackage,
+    packages: List[ModelPackage],
     config: Configuration,
 ) -> None:
     """Walks through model filters unions that are empty or have one option.
@@ -172,4 +177,5 @@ def filter_empty_unions(
     :param root: model root package
     :param config: configuration
     """
-    _filter_empty_unions(root, root, config)
+    for package in packages:
+        _filter_empty_unions(packages, package, config)

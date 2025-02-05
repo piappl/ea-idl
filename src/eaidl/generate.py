@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 from jinja2 import Environment, PackageLoader, select_autoescape
 from eaidl.load import ModelPackage
 from eaidl.config import Configuration
@@ -20,16 +20,16 @@ def create_env(config: Optional[Configuration] = None) -> Environment:
     )
 
 
-def render(config: Configuration, model: ModelPackage) -> str:
+def render(config: Configuration, packages: List[ModelPackage]) -> str:
     env = create_env(config)
     template = env.get_template(config.template)
-    return template.render(package=model)
+    return template.render(packages=packages)
 
 
-def generate(config: Configuration, model: ModelPackage) -> str:
+def generate(config: Configuration, packages: List[ModelPackage]) -> str:
     if config.enable_maps:
-        convert_map_stereotype(model, config)
+        convert_map_stereotype(packages, config)
     if config.filter_stereotypes is not None:
-        filter_stereotypes(model, config)
-        filter_empty_unions(model, config)
-    return render(config, model)
+        filter_stereotypes(packages, config)
+        filter_empty_unions(packages, config)
+    return render(config, packages)

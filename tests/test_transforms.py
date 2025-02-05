@@ -81,7 +81,7 @@ def test_convert_map_stereotype() -> None:
             ),
         )
     )
-    convert_map_stereotype(mod, config)
+    convert_map_stereotype([mod], config)
     # This produces something like this:
     # module ext {
     # }; /* ext */
@@ -92,7 +92,7 @@ def test_convert_map_stereotype() -> None:
     #         string name;
     #     };
     # }; /* root */
-    assert "map<string, root::ClassTypedef>" in render(config, mod)
+    assert "map<string, root::ClassTypedef>" in render(config, [mod])
     # After processing those are added to attribute
     assert map_attr.is_map is True
     assert map_attr.map_key_type == "string"
@@ -139,9 +139,9 @@ def test_filter_stereotypes() -> None:
             ),
         )
     )
-    filter_stereotypes(mod, config)
-    assert "attr_1" not in render(config, mod)
-    assert "attr_2" in render(config, mod)
+    filter_stereotypes([mod], config)
+    assert "attr_1" not in render(config, [mod])
+    assert "attr_2" in render(config, [mod])
 
 
 def build_union_structure(config: Configuration) -> ModelPackage:
@@ -252,20 +252,20 @@ def test_filter_empty_unions() -> None:
     #     };
     # }; /* root */
     # All attributes should be removed - as union is empty
-    filter_empty_unions(mod, config)
-    assert "attr_1" not in render(config, mod)
-    assert "ClassUnion" not in render(config, mod)
+    filter_empty_unions([mod], config)
+    assert "attr_1" not in render(config, [mod])
+    assert "ClassUnion" not in render(config, [mod])
 
 
 def test_filter_one_union_member() -> None:
     config = Configuration(template="idl_just_defs.jinja2")
     mod = build_union_structure(config)
     # This is similar to test for removing empty unions, but we add one member
-    un = find_class(mod, lambda c: c.object_id == 1)
+    un = find_class([mod], lambda c: c.object_id == 1)
     assert un is not None
     assert un.attributes is not None
     un.attributes = [ModelAttribute(name="a_member", type="string", attribute_id=123, guid=str(uuid.uuid4()))]
-    print(render(config, mod))
-    filter_empty_unions(mod, config)
-    assert "ClassUnion" not in render(config, mod)
-    print(render(config, mod))
+    print(render(config, [mod]))
+    filter_empty_unions([mod], config)
+    assert "ClassUnion" not in render(config, [mod])
+    print(render(config, [mod]))

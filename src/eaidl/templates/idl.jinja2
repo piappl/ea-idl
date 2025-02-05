@@ -27,8 +27,10 @@ module {{ module.name }} {
 }; /* {{module.name}} */
 {% endif %}
 {% endmacro -%}
+{% for package in packages %}
+{# We start with top level module, and create definitions than declarations. #}
+module {{package.name}} {
 {# Generate definitions for our custom annotations. #}
-module ext {
 {% for property_type in package.property_types recursive %}
 {{ gen_notes(property_type) | trim | indent(4, true, false) }}
     @annotation {{property_type.property}} {
@@ -37,20 +39,11 @@ module ext {
 {% endfor %}
     };
 {% endfor %}
-}; /* ext */
-{# We start with top level module, and create definitions than declarations. #}
-module {{package.name}} {
-    /* ---------------------------------------------------------------------- */
-    /* Declarations                                                           */
-    /* ---------------------------------------------------------------------- */
 {% for child in package.packages recursive -%}
 {{ gen_module_declaration(child, loop) | trim | indent(4, true) }}
 {% endfor %}
-    /* ---------------------------------------------------------------------- */
-    /* Definitions                                                            */
-    /* ---------------------------------------------------------------------- */
 {% for child in package.packages recursive -%}
 {{ gen_module_definition(child, loop) | trim | indent(4, true) }}
 {% endfor %}
 }; /* {{package.name}} */
-
+{%endfor%}

@@ -56,7 +56,7 @@ class Configuration(BaseModel):
     #: Database connection string, see https://docs.sqlalchemy.org/en/20/core/connections.html
     database_url: str = "sqlite+pysqlite:///tests/data/nafv4.qea"
     #: Globally unique identifier (GUID) or name of root package that we want to generate for.
-    root_package: str = "core"
+    root_packages: List[str] = ["core"]
     #: Name of template
     template: str = "idl.jinja2"
     #: Name of root package - it will override whatever is in model

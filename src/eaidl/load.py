@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from typing import Any, List, Literal, Deque
 import logging
 import re
+import uuid
 import copy
 from collections import deque
 from eaidl.model import (
@@ -52,14 +53,15 @@ def column_reflect(inspector, table, column_info):
     column_info["key"] = "attr_%s" % column_info["name"].lower()
 
 
-def find_class(tree: ModelPackage, object_id: int) -> Optional[ModelClass]:
-    for cls in tree.classes:
-        if cls.object_id == object_id:
-            return cls
-    for package in tree.packages:
-        ret = find_class(package, object_id)
-        if ret is not None:
-            return ret
+def find_class(trees: List[ModelPackage], object_id: int) -> Optional[ModelClass]:
+    for tree in trees:
+        for cls in tree.classes:
+            if cls.object_id == object_id:
+                return cls
+        for package in tree.packages:
+            ret = find_class([package], object_id)
+            if ret is not None:
+                return ret
     return None
 
 
@@ -67,49 +69,66 @@ class ModelParser:
     def __init__(self, config: Configuration) -> None:
         self.config = config
         self.engine = sqlalchemy.create_engine(config.database_url, echo=False, future=True)
-        # Make base class field
+        # Top level package for current tree
         self.root_package_guid: Optional[str] = None
+        # Top level packages for all trees
+        self.root_package_guids: List[str] = []
+
         base.prepare(autoload_with=self.engine)
         self.session = Session(self.engine)
 
-    def load(self) -> ModelPackage:
-        TPackage = base.classes.t_package
-
-        if self.config.root_package[0] == "{":
-            root = self.session.query(TPackage).filter(TPackage.attr_ea_guid == self.config.root_package).scalar()
-        else:
-            root = self.session.query(TPackage).filter(TPackage.attr_name == self.config.root_package).scalar()
-        if root is None:
-            raise ValueError("Root package not found, check configuration")
-        self.root_package_guid = root.attr_ea_guid
-        whole = self.package_parse(root, root=True)
-        # We can get property types from model, but it somehow lacks information...
-        # TPropertytypes = base.classes.t_propertytypes
-        # p_propertytypes = self.session.query(TPropertytypes).all()
-        # for property in p_propertytypes:
-        #     name = property.attr_property
-        #     if name not in self.config.properties:
-        #         continue
-        #     if name in self.config.properties_map.keys():
-        #         name = self.config.properties_map[name]
-        #     property_type = ModelPropertyType(
-        #         property=name,
-        #         description=property.attr_description,
-        #         notes=property.attr_notes,
-        #     )
-        #     whole.property_types.append(property_type)
-        # So we take them from config
+    def load(self) -> List[ModelPackage]:
+        whole: List[ModelPackage] = []
+        # Create package to define annotations
+        ext = ModelPackage(name="ext", package_id=-1, object_id=-1, guid=str(uuid.uuid4()))
         for name, prop in self.config.annotations.items():
             if prop.idl_default is True:
                 continue
             if prop.idl_name is not None:
                 name = prop.idl_name
             property_type = ModelPropertyType(property=name, notes=prop.notes, property_types=prop.idl_types)
-            whole.property_types.append(property_type)
+            ext.property_types.append(property_type)
+        whole.append(ext)
+        TPackage = base.classes.t_package
+        for root_package in self.config.root_packages:
+            if root_package[0] == "{":
+                root = self.session.query(TPackage).filter(TPackage.attr_ea_guid == root_package).scalar()
+            else:
+                root = self.session.query(TPackage).filter(TPackage.attr_name == root_package).scalar()
+            if root is None:
+                raise ValueError("Root package not found, check configuration")
+            self.root_package_guids.append(root.attr_ea_guid)
+        for root_package in self.config.root_packages:
+            if root_package[0] == "{":
+                root = self.session.query(TPackage).filter(TPackage.attr_ea_guid == root_package).scalar()
+            else:
+                root = self.session.query(TPackage).filter(TPackage.attr_name == root_package).scalar()
+            if root is None:
+                raise ValueError("Root package not found, check configuration")
+            self.root_package_guid = root.attr_ea_guid
+            package = self.package_parse(root, root=True)
+            # We can get property types from model, but it somehow lacks information...
+            # TPropertytypes = base.classes.t_propertytypes
+            # p_propertytypes = self.session.query(TPropertytypes).all()
+            # for property in p_propertytypes:
+            #     name = property.attr_property
+            #     if name not in self.config.properties:
+            #         continue
+            #     if name in self.config.properties_map.keys():
+            #         name = self.config.properties_map[name]
+            #     property_type = ModelPropertyType(
+            #         property=name,
+            #         description=property.attr_description,
+            #         notes=property.attr_notes,
+            #     )
+            #     whole.property_types.append(property_type)
+            # So we take them from config
+
+            whole.append(package)
         self.get_union_connections(whole)
         return whole
 
-    def get_union_connections(self, tree: ModelPackage) -> Any:
+    def get_union_connections(self, trees: List[ModelPackage]) -> Any:
         TConnector = base.classes.t_connector
         t_connectors = self.session.query(TConnector).filter(TConnector.attr_stereotype == "union").all()
         for connector in t_connectors:
@@ -125,10 +144,12 @@ class ModelParser:
                     enum_obj = obj
                 else:
                     log.error("Wrong union connection, expected enum and map or struct, got %s", stereotypes)
-            union_class = find_class(tree, union_obj.attr_object_id)
-            enum_class = find_class(tree, enum_obj.attr_object_id)
+            union_class = find_class(trees, union_obj.attr_object_id)
+            enum_class = find_class(trees, enum_obj.attr_object_id)
             if union_class is None or enum_class is None:
-                log.error("Cannot connect union to enum")
+                log.error(
+                    "Cannot connect union to enum %s %s", connector.attr_end_object_id, connector.attr_start_object_id
+                )
                 continue
             self.check_union_and_enum(union_class, enum_class)
 
@@ -395,11 +416,8 @@ class ModelParser:
             TPackage = base.classes.t_package
             package = self.session.query(TPackage).filter(TPackage.attr_package_id == current_package_id).scalar()
             current_package_id = package.attr_parent_id
-            if self.root_package_guid == package.attr_ea_guid and self.config.root_package_name is not None:
-                namespace.append(self.config.root_package_name)
-            else:
-                namespace.append(package.attr_name)
-            if self.root_package_guid == package.attr_ea_guid:
+            namespace.append(package.attr_name)
+            if package.attr_ea_guid in self.root_package_guids:
                 # We got to our configured top package
                 break
             if current_package_id in [0, None]:
