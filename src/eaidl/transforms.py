@@ -102,18 +102,19 @@ def _filter_stereotypes(root: ModelPackage, current: ModelPackage, config: Confi
                     root,
                     lambda a: a.connector is not None and a.connector.end_object_id == cls.object_id,
                 )
-    for cls in current.classes:
-        # Now we look at remaining attributes, and remove those tagged
-        for attr in cls.attributes[:]:
-            for filter in config.filter_stereotypes:
-                if filter in attr.stereotypes:
-                    log.warning(
-                        "Filtering attribute based on stereotype "
-                        + "::".join(cls.namespace + [cls.name])
-                        + "."
-                        + attr.name
-                    )
-                    cls.attributes.remove(attr)
+    for filter in config.filter_stereotypes:
+        for cls in current.classes:
+            # Now we look at remaining attributes, and remove those tagged
+            for attr in cls.attributes[:]:
+                for filter in config.filter_stereotypes:
+                    if filter in attr.stereotypes:
+                        log.warning(
+                            "Filtering attribute based on stereotype "
+                            + "::".join(cls.namespace + [cls.name])
+                            + "."
+                            + attr.name
+                        )
+                        cls.attributes.remove(attr)
     for pkg in current.packages:
         _filter_stereotypes(root, pkg, config)
 
