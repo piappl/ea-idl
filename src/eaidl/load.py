@@ -143,12 +143,18 @@ class ModelParser:
                 elif self.config.stereotypes.idl_enum in stereotypes:
                     enum_obj = obj
                 else:
-                    log.error("Wrong union connection, expected enum and map or struct, got %s", stereotypes)
+                    log.error(
+                        "Wrong union connection, expected enum and union, got %s, %s",
+                        stereotypes,
+                        obj.attr_name,
+                    )
             union_class = find_class(trees, union_obj.attr_object_id)
             enum_class = find_class(trees, enum_obj.attr_object_id)
             if union_class is None or enum_class is None:
                 log.error(
-                    "Cannot connect union to enum %s %s", connector.attr_end_object_id, connector.attr_start_object_id
+                    "Cannot connect union to enum %s %s",
+                    union_obj.attr_name,
+                    enum_obj.attr_name,
                 )
                 continue
             self.check_union_and_enum(union_class, enum_class)
