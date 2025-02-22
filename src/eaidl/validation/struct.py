@@ -64,3 +64,28 @@ def enum_prefix(config: Configuration, cls: ModelClass):
 def notes(config: Configuration, cls: ModelClass):
     if cls.notes is None or cls.notes.strip() == "":
         raise ValueError(f"Class '{cls.name}' has no description/comment/notes {context(cls)}")
+
+
+@validator
+def enum_attributes(config: Configuration, cls: ModelClass):
+    if config.stereotypes.idl_enum not in cls.stereotypes:
+        # We run this only for enums
+        return
+
+    # Check if enumeration attributes have same type
+    types = set([attr.type for attr in cls.attributes])
+    if len(types) != 1:
+        # We should have a set (which has only unique items) with none
+        raise ValueError(f"Enumeration needs to have no types {types} {context(cls)}")
+    # Check default values (if set) are unique
+    values = []
+    for attr in cls.attributes:
+        default = attr.properties.get("default")
+        if default is None:
+            continue
+        values.append(default.value)
+    count = len(cls.attributes)
+    if len(values) != 0 and count != len(set(values)):
+        raise ValueError(
+            f"We expected to have values that match attributes numbers and all unique {context(cls)} {values}"
+        )

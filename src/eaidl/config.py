@@ -117,6 +117,7 @@ class Configuration(BaseModel):
         "attribute.connector_leads_to_type",
         "attribute.parent_class_id_match",
         "attribute.collection_configured",
+        "struct.enum_attributes",
     ]
     #: List of validation runs that produce warning
     validators_warn: List[str] = [

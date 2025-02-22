@@ -151,8 +151,10 @@ class ModelParser:
             union_class = find_class(trees, union_obj.attr_object_id)
             enum_class = find_class(trees, enum_obj.attr_object_id)
             if union_class is None or enum_class is None:
-                log.error(
-                    "Cannot connect union to enum %s %s",
+                # This is not really an error, if we are in package that is not
+                # used (as we iterate on all connectors...)
+                log.warning(
+                    "Cannot connect union to enum %s %s, if it is a different package this is fine",
                     union_obj.attr_name,
                     enum_obj.attr_name,
                 )
@@ -500,7 +502,16 @@ class ModelParser:
             elif t_attribute.attr_type is not None and t_attribute.attr_default != "":
                 attribute.properties["default"] = ModelAnnotation(value=t_attribute.attr_default, value_type="object")
             else:
-                pass
+                if t_attribute.attr_default == "":
+                    # We have not type, and attribute is empty string. Type should be set to string
+                    # in that case, but its hard to tell - maybe there is just no default value, so
+                    # we don't report error here
+                    pass
+                else:
+                    log.error(
+                        "What is type here? %s %s %s", attribute.name, t_attribute.attr_type, t_attribute.attr_default
+                    )
+
                 # We don't set anything here
                 # attribute.properties["value"] = ModelAnnotation(value=None, value_type="none")
 
