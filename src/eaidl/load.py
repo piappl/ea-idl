@@ -153,7 +153,7 @@ class ModelParser:
             if union_class is None or enum_class is None:
                 # This is not really an error, if we are in package that is not
                 # used (as we iterate on all connectors...)
-                log.warning(
+                log.error(
                     "Cannot connect union to enum %s %s, if it is a different package this is fine",
                     union_obj.attr_name,
                     enum_obj.attr_name,
@@ -332,7 +332,7 @@ class ModelParser:
         edges = []
         while len(packages) > 0:
             # FIXME, if there is something wrong we might infinite loop here with while.
-            # print([package.name for package in packages])
+            log.debug(str([package.name for package in packages]))
             current_package: ModelPackage = packages.popleft()
             ready = True
             for package in packages:
@@ -523,6 +523,7 @@ class ModelParser:
             if connection.connector_type != "Association":
                 continue
             if connection.destination.role != attribute.name:
+                # This ignores general assoctiations between classes.
                 continue
             # We can gent object from database, but we probably prefer to find it in our structure
             # right now it might not be there yet... but still we can find right connection
@@ -591,10 +592,15 @@ class ModelParser:
         :param model_enum: model for enumeration
         :raises ValueError: if something is not ok im model
         """
-        assert self.config.stereotypes.idl_union in model_union.stereotypes
-        assert self.config.stereotypes.idl_enum in model_enum.stereotypes
-        assert len(model_enum.attributes) >= len(model_union.attributes)
+        try:
+            assert self.config.stereotypes.idl_union in model_union.stereotypes
+            assert self.config.stereotypes.idl_enum in model_enum.stereotypes
+            assert len(model_enum.attributes) >= len(model_union.attributes)
+        except AssertionError as error:
+            descr = f"Wrong attributes in {model_union.name} or {model_enum.name}"
+            raise ValueError(descr) from error
         model_union.union_enum = "::".join(model_enum.namespace + [model_enum.name])
+
         for union_attr in model_union.attributes:
             assert union_attr.name is not None
             union_attr_name = enum_name_from_union_attr(model_enum.name, union_attr.name)
