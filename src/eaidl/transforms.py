@@ -115,6 +115,10 @@ def _filter_stereotypes(root: ModelPackage, current: ModelPackage, config: Confi
                             + attr.name
                         )
                         cls.attributes.remove(attr)
+    for pkg in current.packages[:]:
+        for filter in config.filter_stereotypes:
+            if filter in pkg.stereotypes:
+                current.packages.remove(pkg)
     for pkg in current.packages:
         _filter_stereotypes(root, pkg, config)
 
