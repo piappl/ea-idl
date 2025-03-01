@@ -32,6 +32,17 @@ def connector_leads_to_type(config: Configuration, attribute: ModelAttribute, cl
 
 
 @validator
+def optional_stereotype(config: Configuration, attribute: ModelAttribute, cls: ModelClass):
+    """Check if optional attribute has proper stereotype."""
+    if attribute.lower_bound in ["0"]:
+        if "optional" not in attribute.stereotypes:
+            raise ValueError(f"No <<optional>> stereotype found for optional attribute {context(attribute, cls)}")
+    if "optional" in attribute.stereotypes:
+        if attribute.lower_bound not in ["0"]:
+            raise ValueError(f"Non optional attribute has <<optional>> stereotype {context(attribute, cls)}")
+
+
+@validator
 def parent_class_id_match(config: Configuration, attribute: ModelAttribute, cls: ModelClass):
     if cls.object_id != attribute.attribute_id:
         raise ValueError(

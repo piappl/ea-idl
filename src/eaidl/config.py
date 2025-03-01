@@ -115,6 +115,7 @@ class Configuration(BaseModel):
     #: List of validation runs that produce error
     validators_error: List[str] = [
         "attribute.connector_leads_to_type",
+        "attribute.optional_stereotype",
         "attribute.parent_class_id_match",
         "attribute.collection_configured",
         "struct.enum_attributes",
