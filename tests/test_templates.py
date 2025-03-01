@@ -57,6 +57,20 @@ enum ClassName {
     @value(0) one,
     @value(1) two
 };"""
+ENUM_ATTR_NOTES = """/**
+    An enum.
+*/
+enum ClassName {
+    /**
+        An attribute 1.
+    */
+    @value(0) one,
+    /**
+        An attribute 2.
+        nice.
+    */
+    @value(1) two
+};"""
 STRUCT_DECLARATION = "struct ClassName;"
 STRUCT = """struct ClassName {
     string one;
@@ -69,6 +83,20 @@ struct ClassName {
     string one;
     int two;
 };"""
+STRUCT_ATTR_NOTES = """/**
+    A struct.
+*/
+struct ClassName {
+    /**
+        An attribute 1.
+    */
+    string one;
+    /**
+        An attribute 2.
+        nice.
+    */
+    int two;
+};"""
 UNION_DECLARATION = "union ClassName;"
 UNION = """union ClassName switch (int8) {
 };"""
@@ -76,6 +104,22 @@ UNION_ENUM = """union ClassName switch (mod::name::UnionTypeEnum) {
     case UnionTypeEnum_ONE:
         mode::name::One a_one;
     case UnionTypeEnum_STRING:
+        string a_string;
+};"""
+UNION_ENUM_NOTES = """/**
+    A struct.
+*/
+union ClassName switch (mod::name::UnionTypeEnum) {
+    case UnionTypeEnum_ONE:
+        /**
+            An attribute 1.
+        */
+        mode::name::One a_one;
+    case UnionTypeEnum_STRING:
+        /**
+            An attribute 2.
+            nice.
+        */
         string a_string;
 };"""
 
@@ -101,6 +145,7 @@ def test_gen_union() -> None:
     ret = idl.module.gen_union_declaration(cls)
     assert ret == UNION_DECLARATION
     ret = idl.module.gen_union_definition(cls)
+    print(ret)
     assert ret == UNION
     cls.union_enum = "mod::name::UnionTypeEnum"
     cls.attributes = [
@@ -113,7 +158,14 @@ def test_gen_union() -> None:
         m_attr(name="a_string", type="string", union_key="UnionTypeEnum_STRING"),
     ]
     ret = idl.module.gen_union_definition(cls)
+    print(ret)
     assert ret == UNION_ENUM
+    cls.notes = "A struct."
+    cls.attributes[0].notes = "An attribute 1."
+    cls.attributes[1].notes = "An attribute 2.\nnice."
+    ret = idl.module.gen_union_definition(cls)
+    print(ret)
+    assert ret == UNION_ENUM_NOTES
 
 
 def test_gen_union_class() -> None:
@@ -152,6 +204,10 @@ def test_gen_struct() -> None:
     assert ret == STRUCT_DECLARATION
     ret = idl.module.gen_struct_definition(mod, cls)
     assert ret == STRUCT_NOTES
+    cls.attributes[0].notes = "An attribute 1."
+    cls.attributes[1].notes = "An attribute 2.\nnice."
+    ret = idl.module.gen_struct_definition(mod, cls)
+    assert ret == STRUCT_ATTR_NOTES
 
 
 def test_gen_struct_class() -> None:
@@ -216,6 +272,11 @@ def test_gen_enum() -> None:
     mod.classes = [cls]
     ret = idl.module.gen_enum(cls)
     assert ret == ENUM
+    cls.notes = "An enum."
+    cls.attributes[0].notes = "An attribute 1."
+    cls.attributes[1].notes = "An attribute 2.\nnice."
+    ret = idl.module.gen_enum(cls)
+    assert ret == ENUM_ATTR_NOTES
 
 
 def test_gen_enum_class() -> None:

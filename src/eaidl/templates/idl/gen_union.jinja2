@@ -1,5 +1,12 @@
 {% from "idl/gen_notes.jinja2" import gen_notes %}
 {% from "idl/gen_annotations.jinja2" import gen_annotations %}
+{% macro gen_union_attr(cls) %}
+{{ "::".join(cls.namespace + [cls.type]) }} {{cls.name}};
+{% endmacro %}
+{% macro gen_union_attr_notes(cls) %}
+{{ gen_notes(cls) | trim }}
+{{ gen_union_attr(cls) | trim }}
+{% endmacro %}
 {% macro gen_union_declaration(cls) %}
 union {{ cls.name }};
 {%- endmacro %}
@@ -17,7 +24,7 @@ union {{ cls.name }} switch (int8) {
 {% else %}
     case {{loop.index}}:
 {% endif %}
-        {{ "::".join(item.namespace + [item.type])}} {{item.name}};
+{{ gen_union_attr_notes(item) | trim | indent(8, true) }}
 {% endfor %}
 };
 {%- endmacro %}
