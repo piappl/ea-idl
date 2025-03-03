@@ -674,8 +674,11 @@ class ModelParser:
                     val = try_cast(t_property.attr_value, item)
                     if val is not None:
                         break
-                if prop_config.idl_name is not None:
-                    model_class.properties[prop_config.idl_name] = self.create_annotation(val)
+                if prop_config.idl_default:
+                    if prop_config.idl_name is not None:
+                        model_class.properties[prop_config.idl_name] = self.create_annotation(val)
+                    else:
+                        model_class.properties[t_property.attr_property] = self.create_annotation(val)
                 else:
                     model_class.properties[f"ext::{t_property.attr_property}"] = self.create_annotation(val)
             else:
@@ -692,8 +695,11 @@ class ModelParser:
                     value = to_bool(prop.value)
                 if value is False:
                     pass
-                elif prop_config.idl_name is not None:
-                    model_class.properties[prop_config.idl_name] = self.create_annotation(value)
+                elif prop_config.idl_default:
+                    if prop_config.idl_name is not None:
+                        model_class.properties[prop_config.idl_name] = self.create_annotation(val)
+                    else:
+                        model_class.properties[t_property.attr_property] = self.create_annotation(val)
                 else:
                     model_class.properties[f"ext::{t_property.attr_property}"] = self.create_annotation(value)
             else:
