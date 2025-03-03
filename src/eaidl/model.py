@@ -170,3 +170,4 @@ class ModelAttribute(LocalBaseModel):
     connector: Optional[ModelConnection] = None
     properties: Dict[str, ModelAnnotation] = {}
     union_key: Optional[str] = None
+    union_namespace: Optional[str] = None

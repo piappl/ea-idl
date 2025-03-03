@@ -20,7 +20,7 @@ union {{ cls.name }} switch (int8) {
 {% endif %}
 {% for item in cls.attributes %}
 {% if item.union_key %}
-    case {{item.union_key}}:
+    case {{ "::".join(item.union_namespace + [item.union_key]) }}:
 {% else %}
     case {{loop.index}}:
 {% endif %}

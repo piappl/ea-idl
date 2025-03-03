@@ -613,6 +613,7 @@ class ModelParser:
                 error = f"Not found union member {union_attr_name}"
                 raise ValueError(error)
             union_attr.union_key = enum_attr.name
+            union_attr.union_namespace = model_enum.namespace
 
     def class_parse(self, parent_package: Optional[ModelPackage], t_object) -> ModelClass:
         model_class = ModelClass(
