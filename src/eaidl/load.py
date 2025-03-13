@@ -644,7 +644,12 @@ class ModelParser:
 
         # Add attributes
         TAttribute = base.classes.t_attribute
-        t_attributes = self.session.query(TAttribute).filter(TAttribute.attr_object_id == model_class.object_id).all()
+        t_attributes = (
+            self.session.query(TAttribute)
+            .filter(TAttribute.attr_object_id == model_class.object_id)
+            .order_by(TAttribute.attr_pos)
+            .all()
+        )
         for t_attribute in t_attributes:
             model_class.attributes.append(self.attribute_parse(parent_package, model_class, t_attribute))
 
