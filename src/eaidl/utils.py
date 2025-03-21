@@ -102,7 +102,7 @@ def is_lower_snake_case(val: str) -> bool:
 
 
 def enum_name_from_union_attr(enum_name: str, attr_type: str) -> str:
-    attr_conv = "_".join([part.upper() for part in attr_type.split("_")][1:])
+    attr_conv = "_".join([part.upper() for part in attr_type.split("_")])
     return f"{enum_name}_{attr_conv}"
 
 
