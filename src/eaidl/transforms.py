@@ -138,6 +138,8 @@ def filter_stereotypes(
 
 def _filter_empty_unions(roots: List[ModelPackage], current: ModelPackage, config: Configuration) -> None:
     for cls in current.classes[:]:
+        if config.keep_union_stereotype in cls.stereotypes:
+            continue
         if cls.is_union and (cls.attributes is None or len(cls.attributes) == 0):
             # This is empty union
             for root in roots:

@@ -65,6 +65,8 @@ class Configuration(BaseModel):
     enable_maps: bool = True
     #: List of stereotypes to filter out
     filter_stereotypes: Optional[List[str]] = None
+    #: Stereotype used to keep unions when we filter_stereotypes
+    keep_union_stereotype: Optional[str] = "keep"
     #: List of packages to ignore
     ignore_packages: List[str] = []
     #: List of supported primitive types. For those types we don't look for connection in attribute.
@@ -123,7 +125,7 @@ class Configuration(BaseModel):
     #: List of validation runs that produce warning
     validators_warn: List[str] = [
         "attribute.name_snake_convention",
-        "attribute.notes",
+        # "attribute.notes",
         "struct.name_camel_convention",
         "struct.notes",
         "package.stereotypes",

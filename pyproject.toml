@@ -15,6 +15,8 @@ dependencies = [
 
 [project.scripts]
 eaidl = "eaidl.cli:run"
+eaidl_change = "eaidl.cli:change"
+eaidl_cli = "eaidl.cli:cli"
 
 [dependency-groups]
 dev = [
