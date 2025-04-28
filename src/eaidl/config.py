@@ -69,6 +69,10 @@ class Configuration(BaseModel):
     keep_union_stereotype: Optional[str] = "keep"
     #: List of packages to ignore
     ignore_packages: List[str] = []
+    #: Name of minimum amount of items annotation
+    min_items: str = "ext::minItems"
+    #: Name of maximum amount of items annotation
+    max_items: str = "ext::maxItems"
     #: List of supported primitive types. For those types we don't look for connection in attribute.
     primitive_types: List[str] = [
         "short",

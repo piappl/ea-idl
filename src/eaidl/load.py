@@ -476,12 +476,14 @@ class ModelParser:
                 attribute.lower_bound_number = int(attribute.lower_bound)
                 if attribute.lower_bound_number != 0:
                     # When == 0 it will just be @optional
-                    attribute.properties["minItems"] = ModelAnnotation(
+                    attribute.properties[self.config.min_items] = ModelAnnotation(
                         value=attribute.lower_bound_number, value_type="int"
                     )
             if attribute.upper_bound is not None and attribute.upper_bound != "*":
                 attribute.upper_bound_number = int(attribute.upper_bound)
-                attribute.properties["maxItems"] = ModelAnnotation(value=attribute.upper_bound_number, value_type="int")
+                attribute.properties[self.config.max_items] = ModelAnnotation(
+                    value=attribute.upper_bound_number, value_type="int"
+                )
         attribute.stereotypes = self.get_stereotypes(attribute.guid)
         attribute.is_ordered = to_bool(t_attribute.attr_isordered)
         attribute.is_static = to_bool(t_attribute.attr_isstatic)
