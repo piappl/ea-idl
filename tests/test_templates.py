@@ -29,6 +29,7 @@ def m_attr(
     notes: Optional[str] = None,
     namespace: List[str] = [],
     union_key: Optional[str] = None,
+    union_namespace: Optional[List[str]] = None,
 ) -> ModelAttribute:
     return ModelAttribute(
         name=name,
@@ -38,6 +39,7 @@ def m_attr(
         guid=str(uuid.uuid4),
         notes=notes,
         union_key=union_key,
+        union_namespace=union_namespace,
     )
 
 
@@ -102,9 +104,9 @@ UNION = """union ClassName switch (int8) {
 };"""
 UNION_ENUM = """union ClassName switch (mod::name::UnionTypeEnum) {
     case UnionTypeEnum_ONE:
-        mode::name::One a_one;
+        mode::name::One one;
     case UnionTypeEnum_STRING:
-        string a_string;
+        string string;
 };"""
 UNION_ENUM_NOTES = """/**
     A struct.
@@ -114,13 +116,13 @@ union ClassName switch (mod::name::UnionTypeEnum) {
         /**
             An attribute 1.
         */
-        mode::name::One a_one;
+        mode::name::One one;
     case UnionTypeEnum_STRING:
         /**
             An attribute 2.
             nice.
         */
-        string a_string;
+        string string;
 };"""
 
 
@@ -150,12 +152,12 @@ def test_gen_union() -> None:
     cls.union_enum = "mod::name::UnionTypeEnum"
     cls.attributes = [
         m_attr(
-            name="a_one",
+            name="one",
             namespace=["mode", "name"],
             type="One",
             union_key="UnionTypeEnum_ONE",
         ),
-        m_attr(name="a_string", type="string", union_key="UnionTypeEnum_STRING"),
+        m_attr(name="string", type="string", union_key="UnionTypeEnum_STRING"),
     ]
     ret = idl.module.gen_union_definition(cls)
     print(ret)
@@ -176,12 +178,12 @@ def test_gen_union_class() -> None:
     cls.union_enum = "mod::name::UnionTypeEnum"
     cls.attributes = [
         m_attr(
-            name="a_one",
+            name="one",
             namespace=["mode", "name"],
             type="One",
             union_key="UnionTypeEnum_ONE",
         ),
-        m_attr(name="a_string", type="string", union_key="UnionTypeEnum_STRING"),
+        m_attr(name="string", type="string", union_key="UnionTypeEnum_STRING"),
     ]
     mod = m_module()
     mod.classes = [cls]

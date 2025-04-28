@@ -34,10 +34,10 @@ module core {
             @value(0) MeasurementTypeEnum_STRING
         };
         union Measurement switch (core::data::MeasurementTypeEnum) {
-            case MeasurementTypeEnum_TEMPERATURE_MEASUREMENT:
-                core::data::types::TemperatureMeasurement a_temperature_measurement;
-            case MeasurementTypeEnum_STRING:
-                string a_string;
+            case core::data::MeasurementTypeEnum_TEMPERATURE_MEASUREMENT:
+                TemperatureMeasurement temperature_measurement;
+            case core::data::MeasurementTypeEnum_STRING:
+                string string;
         };
     }; /* data */
     module message {
@@ -64,8 +64,8 @@ module core {
         };
 
         struct DataMessage: core::message::Message {
-            @minItems(1)
-            @maxItems(5)
+            @ext::minItems(1)
+            @ext::maxItems(5)
             sequence<core::data::Measurement, 5> body;
             /**
                 This is a sequence

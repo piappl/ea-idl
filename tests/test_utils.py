@@ -85,7 +85,7 @@ def test_enum_name_from_union() -> None:
     # We need enum name (MeasurementTypeEnum)
     # From that enumeration name is MeasurementTypeEnum_TEMPERATURE_MEASUREMENT
     assert "MeasurementTypeEnum_TEMPERATURE_MEASUREMENT" == enum_name_from_union_attr(
-        enum_name="MeasurementTypeEnum", attr_type="a_temperature_measurement"
+        enum_name="MeasurementTypeEnum", attr_type="temperature_measurement"
     )
 
 
