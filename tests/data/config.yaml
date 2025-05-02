@@ -1,1 +1,4 @@
-database_url: "sqlite:///:memory:"
+database_url: "sqlite:///tests/data/nafv4.qea"
+root_packages: ["{753A4DFC-7876-4b00-BB5A-6274AD3817C3}"]
+template: "idl_just_defs.jinja2"
+filter_stereotypes: ["lobw"]

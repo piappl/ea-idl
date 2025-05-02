@@ -14,13 +14,13 @@ import pytest
 def test_load_json() -> None:
     path = Path(__file__).parent / "data" / "config.json"
     config = load_config(path)
-    assert config.database_url == "sqlite:///:memory:"
+    assert config.database_url == "sqlite:///tests/data/nafv4.qea"
 
 
 def test_load_yaml() -> None:
     path = Path(__file__).parent / "data" / "config.yaml"
     config = load_config(path)
-    assert config.database_url == "sqlite:///:memory:"
+    assert config.database_url == "sqlite:///tests/data/nafv4.qea"
 
 
 def test_load_file_does_not_exist() -> None:
