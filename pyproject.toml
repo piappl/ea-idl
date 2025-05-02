@@ -37,3 +37,9 @@ exclude = [
 filterwarnings = [
     "ignore::sqlalchemy.exc.SAWarning"
 ]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"eaidl.templates.idl" = ["*.jinja2"]
