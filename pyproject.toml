@@ -18,7 +18,7 @@ eaidl = "eaidl.cli:run"
 eaidl_change = "eaidl.cli:change"
 eaidl_cli = "eaidl.cli:cli"
 
-[dependency-groups]
+[project.optional-dependencies]
 dev = [
     "pre-commit>=4.0.1",
     "pytest>=8.3.4",
