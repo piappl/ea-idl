@@ -125,6 +125,9 @@ class Configuration(BaseModel):
         "attribute.parent_class_id_match",
         "attribute.collection_configured",
         "struct.enum_attributes",
+        "struct.is_experimental",
+        "package.is_experimental",
+        "attribute.is_experimental",
     ]
     #: List of validation runs that produce warning
     validators_warn: List[str] = [

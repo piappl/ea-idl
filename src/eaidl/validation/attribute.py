@@ -32,6 +32,12 @@ def connector_leads_to_type(config: Configuration, attribute: ModelAttribute, cl
 
 
 @validator
+def is_experimental(config: Configuration, attribute: ModelAttribute, cls: ModelClass):
+    if "experimental" in attribute.stereotypes:
+        raise ValueError(f"Attribute experimental {context(attribute, cls)}")
+
+
+@validator
 def optional_stereotype(config: Configuration, attribute: ModelAttribute, cls: ModelClass):
     """Check if optional attribute has proper stereotype."""
     if attribute.lower_bound in ["0"]:

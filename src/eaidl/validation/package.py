@@ -23,6 +23,12 @@ def stereotypes(config: Configuration, package: ModelPackage):
 
 
 @validator
+def is_experimental(config: Configuration, package: ModelPackage):
+    if "experimental" in package.stereotypes:
+        raise ValueError(f"Package {package.name} is experimental {context(package)}")
+
+
+@validator
 def notes(config: Configuration, package: ModelPackage):
     if package.notes is None or package.notes.strip() == "":
         raise ValueError(f"Package {package.name} has no description/comment/notes {context(package)}")

@@ -21,6 +21,12 @@ def name_camel_convention(config: Configuration, cls: ModelClass):
 
 
 @validator
+def is_experimental(config: Configuration, cls: ModelClass):
+    if "experimental" in cls.stereotypes:
+        raise ValueError(f"Class experimental {context(cls)}")
+
+
+@validator
 def stereotypes(config: Configuration, cls: ModelClass):
     # Check if we have one of proper stereotypes on all P7
     if config.stereotypes.main_class in cls.stereotypes:
@@ -57,7 +63,7 @@ def enum_prefix(config: Configuration, cls: ModelClass):
             if attribute.name is None:
                 raise ValueError(f"No name in enumeration {cls.name} attribute {context(cls)}")
             if not attribute.name.startswith(cls.name):
-                raise ValueError(f"No prefix in enumeration {cls.name} attribute {context(cls)}")
+                raise ValueError(f"No prefix in enumeration {attribute.name} {cls.name} attribute {context(cls)}")
 
 
 @validator
