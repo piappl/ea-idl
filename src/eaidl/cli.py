@@ -17,7 +17,16 @@ def cli():
 @click.command()
 @click.option("--config", default="config.yaml", help="Configuration file.")
 @click.option("--debug", default=False, is_flag=True, help="Enable debug.")
-def run(config, debug):
+@click.option("--version", is_flag=True, help="Show the application's version.")
+def run(config, debug, version):
+    if version:
+        import toml
+
+        with open("pyproject.toml", "r") as f:
+            data = toml.load(f)
+        click.echo(data["project"]["version"])
+        return
+
     log_handler = logging.StreamHandler()
     log_handler.setFormatter(LogFormatter())
     logging.basicConfig(level=logging.DEBUG if debug else logging.WARNING, handlers=[log_handler])
@@ -32,7 +41,16 @@ def run(config, debug):
 @click.command()
 @click.option("--config", default="config.yaml", help="Configuration file.")
 @click.option("--debug", default=False, is_flag=True, help="Enable debug.")
-def change(config, debug):
+@click.option("--version", is_flag=True, help="Show the application's version.")
+def change(config, debug, version):
+    if version:
+        import toml
+
+        with open("pyproject.toml", "r") as f:
+            data = toml.load(f)
+        click.echo(data["project"]["version"])
+        return
+
     log_handler = logging.StreamHandler()
     log_handler.setFormatter(LogFormatter())
     logging.basicConfig(level=logging.DEBUG if debug else logging.WARNING, handlers=[log_handler])
