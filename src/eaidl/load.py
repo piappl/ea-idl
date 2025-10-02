@@ -28,6 +28,7 @@ from eaidl.model import (
     ModelCustomProperty,
 )
 from eaidl import validation
+from eaidl.sorting import topological_sort_classes, topological_sort_packages, CircularDependencyError
 
 log = logging.getLogger(__name__)
 
@@ -312,56 +313,24 @@ class ModelParser:
                 log.error("Not parsing %s", child_t_object.attr_object_type)
                 # inspect(child_t_object)
         log.debug("Sorting classes %s", parent_package.name)
-        # Now we need to sort stuff. Do classes, those have depends_on list, which
-        # means those need to go first.
-        while len(classes) > 0:
-            # FIXME, if there is something wrong we might infinite loop here with while.
-            c2: ModelClass = classes.popleft()
-            ready = True
-            for obj in classes:
-                if obj.object_id in c2.depends_on:
-                    # We are not ready for that one, put it back on another end
-                    classes.append(c2)
-                    ready = False
-                    break
-            if ready:
-                parent_package.classes.append(c2)
+        try:
+            parent_package.classes = topological_sort_classes(list(classes))
+        except CircularDependencyError as e:
+            log.error("Circular dependency detected in classes for package %s: %s", parent_package.name, e)
+            # Depending on desired behavior, you might want to raise, return, or handle differently
+            raise e
         log.debug("Sorting classes %s done", parent_package.name)
 
         log.debug("Sorting package %s", parent_package.name)
-        edges = []
-        while len(packages) > 0:
-            # FIXME, if there is something wrong we might infinite loop here with while.
-            log.debug(str([package.name for package in packages]))
-            current_package: ModelPackage = packages.popleft()
-            ready = True
-            for package in packages:
-                for dependant in self.get_all_depends_on(current_package):
-                    if dependant in self.get_all_class_id(package):
-                        # We are not ready for that one, put it back on another end
-                        packages.append(current_package)
-                        if (current_package.name, package.name) not in edges and (
-                            package.name,
-                            current_package.name,
-                        ) not in edges:
-                            # This is new edge
-                            edges.append((current_package.name, package.name))
-                        elif (package.name, current_package.name) in edges:
-                            log.error(
-                                "Got circular dependency in packages %s and %s",
-                                package.name,
-                                current_package.name,
-                            )
-                            return
-
-                        ready = False
-                        break
-                if not ready:
-                    break
-            if ready:
-                parent_package.packages.append(current_package)
+        try:
+            parent_package.packages = topological_sort_packages(
+                list(packages), self.get_all_depends_on, self.get_all_class_id
+            )
+        except CircularDependencyError as e:
+            log.error("Circular dependency detected in packages for package %s: %s", parent_package.name, e)
+            # Depending on desired behavior, you might want to raise, return, or handle differently
+            raise e
         log.debug("Sorting packages of %s done", parent_package.name)
-        # print([package.name for package in parent_package.packages])
 
         # Do some statictics that templates can use later
         for cls in parent_package.classes:

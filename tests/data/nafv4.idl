@@ -44,9 +44,9 @@ module core {
             @value(0) MessageTypeEnum_MEASUREMENT,
             @value(1) MessageTypeEnum_EMPTY
         };
-        typedef string OptionValue;
         struct MessageHeader;
         struct Message;
+        typedef string OptionValue;
 
         struct DataMessage;
     }; /* message */
@@ -63,7 +63,6 @@ module core {
     module message {
 
 
-
         /**
             Message header
         */
@@ -76,6 +75,7 @@ module core {
         struct Message {
             core::message::MessageHeader header;
         };
+
 
         struct DataMessage: core::message::Message {
             @ext::minItems(1)
