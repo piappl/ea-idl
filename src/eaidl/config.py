@@ -91,6 +91,8 @@ class Configuration(BaseModel):
         "string",
         "wstring",
     ]
+    #: If we want to output stereotype as annotation
+    annotations_from_stereotypes: List[str] = ["interface"]
     annotations: Dict[str, AnnotationType] = {
         "maximum": AnnotationType(
             idl_name="max",
@@ -98,12 +100,14 @@ class Configuration(BaseModel):
         ),
         "exclusiveMaximum": AnnotationType(idl_default=False, idl_types=["any value;"]),
         "minimum": AnnotationType(idl_name="min", idl_default=True),
+        "optional": AnnotationType(idl_name="optional", idl_default=True),
         "exclusiveMinimum": AnnotationType(idl_default=False, idl_types=["any value;"]),
         "maxItems": AnnotationType(idl_default=False, idl_types=["unsigned long value;"]),
         "minItems": AnnotationType(idl_default=False, idl_types=["unsigned long value;"]),
         "unit": AnnotationType(
             idl_default=True,
         ),
+        "interface": AnnotationType(idl_name="interface", idl_default=False),
         "pattern": AnnotationType(
             idl_default=False,
             idl_types=["string value;"],

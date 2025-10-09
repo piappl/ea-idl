@@ -431,11 +431,14 @@ class ModelParser:
         )
         # Note that we cannot fill namespace here - this is namespace for class that
         # has this attribute, we need to fill with namespace for type of this attribute
+
         attribute.namespace = []
-        if t_attribute.attr_lowerbound == "0":
-            attribute.is_optional = True
-        else:
-            attribute.is_optional = False
+        attribute.stereotypes = self.get_stereotypes(attribute.guid)
+        attribute.is_optional = "optional" in attribute.stereotypes
+        # if t_attribute.attr_lowerbound == "0":
+        #     attribute.is_optional = True
+        # else:
+        #     attribute.is_optional = False
 
         attribute.lower_bound = t_attribute.attr_lowerbound
         attribute.upper_bound = t_attribute.attr_upperbound
@@ -453,7 +456,7 @@ class ModelParser:
                 attribute.properties[self.config.max_items] = ModelAnnotation(
                     value=attribute.upper_bound_number, value_type="int"
                 )
-        attribute.stereotypes = self.get_stereotypes(attribute.guid)
+
         attribute.is_ordered = to_bool(t_attribute.attr_isordered)
         attribute.is_static = to_bool(t_attribute.attr_isstatic)
         attribute.notes = t_attribute.attr_notes
@@ -662,6 +665,17 @@ class ModelParser:
                 if t_property.attr_property not in ["URI", "isEncapsulated"]:
                     # Those are set by EA on bunch of things, so lets skip the warning
                     log.warning("Property %s is not configured", t_property.attr_property)
+        for stereotype in model_class.stereotypes:
+            if stereotype in self.config.annotations_from_stereotypes and stereotype in self.config.annotations.keys():
+                prop_config = self.config.annotations[stereotype]
+                val = None
+                if prop_config.idl_default:
+                    if prop_config.idl_name is not None:
+                        model_class.properties[stereotype] = self.create_annotation(val)
+                    else:
+                        model_class.properties[stereotype] = self.create_annotation(val)
+                else:
+                    model_class.properties[f"ext::{stereotype}"] = self.create_annotation(val)
         for prop in self.get_custom_properties(t_object.attr_ea_guid):
             if prop.name in self.config.annotations.keys():
                 prop_config = self.config.annotations[prop.name]
