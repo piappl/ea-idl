@@ -33,6 +33,7 @@ def m_attr(
 ) -> ModelAttribute:
     return ModelAttribute(
         name=name,
+        alias=name,
         attribute_id=attribute_id,
         namespace=namespace,
         type=type,

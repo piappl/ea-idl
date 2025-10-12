@@ -7,7 +7,7 @@ from eaidl.model import ModelAttribute, ModelClass
 
 
 def m_attr(name: str = "attr", attribute_id: int = 0, type: Optional[str] = None) -> ModelAttribute:
-    return ModelAttribute(name=name, attribute_id=attribute_id, type=type, guid=str(uuid.uuid4))
+    return ModelAttribute(name=name, alias=name, attribute_id=attribute_id, type=type, guid=str(uuid.uuid4))
 
 
 def m_class(name: str = "cls", object_id: int = 0) -> ModelClass:

@@ -143,7 +143,10 @@ class ModelPackage(LocalBaseModel):
 
 
 class ModelAttribute(LocalBaseModel):
+    #: Name of attribute, as it will be in output
     name: str
+    #: Name of attribute, as it was in model
+    alias: str
     type: Optional[str] = None
     attribute_id: int
     guid: str

@@ -31,18 +31,18 @@ module core {
             /**
                 ISO timestamp
             */
-            @ext::pattern(^((?:(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2}(?:\.\d+)?))(Z|[\+-]\d{2}:\d{2}))$)
+            @ext::pattern("^((?:(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2}(?:\.\d+)?))(Z|[\+-]\d{2}:\d{2}))$")
             typedef string Time;
             @min(-40)
             @ext::exclusiveMaximum(100)
             typedef float TemperatureMeasurement;
             typedef string Name;
-            @ext::pattern([a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12})
+            @ext::pattern("[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}")
             typedef string Identifier;
         }; /* types */
         enum MeasurementTypeEnum {
             @value(1) MeasurementTypeEnum_TEMPERATURE_MEASUREMENT,
-            @value(0) MeasurementTypeEnum_STRING
+            @value(0) MeasurementTypeEnum_PRIMITIVE
         };
         enum IdentifierOrNameTypeEnum {
             @value(3) IdentifierOrNameTypeEnum_NAME,
@@ -80,7 +80,7 @@ module core {
         };
         struct Store {
             core::data::types::Identifier one;
-            sequence<core::data::types::Identifier> sequence;
+            sequence<core::data::types::Identifier> _sequence;
             @optional
             core::data::types::Identifier optional_one;
             @ext::maxItems(5)

@@ -42,6 +42,7 @@ def test_convert_map_stereotype() -> None:
     mod.classes = [cls_3, cls_2, cls_1]
     map_attr = ModelAttribute(
         name="mapped",
+        alias="mapped",
         parent=cls_1,
         type="ClassMap",
         guid=str(uuid.uuid4()),
@@ -58,6 +59,7 @@ def test_convert_map_stereotype() -> None:
     cls_2.attributes.append(
         ModelAttribute(
             name="key",
+            alias="key",
             parent=cls_2,
             type="string",
             guid=str(uuid.uuid4()),
@@ -68,6 +70,7 @@ def test_convert_map_stereotype() -> None:
     cls_2.attributes.append(
         ModelAttribute(
             name="value",
+            alias="value",
             parent=cls_2,
             type="ClassTypedef",
             guid=str(uuid.uuid4()),
@@ -115,6 +118,7 @@ def test_filter_stereotypes() -> None:
     cls_1.attributes.append(
         ModelAttribute(
             name="attr_1",
+            alias="attr_1",
             parent=cls_1,
             type="string",
             guid=str(uuid.uuid4()),
@@ -126,6 +130,7 @@ def test_filter_stereotypes() -> None:
     cls_1.attributes.append(
         ModelAttribute(
             name="attr_2",
+            alias="attr_2",
             parent=cls_1,
             type="ClassTypedef",
             guid=str(uuid.uuid4()),
@@ -164,6 +169,7 @@ def build_union_structure(config: Configuration) -> ModelPackage:
         attributes=[
             ModelAttribute(
                 name="attr_1",
+                alias="attr_1",
                 type="ClassUnion",
                 attribute_id=22,
                 guid=str(uuid.uuid4()),
@@ -186,6 +192,7 @@ def build_union_structure(config: Configuration) -> ModelPackage:
         attributes=[
             ModelAttribute(
                 name="attr_1",
+                alias="attr_1",
                 type="ClassUnion",
                 attribute_id=23,
                 guid=str(uuid.uuid4()),
@@ -208,6 +215,7 @@ def build_union_structure(config: Configuration) -> ModelPackage:
         attributes=[
             ModelAttribute(
                 name="attr_1",
+                alias="attr_1",
                 type="ClassUnion",
                 attribute_id=24,
                 guid=str(uuid.uuid4()),
@@ -264,7 +272,9 @@ def test_filter_one_union_member() -> None:
     un = find_class([mod], lambda c: c.object_id == 1)
     assert un is not None
     assert un.attributes is not None
-    un.attributes = [ModelAttribute(name="a_member", type="string", attribute_id=123, guid=str(uuid.uuid4()))]
+    un.attributes = [
+        ModelAttribute(name="member", alias="member", type="string", attribute_id=123, guid=str(uuid.uuid4()))
+    ]
     print(render(config, [mod]))
     filter_empty_unions([mod], config)
     assert "ClassUnion" not in render(config, [mod])

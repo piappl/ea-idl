@@ -14,6 +14,7 @@ import logging
 import re
 import uuid
 import copy
+from eaidl.validation.base import RESERVED_NAMES
 from collections import deque
 from eaidl.model import (
     ModelAnnotation,
@@ -424,6 +425,7 @@ class ModelParser:
     ) -> ModelAttribute:
         attribute = ModelAttribute(
             name=t_attribute.attr_name,
+            alias=t_attribute.attr_name,
             type=t_attribute.attr_type,
             guid=t_attribute.attr_ea_guid,
             attribute_id=t_attribute.attr_object_id,
@@ -431,6 +433,9 @@ class ModelParser:
         )
         # Note that we cannot fill namespace here - this is namespace for class that
         # has this attribute, we need to fill with namespace for type of this attribute
+        if self.config.prefix_attributes_reserved is not None:
+            if attribute.name in RESERVED_NAMES:
+                attribute.name = self.config.prefix_attributes_reserved + attribute.name
 
         attribute.namespace = []
         attribute.stereotypes = self.get_stereotypes(attribute.guid)
@@ -496,7 +501,7 @@ class ModelParser:
         for connection in connections:
             if connection.connector_type != "Association":
                 continue
-            if connection.destination.role != attribute.name:
+            if connection.destination.role != attribute.alias:
                 # This ignores general assoctiations between classes.
                 continue
             # We can gent object from database, but we probably prefer to find it in our structure

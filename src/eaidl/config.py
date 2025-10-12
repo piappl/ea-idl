@@ -67,6 +67,8 @@ class Configuration(BaseModel):
     filter_stereotypes: Optional[List[str]] = None
     #: Stereotype used to keep unions when we filter_stereotypes
     keep_union_stereotype: Optional[str] = "keep"
+    #: Prefix reserved attributes, if None, don't prefix. Otherwise prefix.
+    prefix_attributes_reserved: Optional[str] = "_"
     #: List of packages to ignore
     ignore_packages: List[str] = []
     #: Name of minimum amount of items annotation
