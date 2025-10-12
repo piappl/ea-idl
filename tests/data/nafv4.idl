@@ -26,7 +26,7 @@ module ext {
     };
 }; /* ext */
 module core {
-    module data {
+    module common {
         module types {
             /**
                 ISO timestamp
@@ -40,6 +40,8 @@ module core {
             @ext::pattern("[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}")
             typedef string Identifier;
         }; /* types */
+    }; /* common */
+    module data {
         enum MeasurementTypeEnum {
             @value(1) MeasurementTypeEnum_TEMPERATURE_MEASUREMENT,
             @value(0) MeasurementTypeEnum_PRIMITIVE
@@ -68,33 +70,35 @@ module core {
         struct Message;
         struct DataMessage;
     }; /* message */
-    module data {
+    module common {
 
+    }; /* common */
+    module data {
 
 
         union IdentifierOrName switch (core::data::IdentifierOrNameTypeEnum) {
             case core::data::IdentifierOrNameTypeEnum_IDENTIFIER:
-                core::data::types::Identifier identifier;
+                core::common::types::Identifier identifier;
             case core::data::IdentifierOrNameTypeEnum_NAME:
-                core::data::types::Name name;
+                core::common::types::Name name;
         };
         struct Store {
-            core::data::types::Identifier one;
-            sequence<core::data::types::Identifier> _sequence;
+            core::common::types::Identifier one;
+            sequence<core::common::types::Identifier> _sequence;
             @optional
-            core::data::types::Identifier optional_one;
+            core::common::types::Identifier optional_one;
             @ext::maxItems(5)
-            sequence<core::data::types::Identifier, 5> sequence_upper_bound;
+            sequence<core::common::types::Identifier, 5> sequence_upper_bound;
             @ext::minItems(1)
-            sequence<core::data::types::Identifier> sequence_lower_bound;
+            sequence<core::common::types::Identifier> sequence_lower_bound;
             @ext::minItems(1)
             @ext::maxItems(5)
-            sequence<core::data::types::Identifier, 5> sequence_bound;
+            sequence<core::common::types::Identifier, 5> sequence_bound;
             @optional
-            sequence<core::data::types::Identifier> optional_sequence;
+            sequence<core::common::types::Identifier> optional_sequence;
             @ext::maxItems(5)
             @optional
-            sequence<core::data::types::Identifier, 5> optional_sequence_upper_bound;
+            sequence<core::common::types::Identifier, 5> optional_sequence_upper_bound;
         };
     }; /* data */
     module message {
@@ -103,7 +107,7 @@ module core {
             Message header
         */
         struct MessageHeader {
-            core::data::types::Time timestamp;
+            core::common::types::Time timestamp;
             @default(MessageTypeEnum_MEASUREMENT)
             core::message::MessageTypeEnum message_type;
         };

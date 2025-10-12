@@ -6,6 +6,12 @@ Notes on model elements in P7 diagrams.
 - All P7 objects need to be stereotyped with `DataElement`
 - All P7 objects need to be stereotype with one of: `idlUnion`, `idlEnum`, `idlStruct`, `idlTypedef`
 
+## Napespaces
+
+- We can have nampespaces/packages
+- those can be nested
+- package with classes cannot have other packages (so only packages without classes can have subpackages)
+
 ## Naming
 
 All modelled elements must be named with alpha-numeric characters and underscores.

@@ -33,12 +33,12 @@ def test_reflect():
     # This is just to check if someone messed with out test file.
     # If this fails, just check the file and fix numbers here.
     contents = {
-        "t_package": 6,
-        "t_object": 26,
+        "t_package": 7,
+        "t_object": 27,
         "t_attribute": 31,
         "t_connector": 29,
         "t_objectproperties": 50,
-        "t_xref": 36,  #     Stereotypes, properties
+        "t_xref": 37,  #     Stereotypes, properties
     }
 
     for key, value in contents.items():
@@ -54,17 +54,18 @@ def test_load():
     packages = parser.load()
     # Core is default
     assert packages[1].name == "core"
-    assert packages[1].packages[0].name == "data"
-    assert packages[1].packages[0].classes[1].name == "Measurement"
-    assert packages[1].packages[0].classes[0].name == "MeasurementTypeEnum"
-    assert packages[1].packages[1].name == "message"
-    assert packages[1].packages[1].classes[5].name == "Message"
-    assert packages[1].packages[1].classes[5].stereotypes[2] == "interface"
+    assert packages[1].packages[0].name == "common"
+    assert packages[1].packages[1].name == "data"
+    assert packages[1].packages[1].classes[1].name == "Measurement"
+    assert packages[1].packages[1].classes[0].name == "MeasurementTypeEnum"
+    assert packages[1].packages[2].name == "message"
+    assert packages[1].packages[2].classes[5].name == "Message"
+    assert packages[1].packages[2].classes[5].stereotypes[2] == "interface"
 
     # This is union and its enumeration, both need to exist and have certain
     # pattern of names.
-    inspect(packages[1].packages[0].classes[0].attributes)
-    inspect(packages[1].packages[0].classes[1].attributes)
+    inspect(packages[1].packages[1].classes[0].attributes)
+    inspect(packages[1].packages[1].classes[1].attributes)
     parser = ModelParser(Configuration(root_packages=["something not there"]))
     with pytest.raises(ValueError):
         parser.load()
@@ -100,7 +101,7 @@ def test_get_namespace() -> None:
     assert parser.get_namespace(10) == []  # L7
     assert parser.get_namespace(3) == ["core"]
     assert parser.get_namespace(9) == ["core", "data"]
-    assert parser.get_namespace(11) == ["core", "data", "types"]
+    assert parser.get_namespace(11) == ["core", "common", "types"]
     config.root_packages = [CORE_PACKAGE_GUID]
     parser = ModelParser(config)
     parser.load()
@@ -108,7 +109,7 @@ def test_get_namespace() -> None:
     assert parser.get_namespace(10) == []  # L7
     assert parser.get_namespace(3) == ["core"]
     assert parser.get_namespace(9) == ["core", "data"]
-    assert parser.get_namespace(11) == ["core", "data", "types"]
+    assert parser.get_namespace(11) == ["core", "common", "types"]
     config.root_packages = ["L7"]
     parser = ModelParser(config)
     parser.load()
