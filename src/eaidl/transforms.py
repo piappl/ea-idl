@@ -59,7 +59,9 @@ def _convert_map_stereotype(
                 # It can be none for primitive types
                 dest = find_class(root, lambda c: c.object_id == attr.connector.end_object_id)  # type: ignore
                 if dest is None:
-                    raise AttributeError(f"End not found for attribute {'::'.join(attr.namespace)}.{attr.name}")
+                    raise AttributeError(
+                        f"End not found for attribute {'::'.join(attr.namespace)}::{cls.name}.{attr.name}"
+                    )
                 if config.stereotypes.idl_map in dest.stereotypes:
                     attr.is_map = True
                     k = attr_by_name(dest, config.stereotypes.idl_map_key)
