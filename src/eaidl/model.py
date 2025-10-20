@@ -110,6 +110,8 @@ class ModelClass(LocalBaseModel):
     properties: Dict[str, ModelAnnotation] = {}
     #: It this is union, there can be a enumeration specified here
     union_enum: Optional[str] = None
+    #: If this class has <<values>> relationships to enums, the enums are listed here
+    values_enums: List[str] = []
     is_union: bool = False
     is_enum: bool = False
     is_typedef: bool = False
@@ -174,3 +176,5 @@ class ModelAttribute(LocalBaseModel):
     properties: Dict[str, ModelAnnotation] = {}
     union_key: Optional[str] = None
     union_namespace: Optional[List[str]] = []
+    #: If this attribute has a <<values>> relationship to an enum, the enum is specified here
+    values_enum: Optional[str] = None

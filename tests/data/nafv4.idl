@@ -52,6 +52,11 @@ module core {
         };
         union IdentifierOrName;
         struct Store;
+        struct FlexibleName;
+        enum FlexibleNameValues {
+            @value(1) FlexibleNameValues_ONE_VALUE,
+            @value(5) FlexibleNameValues_OTHER_VALUE
+        };
     }; /* data */
     module message {
         enum MessageTypeEnum {
@@ -100,6 +105,10 @@ module core {
             @optional
             sequence<core::common::types::Identifier, 5> optional_sequence_upper_bound;
         };
+        struct FlexibleName {
+            string value;
+        };
+
     }; /* data */
     module message {
 
@@ -114,11 +123,11 @@ module core {
 
 
 
-        @ext::interface
         struct Message {
             core::message::MessageHeader header;
             core::message::Nationality nationality;
         };
+        @ext::interface
         struct DataMessage: core::message::Message {
             @ext::minItems(1)
             @ext::maxItems(5)
@@ -138,6 +147,7 @@ module core {
             map<string, core::message::OptionValue> extra;
             core::data::IdentifierOrName identifier;
             core::data::Store store;
+            core::data::FlexibleName values;
         };
     }; /* message */
 }; /* core */

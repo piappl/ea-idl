@@ -128,6 +128,7 @@ class ModelParser:
 
             whole.append(package)
         self.get_union_connections(whole)
+        self.get_values_connections(whole)
         return whole
 
     def get_union_connections(self, trees: List[ModelPackage]) -> Any:
@@ -162,6 +163,47 @@ class ModelParser:
                 )
                 continue
             self.check_union_and_enum(union_class, enum_class)
+
+    def get_values_connections(self, trees: List[ModelPackage]) -> Any:
+        """Process <<values>> connectors that link classes to enums providing allowed values."""
+        TConnector = base.classes.t_connector
+        t_connectors = self.session.query(TConnector).filter(TConnector.attr_stereotype == "values").all()
+        for connector in t_connectors:
+            # For <<values>>, Start is the struct/class and End is the enum
+            struct_obj = self.get_object(connector.attr_start_object_id)
+            enum_obj = self.get_object(connector.attr_end_object_id)
+
+            struct_class = find_class(trees, struct_obj.attr_object_id)
+            enum_class = find_class(trees, enum_obj.attr_object_id)
+
+            if struct_class is None or enum_class is None:
+                # Not an error if classes are in different packages
+                log.debug(
+                    "Cannot connect struct to values enum %s %s, if it is a different package this is fine",
+                    struct_obj.attr_name,
+                    enum_obj.attr_name,
+                )
+                continue
+
+            # Verify enum_class is actually an enum
+            enum_stereotypes = self.get_stereotypes(enum_obj.attr_ea_guid)
+            if self.config.stereotypes.idl_enum not in enum_stereotypes:
+                log.error(
+                    "Wrong values connection, expected enum, got %s for %s",
+                    enum_stereotypes,
+                    enum_obj.attr_name,
+                )
+                continue
+
+            # Store the values_enum relationship on the class
+            enum_full_name = "::".join(enum_class.namespace + [enum_class.name])
+            struct_class.values_enums.append(enum_full_name)
+
+            log.debug(
+                "Connected struct %s to values enum %s",
+                struct_class.name,
+                enum_class.name,
+            )
 
     def get_object_connections(
         self, object_id: int, mode: Literal["source", "destination", "both"] = "both"

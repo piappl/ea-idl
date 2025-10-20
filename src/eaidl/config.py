@@ -145,3 +145,7 @@ class Configuration(BaseModel):
         "package.name_snake_convention",
         "package.notes",
     ]
+    #: Enable unused class detection and filtering
+    filter_unused_classes: bool = False
+    #: Property that marks root classes for unused detection (e.g., "ext::interface")
+    unused_root_property: str = "ext::interface"

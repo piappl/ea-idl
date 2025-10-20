@@ -74,6 +74,13 @@ module core {
             @optional
             sequence<core::common::types::Identifier, 5> optional_sequence_upper_bound;
         };
+        struct FlexibleName {
+            string value;
+        };
+        enum FlexibleNameValues {
+            @value(1) FlexibleNameValues_ONE_VALUE,
+            @value(5) FlexibleNameValues_OTHER_VALUE
+        };
     }; /* data */
     module message {
         enum MessageTypeEnum {
@@ -96,11 +103,11 @@ module core {
         @ext::maxItems(3)
         @ext::minItems(3)
         typedef string Nationality;
-        @ext::interface
         struct Message {
             core::message::MessageHeader header;
             core::message::Nationality nationality;
         };
+        @ext::interface
         struct DataMessage: core::message::Message {
             @ext::minItems(1)
             @ext::maxItems(5)
@@ -120,6 +127,7 @@ module core {
             map<string, core::message::OptionValue> extra;
             core::data::IdentifierOrName identifier;
             core::data::Store store;
+            core::data::FlexibleName values;
         };
     }; /* message */
 }; /* core */
