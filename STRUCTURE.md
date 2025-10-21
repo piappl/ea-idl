@@ -85,12 +85,49 @@ Common validators:
 
 ### 5. Transformations (transforms.py)
 Key functions:
+- `flatten_abstract_classes()`: Flattens abstract base classes by copying their attributes to concrete children
 - `convert_map_stereotype()`: Detects map patterns
 - `filter_stereotypes()`: Removes classes/attributes by stereotype
 - `filter_empty_unions()`: Removes/simplifies empty unions
 - `find_unused_classes()`: Identifies unreferenced classes
 - `filter_unused_classes()`: Removes unused classes
 - Topological sorting for dependency resolution
+
+#### Abstract Class Handling
+The `flatten_abstract_classes()` transformation implements automatic flattening of abstract base classes:
+
+**Why?** IDL doesn't have a direct concept of abstract classes. Abstract classes are modeling constructs used to share common attributes across multiple concrete types.
+
+**What it does:**
+1. Identifies all abstract classes (where `is_abstract == True`)
+2. For each concrete class inheriting from an abstract class:
+   - Recursively collects attributes from the entire abstract parent chain
+   - Copies those attributes into the concrete class
+   - Removes the generalization link (parent won't exist in output)
+   - Adds parent to `depends_on` for proper ordering
+3. Removes all abstract classes from the model
+4. Validates that no abstract classes are used as attribute types (error condition)
+5. Detects attribute name conflicts between parent and child (error condition)
+
+**Example:**
+```python
+# Input model:
+AbstractMessageHeader (abstract)
+  └─ timestamp: Time
+
+MessageHeader (concrete)
+  └ inherits from AbstractMessageHeader
+  └─ message_type: MessageTypeEnum
+
+# After flattening:
+MessageHeader (concrete)
+  ├─ timestamp: Time        (flattened from abstract parent)
+  └─ message_type: MessageTypeEnum
+```
+
+**Configuration:**
+- `flatten_abstract_classes: bool = True` (default, enabled)
+- Set to `False` in config to disable flattening
 
 ### 6. Template System (templates/)
 Jinja2-based templating:

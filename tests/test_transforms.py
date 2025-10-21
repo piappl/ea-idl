@@ -1,4 +1,5 @@
 import uuid
+import pytest
 from eaidl.transforms import (
     convert_map_stereotype,
     filter_stereotypes,
@@ -6,6 +7,7 @@ from eaidl.transforms import (
     find_class,
     find_unused_classes,
     filter_unused_classes,
+    flatten_abstract_classes,
 )
 from eaidl.model import ModelClass, ModelPackage, ModelAttribute, ModelConnection, ModelAnnotation
 from eaidl.config import Configuration
@@ -754,3 +756,498 @@ def test_find_unused_classes_values_enum_preserved() -> None:
 
     # Verify the values enum is NOT in the unused list
     assert "FlexibleNameValues" not in [cls.name for cls in unused]
+
+
+def test_flatten_simple_abstract_inheritance() -> None:
+    """Test flattening a single level of abstract inheritance."""
+    config = Configuration(template="idl_just_defs.jinja2")
+    mod = ModelPackage(name="root", package_id=0, object_id=0, guid=str(uuid.uuid4()))
+
+    # Create abstract parent
+    abstract_parent = ModelClass(
+        name="AbstractMessageHeader",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=1,
+        namespace=["root"],
+        is_struct=True,
+        is_abstract=True,
+        parent=mod,
+    )
+    abstract_parent.attributes.append(
+        ModelAttribute(
+            name="timestamp",
+            alias="timestamp",
+            parent=abstract_parent,
+            type="Time",
+            guid=str(uuid.uuid4()),
+            attribute_id=10,
+            namespace=["root"],
+        )
+    )
+
+    # Create concrete child
+    concrete_child = ModelClass(
+        name="MessageHeader",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=2,
+        namespace=["root"],
+        is_struct=True,
+        is_abstract=False,
+        parent=mod,
+        generalization=["root", "AbstractMessageHeader"],
+    )
+    concrete_child.attributes.append(
+        ModelAttribute(
+            name="message_type",
+            alias="message_type",
+            parent=concrete_child,
+            type="MessageTypeEnum",
+            guid=str(uuid.uuid4()),
+            attribute_id=11,
+            namespace=["root"],
+        )
+    )
+
+    mod.classes = [abstract_parent, concrete_child]
+
+    # Flatten
+    flatten_abstract_classes([mod])
+
+    # Verify abstract parent was removed
+    assert len(mod.classes) == 1
+    assert mod.classes[0].name == "MessageHeader"
+
+    # Verify concrete child has both attributes in correct order
+    child = mod.classes[0]
+    assert len(child.attributes) == 2
+    assert child.attributes[0].name == "timestamp"
+    assert child.attributes[1].name == "message_type"
+
+    # Verify generalization was removed
+    assert child.generalization is None
+
+    # Verify abstract parent is NOT in depends_on (since it won't exist in output)
+    assert abstract_parent.object_id not in child.depends_on
+
+
+def test_flatten_multi_level_abstract_inheritance() -> None:
+    """Test flattening multiple levels of abstract inheritance."""
+    config = Configuration(template="idl_just_defs.jinja2")
+    mod = ModelPackage(name="root", package_id=0, object_id=0, guid=str(uuid.uuid4()))
+
+    # Create abstract grandparent
+    abstract_grandparent = ModelClass(
+        name="AbstractBase",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=1,
+        namespace=["root"],
+        is_struct=True,
+        is_abstract=True,
+        parent=mod,
+    )
+    abstract_grandparent.attributes.append(
+        ModelAttribute(
+            name="base_field",
+            alias="base_field",
+            parent=abstract_grandparent,
+            type="string",
+            guid=str(uuid.uuid4()),
+            attribute_id=10,
+            namespace=["root"],
+        )
+    )
+
+    # Create abstract parent
+    abstract_parent = ModelClass(
+        name="AbstractMiddle",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=2,
+        namespace=["root"],
+        is_struct=True,
+        is_abstract=True,
+        parent=mod,
+        generalization=["root", "AbstractBase"],
+    )
+    abstract_parent.attributes.append(
+        ModelAttribute(
+            name="middle_field",
+            alias="middle_field",
+            parent=abstract_parent,
+            type="string",
+            guid=str(uuid.uuid4()),
+            attribute_id=11,
+            namespace=["root"],
+        )
+    )
+
+    # Create concrete child
+    concrete_child = ModelClass(
+        name="ConcreteClass",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=3,
+        namespace=["root"],
+        is_struct=True,
+        is_abstract=False,
+        parent=mod,
+        generalization=["root", "AbstractMiddle"],
+    )
+    concrete_child.attributes.append(
+        ModelAttribute(
+            name="concrete_field",
+            alias="concrete_field",
+            parent=concrete_child,
+            type="string",
+            guid=str(uuid.uuid4()),
+            attribute_id=12,
+            namespace=["root"],
+        )
+    )
+
+    mod.classes = [abstract_grandparent, abstract_parent, concrete_child]
+
+    # Flatten
+    flatten_abstract_classes([mod])
+
+    # Verify all abstract classes removed
+    assert len(mod.classes) == 1
+    assert mod.classes[0].name == "ConcreteClass"
+
+    # Verify concrete child has all attributes from chain in correct order
+    child = mod.classes[0]
+    assert len(child.attributes) == 3
+    assert child.attributes[0].name == "base_field"
+    assert child.attributes[1].name == "middle_field"
+    assert child.attributes[2].name == "concrete_field"
+
+
+def test_flatten_mixed_concrete_and_abstract_inheritance() -> None:
+    """Test inheritance where parent is concrete (not abstract)."""
+    config = Configuration(template="idl_just_defs.jinja2")
+    mod = ModelPackage(name="root", package_id=0, object_id=0, guid=str(uuid.uuid4()))
+
+    # Create concrete parent
+    concrete_parent = ModelClass(
+        name="ConcreteBase",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=1,
+        namespace=["root"],
+        is_struct=True,
+        is_abstract=False,
+        parent=mod,
+    )
+    concrete_parent.attributes.append(
+        ModelAttribute(
+            name="base_field",
+            alias="base_field",
+            parent=concrete_parent,
+            type="string",
+            guid=str(uuid.uuid4()),
+            attribute_id=10,
+            namespace=["root"],
+        )
+    )
+
+    # Create concrete child inheriting from concrete parent
+    concrete_child = ModelClass(
+        name="ConcreteChild",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=2,
+        namespace=["root"],
+        is_struct=True,
+        is_abstract=False,
+        parent=mod,
+        generalization=["root", "ConcreteBase"],
+    )
+    concrete_child.attributes.append(
+        ModelAttribute(
+            name="child_field",
+            alias="child_field",
+            parent=concrete_child,
+            type="string",
+            guid=str(uuid.uuid4()),
+            attribute_id=11,
+            namespace=["root"],
+        )
+    )
+
+    mod.classes = [concrete_parent, concrete_child]
+
+    # Flatten
+    flatten_abstract_classes([mod])
+
+    # Both classes should remain (parent is concrete)
+    assert len(mod.classes) == 2
+    parent_result = find_class([mod], lambda c: c.name == "ConcreteBase")
+    child_result = find_class([mod], lambda c: c.name == "ConcreteChild")
+    assert parent_result is not None
+    assert child_result is not None
+
+    # Child should keep generalization (parent is concrete)
+    assert child_result.generalization == ["root", "ConcreteBase"]
+
+    # Child should not have flattened attributes (parent is concrete, not abstract)
+    assert len(child_result.attributes) == 1
+    assert child_result.attributes[0].name == "child_field"
+
+
+def test_flatten_multiple_children_of_abstract() -> None:
+    """Test that multiple children each get independent copies of attributes."""
+    config = Configuration(template="idl_just_defs.jinja2")
+    mod = ModelPackage(name="root", package_id=0, object_id=0, guid=str(uuid.uuid4()))
+
+    # Create abstract parent
+    abstract_parent = ModelClass(
+        name="AbstractBase",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=1,
+        namespace=["root"],
+        is_struct=True,
+        is_abstract=True,
+        parent=mod,
+    )
+    abstract_parent.attributes.append(
+        ModelAttribute(
+            name="base_field",
+            alias="base_field",
+            parent=abstract_parent,
+            type="string",
+            guid=str(uuid.uuid4()),
+            attribute_id=10,
+            namespace=["root"],
+        )
+    )
+
+    # Create two concrete children
+    child1 = ModelClass(
+        name="Child1",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=2,
+        namespace=["root"],
+        is_struct=True,
+        is_abstract=False,
+        parent=mod,
+        generalization=["root", "AbstractBase"],
+    )
+    child1.attributes.append(
+        ModelAttribute(
+            name="child1_field",
+            alias="child1_field",
+            parent=child1,
+            type="string",
+            guid=str(uuid.uuid4()),
+            attribute_id=11,
+            namespace=["root"],
+        )
+    )
+
+    child2 = ModelClass(
+        name="Child2",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=3,
+        namespace=["root"],
+        is_struct=True,
+        is_abstract=False,
+        parent=mod,
+        generalization=["root", "AbstractBase"],
+    )
+    child2.attributes.append(
+        ModelAttribute(
+            name="child2_field",
+            alias="child2_field",
+            parent=child2,
+            type="string",
+            guid=str(uuid.uuid4()),
+            attribute_id=12,
+            namespace=["root"],
+        )
+    )
+
+    mod.classes = [abstract_parent, child1, child2]
+
+    # Flatten
+    flatten_abstract_classes([mod])
+
+    # Verify abstract parent removed
+    assert len(mod.classes) == 2
+
+    # Verify both children have independent copies
+    result_child1 = find_class([mod], lambda c: c.name == "Child1")
+    result_child2 = find_class([mod], lambda c: c.name == "Child2")
+
+    assert result_child1 is not None and len(result_child1.attributes) == 2
+    assert result_child2 is not None and len(result_child2.attributes) == 2
+
+    # Modify one child's attributes and verify other is unaffected
+    result_child1.attributes[0].name = "modified"
+    assert result_child2.attributes[0].name == "base_field"
+
+
+def test_flatten_abstract_as_field_type_validation() -> None:
+    """Test that using abstract class as field type raises validation error."""
+    config = Configuration(template="idl_just_defs.jinja2")
+    mod = ModelPackage(name="root", package_id=0, object_id=0, guid=str(uuid.uuid4()))
+
+    # Create abstract class
+    abstract_cls = ModelClass(
+        name="AbstractType",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=1,
+        namespace=["root"],
+        is_struct=True,
+        is_abstract=True,
+        parent=mod,
+    )
+
+    # Create concrete class with attribute referencing abstract class
+    concrete_cls = ModelClass(
+        name="ConcreteClass",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=2,
+        namespace=["root"],
+        is_struct=True,
+        is_abstract=False,
+        parent=mod,
+    )
+    concrete_cls.attributes.append(
+        ModelAttribute(
+            name="abstract_field",
+            alias="abstract_field",
+            parent=concrete_cls,
+            type="AbstractType",
+            guid=str(uuid.uuid4()),
+            attribute_id=10,
+            namespace=["root"],
+            connector=ModelConnection(
+                connector_id=0,
+                connector_type="Association",
+                start_object_id=2,
+                end_object_id=1,
+            ),
+        )
+    )
+
+    mod.classes = [abstract_cls, concrete_cls]
+
+    # Should raise ValueError about abstract type reference
+    with pytest.raises(ValueError, match="references abstract class"):
+        flatten_abstract_classes([mod])
+
+
+def test_flatten_attribute_name_conflict() -> None:
+    """Test that attribute name conflicts raise validation error."""
+    config = Configuration(template="idl_just_defs.jinja2")
+    mod = ModelPackage(name="root", package_id=0, object_id=0, guid=str(uuid.uuid4()))
+
+    # Create abstract parent
+    abstract_parent = ModelClass(
+        name="AbstractBase",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=1,
+        namespace=["root"],
+        is_struct=True,
+        is_abstract=True,
+        parent=mod,
+    )
+    abstract_parent.attributes.append(
+        ModelAttribute(
+            name="shared_field",  # Same name as child
+            alias="shared_field",
+            parent=abstract_parent,
+            type="string",
+            guid=str(uuid.uuid4()),
+            attribute_id=10,
+            namespace=["root"],
+        )
+    )
+
+    # Create concrete child with conflicting attribute name
+    concrete_child = ModelClass(
+        name="ConcreteChild",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=2,
+        namespace=["root"],
+        is_struct=True,
+        is_abstract=False,
+        parent=mod,
+        generalization=["root", "AbstractBase"],
+    )
+    concrete_child.attributes.append(
+        ModelAttribute(
+            name="shared_field",  # Conflicts with parent
+            alias="shared_field",
+            parent=concrete_child,
+            type="string",
+            guid=str(uuid.uuid4()),
+            attribute_id=11,
+            namespace=["root"],
+        )
+    )
+
+    mod.classes = [abstract_parent, concrete_child]
+
+    # Should raise ValueError about conflict
+    with pytest.raises(ValueError, match="Attribute name conflict"):
+        flatten_abstract_classes([mod])
+
+
+def test_flatten_nested_packages() -> None:
+    """Test flattening works correctly with nested packages."""
+    config = Configuration(template="idl_just_defs.jinja2")
+    root_pkg = ModelPackage(name="root", package_id=0, object_id=0, guid=str(uuid.uuid4()))
+    child_pkg = ModelPackage(name="child", package_id=1, object_id=1, guid=str(uuid.uuid4()))
+    root_pkg.packages = [child_pkg]
+
+    # Create abstract parent in child package
+    abstract_parent = ModelClass(
+        name="AbstractBase",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=2,
+        namespace=["root", "child"],
+        is_struct=True,
+        is_abstract=True,
+        parent=child_pkg,
+    )
+    abstract_parent.attributes.append(
+        ModelAttribute(
+            name="base_field",
+            alias="base_field",
+            parent=abstract_parent,
+            type="string",
+            guid=str(uuid.uuid4()),
+            attribute_id=10,
+            namespace=["root", "child"],
+        )
+    )
+
+    # Create concrete child in child package
+    concrete_child = ModelClass(
+        name="ConcreteClass",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=3,
+        namespace=["root", "child"],
+        is_struct=True,
+        is_abstract=False,
+        parent=child_pkg,
+        generalization=["root", "child", "AbstractBase"],
+    )
+    concrete_child.attributes.append(
+        ModelAttribute(
+            name="concrete_field",
+            alias="concrete_field",
+            parent=concrete_child,
+            type="string",
+            guid=str(uuid.uuid4()),
+            attribute_id=11,
+            namespace=["root", "child"],
+        )
+    )
+
+    child_pkg.classes = [abstract_parent, concrete_child]
+
+    # Flatten
+    flatten_abstract_classes([root_pkg])
+
+    # Verify flattening worked in nested package
+    assert len(child_pkg.classes) == 1
+    assert child_pkg.classes[0].name == "ConcreteClass"
+    assert len(child_pkg.classes[0].attributes) == 2

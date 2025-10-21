@@ -2,6 +2,7 @@
 
 import logging
 from typing import Optional, Callable, List
+from copy import deepcopy
 
 from eaidl.model import ModelPackage, ModelClass, ModelAttribute
 from eaidl.config import Configuration
@@ -359,3 +360,163 @@ def filter_unused_classes(
         log.info(f"Removed {len(unused)} unused classes from model")
 
     return unused
+
+
+def find_class_by_namespace(roots: List[ModelPackage], namespace: List[str]) -> Optional[ModelClass]:
+    """Find a class given its full namespace path.
+
+    :param roots: root packages to search
+    :param namespace: namespace path, e.g., ["core", "data", "MessageHeader"]
+    :return: ModelClass if found, None otherwise
+    """
+    return find_class(roots, lambda c: c.namespace == namespace[:-1] and c.name == namespace[-1])
+
+
+def _remove_classes(pkg: ModelPackage, predicate: Callable[[ModelClass], bool]) -> None:
+    """Remove classes matching predicate from package tree (recursively).
+
+    :param pkg: package to process
+    :param predicate: function to test if class should be removed
+    """
+    for cls in pkg.classes[:]:
+        if predicate(cls):
+            pkg.classes.remove(cls)
+    for sub_pkg in pkg.packages:
+        _remove_classes(sub_pkg, predicate)
+
+
+def _collect_abstract_attributes(
+    cls: ModelClass, roots: List[ModelPackage], visited: Optional[set[int]] = None
+) -> List[ModelAttribute]:
+    """Recursively collect all attributes from abstract parent chain.
+
+    Attributes are returned in order: grandparent → parent → this class.
+    All attributes including from the class itself are collected.
+
+    :param cls: class to collect attributes from
+    :param roots: root packages for finding parent classes
+    :param visited: set of visited class object_ids to prevent cycles
+    :return: list of attributes from the class and its abstract parents
+    """
+    if visited is None:
+        visited = set()
+
+    if cls.object_id in visited:
+        return []  # Prevent infinite recursion
+
+    visited.add(cls.object_id)
+    attrs: List[ModelAttribute] = []
+
+    # First, recursively collect from parent if it exists
+    if cls.generalization:
+        parent_namespace = cls.generalization
+        parent = find_class_by_namespace(roots, parent_namespace)
+        if parent:
+            # Recursively collect from parent's parents first
+            attrs.extend(_collect_abstract_attributes(parent, roots, visited))
+
+    # Then add this class's own attributes
+    attrs.extend([deepcopy(attr) for attr in cls.attributes])
+
+    return attrs
+
+
+def flatten_abstract_classes(roots: List[ModelPackage]) -> List[ModelPackage]:
+    """Flatten abstract base classes by copying their attributes to child classes.
+
+    Abstract classes are removed from the output after their attributes are
+    propagated to all concrete descendants.
+
+    Algorithm:
+    1. For each class with a generalization (parent):
+       - If parent is abstract: copy parent's attributes to child (recursively collect from chain)
+       - Remove generalization link (so struct won't inherit)
+       - Add parent's object_id to depends_on for ordering
+    2. After flattening, remove all classes where is_abstract == True
+    3. Validate that no abstract classes are used as attribute types
+
+    :param roots: Root packages to process
+    :return: Modified package tree with abstract classes flattened
+    """
+    # Collect all classes for lookup
+    all_classes: List[ModelClass] = []
+
+    def collect_all(pkg: ModelPackage) -> None:
+        all_classes.extend(pkg.classes)
+        for sub_pkg in pkg.packages:
+            collect_all(sub_pkg)
+
+    for root in roots:
+        collect_all(root)
+
+    # Step 1: Flatten attributes from abstract parents into concrete children
+    for cls in all_classes:
+        if cls.generalization:
+            parent_namespace = cls.generalization
+            parent = find_class_by_namespace(roots, parent_namespace)
+
+            if parent and parent.is_abstract:
+                # Collect all attributes from abstract parent chain (including parent's attributes)
+                parent_attrs = _collect_abstract_attributes(parent, roots)
+
+                # Check for attribute name conflicts
+                child_attr_names = {attr.name for attr in cls.attributes}
+                for parent_attr in parent_attrs:
+                    if parent_attr.name in child_attr_names:
+                        raise ValueError(
+                            f"Attribute name conflict: '{parent_attr.name}' in class "
+                            f"{'::'.join(cls.namespace + [cls.name])} conflicts with parent attribute"
+                        )
+
+                # Prepend parent attributes (maintaining order)
+                cls.attributes = parent_attrs + cls.attributes
+
+                # Remove generalization link since parent is abstract (won't exist in output)
+                cls.generalization = None
+
+                # Replace abstract parent dependency with parent's dependencies
+                # This preserves ordering constraints while removing the non-existent abstract class
+                if parent.object_id in cls.depends_on:
+                    cls.depends_on.remove(parent.object_id)
+                    # Add parent's dependencies (avoiding duplicates)
+                    for dep in parent.depends_on:
+                        if dep not in cls.depends_on:
+                            cls.depends_on.append(dep)
+
+                log.info(
+                    f"Flattened abstract class {'::'.join(parent.namespace + [parent.name])} "
+                    f"into {'::'.join(cls.namespace + [cls.name])}"
+                )
+            # Note: if parent is concrete, we keep the generalization link
+
+    # Step 2: Validate that no abstract classes are used as attribute types
+    for cls in all_classes:
+        for attr in cls.attributes:
+            if attr.connector is not None:
+                target_class = find_class(roots, lambda c: c.object_id == attr.connector.end_object_id)  # type: ignore
+                if target_class and target_class.is_abstract:
+                    raise ValueError(
+                        f"Attribute '{attr.name}' in class {'::'.join(cls.namespace + [cls.name])} "
+                        f"references abstract class {'::'.join(target_class.namespace + [target_class.name])}. "
+                        f"Abstract classes cannot be used as field types."
+                    )
+
+    # Step 3: Remove all abstract classes from the tree
+    abstract_count = 0
+    for root in roots:
+
+        def is_abstract(cls: ModelClass) -> bool:
+            return cls.is_abstract is True
+
+        def count_removed(pkg: ModelPackage) -> None:
+            nonlocal abstract_count
+            removed = [cls for cls in pkg.classes if is_abstract(cls)]
+            abstract_count += len(removed)
+            for cls in removed:
+                log.info(f"Removing abstract class {'::'.join(cls.namespace + [cls.name])}")
+            _remove_classes(pkg, is_abstract)
+
+        count_removed(root)
+
+    log.info(f"Flattened {abstract_count} abstract classes")
+    return roots

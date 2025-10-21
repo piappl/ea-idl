@@ -87,14 +87,6 @@ module core {
             @value(0) MessageTypeEnum_MEASUREMENT,
             @value(1) MessageTypeEnum_EMPTY
         };
-        /**
-            Message header
-        */
-        struct MessageHeader {
-            core::common::types::Time timestamp;
-            @default(MessageTypeEnum_MEASUREMENT)
-            core::message::MessageTypeEnum message_type;
-        };
         typedef string OptionValue;
 
         /**
@@ -103,6 +95,14 @@ module core {
         @ext::maxItems(3)
         @ext::minItems(3)
         typedef string Nationality;
+        /**
+            Message header
+        */
+        struct MessageHeader {
+            core::common::types::Time timestamp;
+            @default(MessageTypeEnum_MEASUREMENT)
+            core::message::MessageTypeEnum message_type;
+        };
         struct Message {
             core::message::MessageHeader header;
             core::message::Nationality nationality;

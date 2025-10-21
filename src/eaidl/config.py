@@ -145,6 +145,8 @@ class Configuration(BaseModel):
         "package.name_snake_convention",
         "package.notes",
     ]
+    #: Enable abstract class flattening (copy attributes to concrete children)
+    flatten_abstract_classes: bool = True
     #: Enable unused class detection and filtering
     filter_unused_classes: bool = False
     #: Property that marks root classes for unused detection (e.g., "ext::interface")
