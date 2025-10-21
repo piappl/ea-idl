@@ -44,3 +44,13 @@ eaidl --config config/postgres.yaml > res.idl
 uvx --with sqlite --from git+https://github.com/piappl/ea-idl/ eaidl --config config/sqlite.yaml
 uvx --with psycopg2 --from git+https://github.com/piappl/ea-idl/ eaidl --config config/postgres.yaml
 ```
+
+
+## Regenerate docs
+
+```sh
+cd scripts
+./export_diagrams.sh --model /home/${USER}/git/4817/ea-idl/tests/data/nafv4.qea  --output /tmp
+# rm -r ../docs/images/{data,message}
+cp -r /tmp/Model/core/* ../docs/images
+```

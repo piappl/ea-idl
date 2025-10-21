@@ -77,7 +77,7 @@ Naming conventions follow Python ones (https://peps.python.org/pep-0008/):
   - direction is from source to destination
   - with TARGET set to name of field
 
-![Sequences and optionals](./docs/images/sequences_optional.png)
+![Sequences and optionals](./docs/images/data/sequences.png)
 
 ```c
 struct Store {
@@ -111,7 +111,7 @@ Union is a class that has multiple exclusive fields.
   - for each union members (fields), enumeration has an entry `MeasurementTypeEnum_FIELD_NAME_CAPITALIZED`
   - enumeration can have more entries
 
-![Union](./docs/images/union.png)
+![Union](./docs/images/data/identifier.png)
 
 ```c
 enum IdentifierOrNameTypeEnum {
@@ -128,7 +128,7 @@ union IdentifierOrName switch (core::data::IdentifierOrNameTypeEnum) {
 
 Unions are also special when put togethere with `filter_stereotypes` option. This union normally get generated like this:
 
-![Union and steareotypes](./docs/images/union_stereo.png)
+![Union and steareotypes](./docs/images/data/measurement.png)
 
 ```c
 
@@ -153,6 +153,19 @@ This is done to reduce nesting of generated outputs.
 sequence<core::data::types::TemperatureMeasurement, 5> body;
 ```
 
+## Abstract
+
+Classes can be abstract. Those inheriting those will take fields, but abstract class will not show in output.
+
+![Abstract](./docs/images/message/header.png)
+
+```c
+struct MessageHeader {
+    core::common::types::Time timestamp;
+    @default(MessageTypeEnum_MEASUREMENT)
+    core::message::MessageTypeEnum message_type;
+};
+```
 
 
 ## mapping
