@@ -4,6 +4,8 @@ This is replacement for [idl4-enterprise-architect](https://github.com/rticommun
 but not as plugin, but rather something that can be run as part of CI against database.
 Similar in concepts in [pyMDG](https://github.com/Semprini/pyMDG), but we have some different [assumptions on model structure](./MODEL.md).
 
+For detailed code structure documentation, see [STRUCTURE.md](./STRUCTURE.md).
+
 
 ## setup environment
 
