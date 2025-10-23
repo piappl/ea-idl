@@ -176,7 +176,7 @@ struct MessageHeader {
 | exclusiveMaximum      | exclusiveMaximum | true   |                                                                                    |
 | minimum               | min              | false  | inclusive minimum                                                                  |
 | exclusiveMinimum      | exclusiveMinimum | true   |                                                                                    |
-| pattern               | pattern          | true   |                                                                                    |
+| pattern               | pattern          | true   | for compatibility patterns should use the most universal syntax (check below)      |
 | interface             | interface        | true   | for messages/interface definitinons (top level)                                    |
 | maxItems              | maxItems         | true   |                                                                                    |
 | minItems              | minItems         | true   |                                                                                    |
@@ -185,3 +185,74 @@ struct MessageHeader {
 |                       | mutable          |        |                                                                                    |
 | unit                  | unit             | false  | unit, prefer https://www.bipm.org/en/measurement-units as stated in IDL definition |
 |                       | value            |        | taken from initial value of attribute                                              |
+
+### Regular expression syntax
+IDL standard does not specify any particular regular expression language for pattern model.
+
+We aim for compatibility with multiple regex engines, primarily:
+ - PCRE implementations
+    - Python's `re` and Pydantic V1
+    - Rust regex crate (Pydantic V2)
+ - W3C XML Schema (used in XSD)
+ - ECMA-262 (used in JSON Schema)
+
+Those engines differ in syntax and functionality, so a simple syntax subset should be used.
+
+Their syntax overlap but none is a strict subset of the others, so we constrain ourselves to the small intersection described below.
+
+#### Syntax Scope
+
+Use only constructs that exist in all three grammars.
+
+| Category          | Allowed                       | Disallowed                                                           | Notes                                                                                                                                 |    |                            |
+| ----------------- | ----------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | -- | -------------------------- |
+| Character classes | `[A-Za-z0-9 _:\-.,]`          | nested/subtracted classes (`[a-z-[f]]`)                              | Escape `-` if not first/last.                                                                                                         |    |                            |
+| Quantifiers       | `?`, `+`, `*`, `{m}`, `{m,n}` | reluctant modifiers (`*?`, `+?`, etc.)                               | Specify explicit bounds when possible.                                                                                         |    |                            |
+| Grouping          | `( … )`                       | `(?: … )`, lookahead/lookbehind, backreferences                      | Parentheses are non-capturing in XSD; harmless elsewhere.                                                                             |    |                            |
+| Alternation       | `A\|B`                         | empty branches (`A\|`)                                                 | Standard alternation only.                                                                                                            |    |                            |
+| Anchors           | omit in canonical form        | anchoring that stays in the shared regex                             | XSD implicitly anchors full string; wrap with `^…$` when generating JSON Schema/ECMA/Python expressions.                              |    |                            |
+| Escapes           | `\.` `\-`                     | `\d` `\s` `\w` `\n` `\t` `\b` `\p{}` `\i` `\c`                       | Use explicit `[0-9]` etc.                                                                                                             |    |                            |
+| Dot               | `.`                           | depends on context                                                   | `.` matches any char in JSON/Python, not newline; in XSD matches any char except line terminators. Avoid if newline handling matters. |    |                            |
+| Unicode           | literal characters only       | `\uXXXX`, `\p{...}`                                                  | Encoding must be UTF-8; no property classes.
+
+#### Construction Rules
+
+* Replace shorthand classes:
+
+  * `\d` → `[0-9]`
+  * `\w` → `[A-Za-z0-9_]`
+  * `\s` → literal spaces if whitespace is fixed (`[ ]`)
+* Replace non-capturing groups `(?:...)` → `( ... )`.
+* Remove lookaheads/lookbehinds.
+* Remove `^` and `$` in the shared pattern; reintroduce them when emitting language-specific expressions that require explicit anchoring.
+
+In principle: avoid every construct requiring backtracking, memory, or zero-width assertion.
+
+#### Automated conversion
+
+There doesn't exist a tool that would convert an arbitrary regex exactly to the desired format. However this process could possibly be simplified using a tool such as [regex-translator](https://github.com/Anadian/regex-translator). You might need to adjust shebang in `node_modules/regex-translator/source/main.js` to match your node installation.
+
+For example:
+```sh
+echo '^((?:(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2}(?:\.\d+)?))(Z|[\+-]\d{2}:\d{2}))$' | tee re.txt > /dev/null
+
+npx regex-translator -F pcre -I re.txt -T ecma -o
+```
+
+This should output
+```re
+^((?:([0-9]{4}-[0-9]{2}-[0-9]{2})T([0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?))(Z|[\+-][0-9]{2}:[0-9]{2}))$\n
+```
+
+After removing anchors, non capturing groups and `\n`:
+
+```re
+((([0-9]{4}-[0-9]{2}-[0-9]{2})T([0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?))(Z|[\+-][0-9]{2}:[0-9]{2}))
+```
+
+and after removing redundant grouping we get:
+```re
+([0-9]{4}-[0-9]{2}-[0-9]{2})T([0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?)(Z|[\+-][0-9]{2}:[0-9]{2})
+```
+
+which is a valid regular expressions for all listed engines.
