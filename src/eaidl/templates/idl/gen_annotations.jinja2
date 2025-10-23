@@ -1,15 +1,26 @@
 {# Macro for generating annotations, based on properties. #}
-{% macro _gen_annotations(props) %}
+{% macro _gen_annotations(props, attr=None) %}
 {% for key, value in props.items() %}
+{% set rendered_value = value.value %}
+{% if key == "default" and attr is not none and value.value_type != "none" and value.value is defined and value.value %}
+    {% if value.value_type == "object" and "::" not in value.value %}
+        {% set namespace = attr.namespace | join("::") %}
+        {% if namespace %}
+            {% set rendered_value = namespace ~ "::" ~ value.value %}
+        {% else %}
+            {% set rendered_value = value.value %}
+        {% endif %}
+    {% endif %}
+{% endif %}
 {% if value.value_type == "str" %}
 @{{key | trim}}({{value.value | trim}})
 {% elif value.value_type == "none" %}
 @{{key | trim}}
 {% else %}
-@{{key | trim}}({{value.value | trim}})
+@{{key | trim}}({{rendered_value | trim}})
 {% endif %}
 {% endfor %}
 {% endmacro %}
-{% macro gen_annotations(props) %}
-{{ _gen_annotations(props)  }}
+{% macro gen_annotations(props, attr=None) %}
+{{ _gen_annotations(props, attr)  }}
 {%- endmacro %}
