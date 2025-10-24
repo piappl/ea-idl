@@ -4,13 +4,16 @@
 {# Create module definition, recursively. #}
 {% macro gen_module_definition(module, loop) %}
 {# {% if module.info.create_definition == True %} #}
-{{ gen_notes(module) }}
+{% set module_note = gen_notes(module) %}
+{% if module_note %}
+{{ module_note -}}
+{% endif %}
 module {{ module.name }} {
 {% for submodule in module.packages %}
 {{ gen_module_definition(submodule, loop) | trim | indent(4, true) }}
 {% endfor %}
 {% for cls in module.classes %}
-{{ gen_class_definition_full(module, cls) | trim | indent(4, true) }}
+{{ (gen_class_definition_full(module, cls) | trim | indent(4, true)) ~ '\n' -}}
 {% endfor %}
 }; /* {{module.name}} */
 {# {% endif %} #}
@@ -19,7 +22,10 @@ module {{ module.name }} {
 module {{package.name}} {
 {# Generate definitions for our custom annotations. #}
 {% for property_type in package.property_types recursive %}
-{{ gen_notes(property_type) | trim | indent(4, true, false) }}
+{% set property_note = gen_notes(property_type) %}
+{% if property_note %}
+{{ property_note | trim | indent(4, true, false) }}
+{% endif %}
     @annotation {{property_type.property}} {
 {% for type in property_type.property_types recursive %}
         {{type}}
@@ -30,7 +36,7 @@ module {{package.name}} {
 {{ gen_module_definition(child, loop) | trim | indent(4, true) }}
 {% endfor %}
 {% for cls in package.classes %}
-{{ gen_class_definition_full(module, cls) | trim | indent(4, true) }}
+{{ (gen_class_definition_full(module, cls) | trim | indent(4, true)) ~ '\n' -}}
 {% endfor %}
 }; /* {{package.name}} */
 {% endfor %}

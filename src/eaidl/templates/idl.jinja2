@@ -3,7 +3,10 @@
 {% from "idl/gen_class.jinja2" import gen_class_declaration, gen_class_definition%}
 {# Create module declaration, recursively. #}
 {% macro gen_module_declaration(module, loop) %}
-{{ gen_notes(module) }}
+{% set module_note = gen_notes(module) %}
+{% if module_note %}
+{{ module_note -}}
+{% endif %}
 module {{ module.name }} {
 {% for submodule in module.packages %}
 {{ gen_module_declaration(submodule, loop)|trim|indent(4, true) }}
@@ -16,7 +19,10 @@ module {{ module.name }} {
 {# Create module definition, recursively. #}
 {% macro gen_module_definition(module, loop) %}
 {% if module.info.create_definition == True %}
-{{ gen_notes(module) }}
+{% set module_note = gen_notes(module) %}
+{% if module_note %}
+{{ module_note -}}
+{% endif %}
 module {{ module.name }} {
 {% for submodule in module.packages %}
 {{ gen_module_definition(submodule, loop) | trim | indent(4, true) }}
@@ -35,8 +41,11 @@ module {{ module.name }} {
 module {{package.name}} {
 {# Generate definitions for our custom annotations. #}
 {% for property_type in package.property_types recursive %}
-{{ gen_notes(property_type) | trim | indent(4, true, false) }}
-    @annotation {{property_type.property}} {
+{% set property_note = gen_notes(property_type) %}
+{% if property_note -%}
+{{ property_note | indent(4, true, false) -}}
+{% endif %}
+    @annotation {{ property_type.property }} {
 {% for type in property_type.property_types recursive %}
         {{type}}
 {% endfor %}

@@ -1,21 +1,16 @@
 module ext {
-
     @annotation exclusiveMaximum {
         any value;
     };
-
     @annotation exclusiveMinimum {
         any value;
     };
-
     @annotation maxItems {
         unsigned long value;
     };
-
     @annotation minItems {
         unsigned long value;
     };
-
     @annotation interface {
     };
     /**
