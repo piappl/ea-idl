@@ -77,8 +77,6 @@ module core {
     }; /* message */
 
     module data {
-
-
         union IdentifierOrName switch (core::data::IdentifierOrNameTypeEnum) {
             case core::data::IdentifierOrNameTypeEnum_IDENTIFIER:
                 core::common::types::Identifier identifier;
@@ -106,13 +104,8 @@ module core {
         struct FlexibleName {
             string value;
         };
-
     }; /* data */
     module message {
-
-
-
-
         /**
             Message header
         */

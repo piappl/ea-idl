@@ -22,7 +22,10 @@ module {{ module.name }} {
 {{ gen_module_definition(submodule, loop) | trim | indent(4, true) }}
 {% endfor %}
 {% for cls in module.classes %}
-{{ gen_class_definition(module, cls) | trim | indent(4, true) }}
+{% set class_definition = gen_class_definition(module, cls) | trim %}
+{% if class_definition %}
+{{ class_definition | indent(4, true) }}
+{% endif %}
 {% endfor %}
 }; /* {{module.name}} */
 {% endif %}
