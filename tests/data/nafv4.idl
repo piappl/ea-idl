@@ -75,9 +75,7 @@ module core {
         struct Message;
         struct DataMessage;
     }; /* message */
-    module common {
 
-    }; /* common */
     module data {
 
 
