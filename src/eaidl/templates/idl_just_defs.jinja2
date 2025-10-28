@@ -5,15 +5,18 @@
 {% macro gen_module_definition(module, loop) %}
 {# {% if module.info.create_definition == True %} #}
 {% set module_note = gen_notes(module) %}
-{% if module_note %}
-{{ module_note -}}
+{% if module_note | trim %}
+{{ module_note }}
 {% endif %}
 module {{ module.name }} {
 {% for submodule in module.packages %}
 {{ gen_module_definition(submodule, loop) | trim | indent(4, true) }}
 {% endfor %}
 {% for cls in module.classes %}
-{{ (gen_class_definition_full(module, cls) | trim | indent(4, true)) ~ '\n' -}}
+{% set class_definition_full = gen_class_definition_full(module, cls) %}
+{% if class_definition_full| trim %}
+{{ class_definition_full | trim | indent(4, true) }}
+{% endif %}
 {% endfor %}
 }; /* {{module.name}} */
 {# {% endif %} #}
@@ -36,7 +39,10 @@ module {{package.name}} {
 {{ gen_module_definition(child, loop) | trim | indent(4, true) }}
 {% endfor %}
 {% for cls in package.classes %}
-{{ (gen_class_definition_full(module, cls) | trim | indent(4, true)) ~ '\n' -}}
+{% set class_definition_full = gen_class_definition_full(module, cls) %}
+{% if class_definition_full | trim %}
+{{ class_definition_full | trim | indent(4, true) }}
+{% endif %}
 {% endfor %}
 }; /* {{package.name}} */
 {% endfor %}
