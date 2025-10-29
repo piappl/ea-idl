@@ -1,21 +1,16 @@
 module ext {
-
     @annotation exclusiveMaximum {
         any value;
     };
-
     @annotation exclusiveMinimum {
         any value;
     };
-
     @annotation maxItems {
         unsigned long value;
     };
-
     @annotation minItems {
         unsigned long value;
     };
-
     @annotation interface {
     };
     /**
@@ -88,7 +83,6 @@ module core {
             @value(1) MessageTypeEnum_EMPTY
         };
         typedef string OptionValue;
-
         /**
             Nationality is 3 letter ISO country code.
         */

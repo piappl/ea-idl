@@ -2,7 +2,7 @@
 {% macro gen_notes(cls) %}
 {% if cls.notes %}
 /**
-{{ cls.notes  | trim | wordwrap(78) | indent(4, true) }}
+{{ cls.notes | trim | wordwrap(78) | indent(4, true) }}
 */
 {% endif %}
 {% endmacro %}
