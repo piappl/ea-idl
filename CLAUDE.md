@@ -13,39 +13,36 @@ It's a replacement for idl4-enterprise-architect but runs as a standalone CLI to
 ### Running Tests
 ```bash
 # Run all tests
-pytest
+uv run pytest
 
 # Run specific test file
-python -m pytest tests/test_diagram.py -v
+uv run pytest tests/test_diagram.py -v
 
 # Run with verbose output
-python -m pytest tests/ -v --tb=short
+uv run pytest tests/ -v --tb=short
 ```
 
 ### Running the Tool
 ```bash
 # Against SQLite test database
-eaidl --config config/sqlite.yaml
+uv run eaidl --config config/sqlite.yaml
 
 # With PostgreSQL
-eaidl --config config/postgres.yaml > output.idl
+uv run eaidl --config config/postgres.yaml > output.idl
 
 # CLI commands available
-eaidl_cli run      # Generate IDL (default)
-eaidl_cli diagram  # Generate PlantUML diagrams
-eaidl_cli packages # List packages
+uv run eaidl_cli run      # Generate IDL (default)
+uv run eaidl_cli diagram  # Generate PlantUML diagrams
+uv run eaidl_cli packages # List packages
 ```
 
 ### Development Setup
 ```bash
-# Install in development mode
-pip install -e "."
-
-# Install with dev dependencies
-pip install -e ".[dev]"
+# Sync dependencies including dev tools (pytest, ruff, pre-commit)
+uv sync --extra dev
 
 # Install pre-commit hooks
-pre-commit install
+uv run pre-commit install
 ```
 
 ## Code Quality Standards
@@ -66,13 +63,13 @@ pre-commit install
 Pre-commit hooks will automatically run, but you can manually check:
 ```bash
 # Run all pre-commit hooks
-pre-commit run --all-files
+uv run pre-commit run --all-files
 
 # Run ruff linter
-ruff check --fix .
+uv run ruff check --fix .
 
 # Run ruff formatter
-ruff format .
+uv run ruff format .
 ```
 
 ## Key Concepts (see STRUCTURE.md for details)
@@ -96,10 +93,10 @@ Test database: `tests/data/nafv4.qea` (SQLite EA database used by most tests)
 
 ```bash
 # Run specific test file
-python -m pytest tests/test_transforms.py -v
+uv run pytest tests/test_transforms.py -v
 
 # Run specific test function
-python -m pytest tests/test_load.py::test_specific_function -v
+uv run pytest tests/test_load.py::test_specific_function -v
 ```
 
 ## Common Tasks for AI Assistants
@@ -160,7 +157,7 @@ Templates in `src/eaidl/templates/` are whitespace-sensitive and excluded from:
 
 1. **Forgetting to run tests before committing**
    - Pre-commit hooks will catch most issues
-   - Always run `pytest` for full validation
+   - Always run `uv run pytest` for full validation
 
 2. **Modifying templates without testing**
    - IDL output is not whitespace-sensitive

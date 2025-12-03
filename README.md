@@ -9,16 +9,31 @@ For detailed code structure documentation, see [STRUCTURE.md](./STRUCTURE.md).
 
 ## setup environment
 
+### Using uv (recommended)
 
 ```sh
-# This example uses pyenv, use whatever you prefer
-pyenv update
-pyenv install 3.13
-pyenv virtualenv
-pyenv virtualenv 3.13 eaidl
+# Install uv if you haven't already
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Sync dependencies including dev tools (pytest, ruff, pre-commit)
+uv sync --extra dev
+
+# Install pre-commit hooks
+uv run pre-commit install
+
+# Run tests
+uv run pytest
 ```
 
+### Alternative: Using pyenv
+
 ```sh
+# This example uses pyenv
+pyenv update
+pyenv install 3.13
+pyenv virtualenv 3.13 eaidl
+pyenv activate eaidl
+
 # Development mode install
 pip install -e "."
 # We use pre-commit hook
