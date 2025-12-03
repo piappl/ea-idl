@@ -63,8 +63,9 @@ dependencies = [
     { name = "sqlalchemy" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
+    { name = "idl-parser" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "ruff" },
@@ -75,16 +76,20 @@ dev = [
 requires-dist = [
     { name = "click", specifier = ">=8.1.7" },
     { name = "jinja2", specifier = ">=3.1.4" },
-    { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.0.1" },
     { name = "pydantic", specifier = ">=2.10.3" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.4" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "rich", specifier = ">=13.9.4" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.3" },
     { name = "sqlalchemy", specifier = ">=2.0.36" },
-    { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0.12.20240917" },
 ]
-provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "idl-parser", specifier = ">=0.0.17" },
+    { name = "pre-commit", specifier = ">=4.0.1" },
+    { name = "pytest", specifier = ">=8.3.4" },
+    { name = "ruff", specifier = ">=0.8.3" },
+    { name = "types-pyyaml", specifier = ">=6.0.12.20240917" },
+]
 
 [[package]]
 name = "filelock"
@@ -142,6 +147,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/ff/e7/685de97986c916a6d
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0f/1c/e5fd8f973d4f375adb21565739498e2e9a1e54c858a97b9a8ccfdc81da9b/identify-2.6.15-py2.py3-none-any.whl", hash = "sha256:1181ef7608e00704db228516541eb83a88a9f94433a8c80bb9b5bd54b1d81757", size = 99183, upload-time = "2025-10-02T17:43:39.137Z" },
 ]
+
+[[package]]
+name = "idl-parser"
+version = "0.0.17"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d2/74/3c4610008931ceaaab4f19329c62d66df57a9235e6360c4af37092895b24/idl_parser-0.0.17.tar.gz", hash = "sha256:97be2c577a590013116901e043385099a706eae38df1585f8bbced341aa5fb23", size = 11398, upload-time = "2017-10-13T15:31:31.003Z" }
 
 [[package]]
 name = "iniconfig"

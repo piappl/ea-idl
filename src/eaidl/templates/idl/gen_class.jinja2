@@ -13,7 +13,7 @@
 {% elif cls.is_typedef %}
 {{ gen_typedef(cls) -}}
 {% elif cls.is_struct %}
-{{ gen_struct_declaration(modulem, cls) -}}
+{{ gen_struct_declaration(module, cls) -}}
 {% endif %}
 {% endmacro %}
 {# Macro for generating class definition. #}

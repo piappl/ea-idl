@@ -22,14 +22,6 @@ eaidl = "eaidl.cli:run"
 eaidl_change = "eaidl.cli:change"
 eaidl_cli = "eaidl.cli:cli"
 
-[project.optional-dependencies]
-dev = [
-    "pre-commit>=4.0.1",
-    "pytest>=8.3.4",
-    "ruff>=0.8.3",
-    "types-PyYAML>=6.0.12.20240917",
-]
-
 [tool.ruff]
 line-length = 120
 target-version = "py313"
@@ -44,3 +36,12 @@ filterwarnings = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[dependency-groups]
+dev = [
+    "idl-parser>=0.0.17",
+    "pre-commit>=4.0.1",
+    "pytest>=8.3.4",
+    "ruff>=0.8.3",
+    "types-PyYAML>=6.0.12.20240917",
+]
