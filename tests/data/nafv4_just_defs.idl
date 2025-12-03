@@ -86,9 +86,7 @@ module core {
         /**
             Nationality is 3 letter ISO country code.
         */
-        @ext::maxItems(3)
-        @ext::minItems(3)
-        typedef string Nationality;
+        typedef string Nationality[3];
         /**
             Message header
         */
@@ -97,9 +95,13 @@ module core {
             @default(core::message::MessageTypeEnum_MEASUREMENT)
             core::message::MessageTypeEnum message_type;
         };
+        @ext::pattern("([0-9]{4}-[0-9]{2}-[0-9]{2})T([0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?)(Z|[\+-][0-9]{2}:[0-9]{2})")
+        typedef string GUID;
+        typedef octet GUIDBytes[16];
         struct Message {
             core::message::MessageHeader header;
             core::message::Nationality nationality;
+            core::message::GUIDBytes uuid;
         };
         @ext::interface
         struct DataMessage: core::message::Message {

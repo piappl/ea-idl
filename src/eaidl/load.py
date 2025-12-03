@@ -649,9 +649,11 @@ class ModelParser:
 
         model_class.is_abstract = to_bool(t_object.attr_abstract)
         if t_object.attr_genlinks is not None:
-            # We set parent for typedefs.
+            # We set parent for typedefs. Handle both "Parent=" and "Implements=" forms.
             model_class.parent_type = (
-                m.group(1) if (m := re.search(r"Parent=(.*?);", t_object.attr_genlinks)) is not None else None
+                m.group(1)
+                if (m := re.search(r"(?:Parent|Implements)=(.*?);", t_object.attr_genlinks)) is not None
+                else None
             )
         model_class.notes = t_object.attr_note
         connections = self.get_object_connections(model_class.object_id, mode="source")

@@ -33,6 +33,7 @@ Naming conventions follow Python ones (<https://peps.python.org/pep-0008/>):
   - `double`
   - `integer`
   - `bool`
+  - `octet`
 
 - can have various tags
 - one of the tags can be `unit` - with short string, prefer [SI](https://www.bipm.org/en/measurement-units), this is just informative:
@@ -41,6 +42,8 @@ Naming conventions follow Python ones (<https://peps.python.org/pep-0008/>):
   - "s" - seconds
   - "Hz" - hertz
   - "%" - percent
+
+![Union with string and binary](./docs/images/data/octet.png)
 
 ## Enumerations
 

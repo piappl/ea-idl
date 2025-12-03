@@ -34,11 +34,11 @@ def test_reflect():
     # If this fails, just check the file and fix numbers here.
     contents = {
         "t_package": 7,
-        "t_object": 30,
-        "t_attribute": 35,
-        "t_connector": 32,
-        "t_objectproperties": 56,
-        "t_xref": 43,  #     Stereotypes, properties
+        "t_object": 33,
+        "t_attribute": 38,
+        "t_connector": 35,
+        "t_objectproperties": 65,
+        "t_xref": 49,  #     Stereotypes, properties
     }
 
     for key, value in contents.items():
@@ -59,9 +59,9 @@ def test_load():
     assert packages[1].packages[1].classes[1].name == "Measurement"
     assert packages[1].packages[1].classes[0].name == "MeasurementTypeEnum"
     assert packages[1].packages[2].name == "message"
-    assert packages[1].packages[2].classes[6].name == "Message"
-    assert packages[1].packages[2].classes[7].name == "DataMessage"
-    assert packages[1].packages[2].classes[7].stereotypes[2] == "interface"
+    assert packages[1].packages[2].classes[9].name == "Message"
+    assert packages[1].packages[2].classes[10].name == "DataMessage"
+    assert packages[1].packages[2].classes[10].stereotypes[2] == "interface"
 
     # This is union and its enumeration, both need to exist and have certain
     # pattern of names.
