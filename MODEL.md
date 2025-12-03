@@ -163,7 +163,7 @@ Classes can be abstract. Those inheriting those will take fields, but abstract c
 ```c
 struct MessageHeader {
     core::common::types::Time timestamp;
-    @default(MessageTypeEnum_MEASUREMENT)
+    @default(core::message::MessageTypeEnum_MEASUREMENT)
     core::message::MessageTypeEnum message_type;
 };
 ```

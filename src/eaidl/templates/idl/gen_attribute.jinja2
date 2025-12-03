@@ -3,7 +3,7 @@
 {# Macro for generating attributes. #}
 {% macro gen_attribute(module, cls, attr) %}
 {{ gen_notes(attr) -}}
-{{ gen_annotations(attr.properties ) -}}
+{{ gen_annotations(attr.properties, attr ) -}}
 {% if attr.is_collection %}
 {% if attr.upper_bound_number %}
 sequence<{{"::".join(attr.namespace + [attr.type])}}, {{attr.upper_bound_number}}> {{attr.name}};

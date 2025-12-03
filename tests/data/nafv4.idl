@@ -1,21 +1,16 @@
 module ext {
-
     @annotation exclusiveMaximum {
         any value;
     };
-
     @annotation exclusiveMinimum {
         any value;
     };
-
     @annotation maxItems {
         unsigned long value;
     };
-
     @annotation minItems {
         unsigned long value;
     };
-
     @annotation interface {
     };
     /**
@@ -64,7 +59,6 @@ module core {
             @value(1) MessageTypeEnum_EMPTY
         };
         typedef string OptionValue;
-
         /**
             Nationality is 3 letter ISO country code.
         */
@@ -75,12 +69,7 @@ module core {
         struct Message;
         struct DataMessage;
     }; /* message */
-    module common {
-
-    }; /* common */
     module data {
-
-
         union IdentifierOrName switch (core::data::IdentifierOrNameTypeEnum) {
             case core::data::IdentifierOrNameTypeEnum_IDENTIFIER:
                 core::common::types::Identifier identifier;
@@ -108,19 +97,14 @@ module core {
         struct FlexibleName {
             string value;
         };
-
     }; /* data */
     module message {
-
-
-
-
         /**
             Message header
         */
         struct MessageHeader {
             core::common::types::Time timestamp;
-            @default(MessageTypeEnum_MEASUREMENT)
+            @default(core::message::MessageTypeEnum_MEASUREMENT)
             core::message::MessageTypeEnum message_type;
         };
         struct Message {

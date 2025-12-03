@@ -388,11 +388,11 @@ class ModelParser:
             if self.config.stereotypes.idl_enum in cls.stereotypes:
                 parent_package.info.enums += 1
         parent_package.info.packages = len(parent_package.packages)
-        # We have to know when to create packages, otherwise IDL parser
-        # doesn't like empty ones.
-        if parent_package.info.packages + parent_package.info.unions + parent_package.info.structs:
-            parent_package.info.create_definition = True
-        parent_package.info.create_declaration = True
+        has_definition_class = (
+            parent_package.info.structs > 0 or parent_package.info.unions > 0 or parent_package.info.maps > 0
+        )
+        has_definition_child = any(pkg.info.create_definition for pkg in parent_package.packages)
+        parent_package.info.create_definition = has_definition_class or has_definition_child
 
     def get_object(self, object_id: int) -> Any:
         TObject = base.classes.t_object
