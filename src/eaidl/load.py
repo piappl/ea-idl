@@ -14,6 +14,7 @@ import logging
 import re
 import uuid
 import copy
+import pydantic
 from eaidl.validation.base import RESERVED_NAMES
 from collections import deque
 from eaidl.model import (
@@ -208,6 +209,10 @@ class ModelParser:
     def get_object_connections(
         self, object_id: int, mode: Literal["source", "destination", "both"] = "both"
     ) -> List[ModelConnection]:
+        """
+        It raises pydantic.ValidationError which need to be handled upstream where we have more context.
+
+        """
         ret = []
         TConnector = base.classes.t_connector
         if mode == "source":
@@ -238,41 +243,42 @@ class ModelParser:
                 .all()
             )
         for t_connector in t_connectors:
-            ret.append(
-                ModelConnection(
-                    connector_id=t_connector.attr_connector_id,
-                    connector_type=t_connector.attr_connector_type,
-                    direction=t_connector.attr_direction,
-                    connector_sub_type=t_connector.attr_subtype,
-                    start_object_id=t_connector.attr_start_object_id,
-                    end_object_id=t_connector.attr_end_object_id,
-                    stereotype=t_connector.attr_stereotype,
-                    source=ModelConnectionEnd(
-                        cardinality=t_connector.attr_sourcecard,
-                        access=t_connector.attr_sourceaccess,
-                        element=t_connector.attr_sourceelement,
-                        role=t_connector.attr_sourcerole,
-                        role_type=t_connector.attr_sourceroletype,
-                        role_note=t_connector.attr_sourcerolenote,
-                        containment=t_connector.attr_sourcecontainment,
-                        is_aggregate=t_connector.attr_sourceisaggregate,
-                        is_ordered=t_connector.attr_sourceisordered,
-                        qualifier=t_connector.attr_sourcequalifier,
-                    ),
-                    destination=ModelConnectionEnd(
-                        cardinality=t_connector.attr_destcard,
-                        access=t_connector.attr_destaccess,
-                        element=t_connector.attr_destelement,
-                        role=t_connector.attr_destrole,
-                        role_type=t_connector.attr_destroletype,
-                        role_note=t_connector.attr_destrolenote,
-                        containment=t_connector.attr_destcontainment,
-                        is_aggregate=t_connector.attr_sourceisaggregate,
-                        is_ordered=t_connector.attr_destisordered,
-                        qualifier=t_connector.attr_destqualifier,
-                    ),
-                )
+            if t_connector.attr_connector_type == "NoteLink":
+                continue
+            conn = ModelConnection(
+                connector_id=t_connector.attr_connector_id,
+                connector_type=t_connector.attr_connector_type,
+                direction=t_connector.attr_direction,
+                connector_sub_type=t_connector.attr_subtype,
+                start_object_id=t_connector.attr_start_object_id,
+                end_object_id=t_connector.attr_end_object_id,
+                stereotype=t_connector.attr_stereotype,
+                source=ModelConnectionEnd(
+                    cardinality=t_connector.attr_sourcecard,
+                    access=t_connector.attr_sourceaccess,
+                    element=t_connector.attr_sourceelement,
+                    role=t_connector.attr_sourcerole,
+                    role_type=t_connector.attr_sourceroletype,
+                    role_note=t_connector.attr_sourcerolenote,
+                    containment=t_connector.attr_sourcecontainment,
+                    is_aggregate=t_connector.attr_sourceisaggregate,
+                    is_ordered=t_connector.attr_sourceisordered,
+                    qualifier=t_connector.attr_sourcequalifier,
+                ),
+                destination=ModelConnectionEnd(
+                    cardinality=t_connector.attr_destcard,
+                    access=t_connector.attr_destaccess,
+                    element=t_connector.attr_destelement,
+                    role=t_connector.attr_destrole,
+                    role_type=t_connector.attr_destroletype,
+                    role_note=t_connector.attr_destrolenote,
+                    containment=t_connector.attr_destcontainment,
+                    is_aggregate=t_connector.attr_sourceisaggregate,
+                    is_ordered=t_connector.attr_destisordered,
+                    qualifier=t_connector.attr_destqualifier,
+                ),
             )
+            ret.append(conn)
         return ret
 
     def package_parse(
@@ -539,7 +545,10 @@ class ModelParser:
         if attribute.is_optional is True:
             # This is optional when present
             attribute.properties["optional"] = self.create_annotation(None)
-        connections = self.get_object_connections(parent_class.object_id, mode="source")
+        try:
+            connections = self.get_object_connections(parent_class.object_id, mode="source")
+        except pydantic.ValidationError:
+            log.error(attribute.model_dump_json(indent=4))
         for connection in connections:
             if connection.connector_type != "Association":
                 continue
@@ -656,7 +665,11 @@ class ModelParser:
                 else None
             )
         model_class.notes = t_object.attr_note
-        connections = self.get_object_connections(model_class.object_id, mode="source")
+        try:
+            connections = self.get_object_connections(model_class.object_id, mode="source")
+        except pydantic.ValidationError as e:
+            log.error("Unable to create union connections %s %s", model_class.namespace, model_class.name)
+            log.exception(e)
         for connection in connections:
             if connection.connector_type == "Generalization":
                 destination = self.get_object(connection.end_object_id)
@@ -678,7 +691,11 @@ class ModelParser:
 
         if self.config.stereotypes.idl_union in model_class.stereotypes:
             # Check if we have enumeration for that union
-            connections = self.get_object_connections(model_class.object_id)
+            try:
+                connections = self.get_object_connections(model_class.object_id)
+            except pydantic.ValidationError as e:
+                log.error("Unable to create union connections %s %s", model_class.namespace, model_class.name)
+                log.exception(e)
             for connection in connections:
                 if connection.stereotype == "union":
                     # Need to add dependency, we don't care for direction here
