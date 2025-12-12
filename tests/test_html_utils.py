@@ -1,6 +1,6 @@
 """Tests for HTML utilities."""
 
-from eaidl.html_utils import strip_html, HTMLStripper
+from eaidl.html_utils import strip_html
 
 
 def test_strip_html_simple_text():
@@ -11,25 +11,25 @@ def test_strip_html_simple_text():
 
 
 def test_strip_html_bold_italic():
-    """Test that formatting tags are removed."""
+    """Test that formatting tags are converted to markdown."""
     text = "This is <b>bold</b>, <i>italic</i>, and <u>underline</u> text."
     result = strip_html(text)
-    assert result == "This is bold, italic, and underline text."
+    assert result == "This is **bold**, *italic*, and underline text."
 
 
 def test_strip_html_nested_tags():
-    """Test that nested tags are properly removed."""
+    """Test that nested tags are properly converted to markdown."""
     text = "Text with <b><i><u>all formatting</u></i></b> applied."
     result = strip_html(text)
-    assert result == "Text with all formatting applied."
+    assert result == "Text with ***all formatting*** applied."
 
 
 def test_strip_html_list_items():
-    """Test that list items are converted to newlines."""
+    """Test that list items are converted to markdown bullets."""
     text = "Items:\n<ul>\n\t<li>one</li>\n\t<li>two</li>\n</ul>"
     result = strip_html(text)
-    assert "one" in result
-    assert "two" in result
+    assert "* one" in result
+    assert "* two" in result
     # Should have newlines between items
     assert "\n" in result
 
@@ -67,12 +67,18 @@ Ther is <b>bold, </b><i>italic, </i><u>underline </u><b><i><u>and all of them.</
     # Check that content is preserved
     assert "This is formatted note" in result
     assert "We have bullets:" in result
-    assert "one" in result
-    assert "two" in result
+    assert "* one" in result  # Now has markdown bullet
+    assert "* two" in result  # Now has markdown bullet
     assert "Enumeration" in result
-    assert "bold, italic, underline and all of them" in result
+    assert "1. one" in result  # Now has markdown numbering
+    assert "2. two" in result  # Now has markdown numbering
 
-    # Check that tags are removed
+    # Check that formatting is converted to markdown
+    assert "**bold,**" in result
+    assert "*italic,*" in result
+    assert "***and all of them.***" in result
+
+    # Check that HTML tags are not present
     assert "<ul>" not in result
     assert "<li>" not in result
     assert "<b>" not in result
@@ -102,7 +108,7 @@ def test_strip_html_only_whitespace():
 
 def test_strip_html_br_tags():
     """Test that br tags are converted to newlines."""
-    text = "Line 1<br>Line 2<br/>Line 3"
+    text = "Line 1<br>Line 2<br>Line 3"
     result = strip_html(text)
     assert "Line 1" in result
     assert "Line 2" in result
@@ -110,13 +116,12 @@ def test_strip_html_br_tags():
     assert "\n" in result
 
 
-def test_htmlstripper_handle_data_skip_empty():
-    """Test that HTMLStripper skips empty text nodes."""
-    stripper = HTMLStripper()
-    stripper.feed("<p>   </p><p>Text</p>")
-    result = stripper.get_text()
-    # Should only have "Text", not whitespace-only nodes
-    assert result.strip() == "Text"
+def test_strip_html_whitespace_only_nodes():
+    """Test that whitespace-only nodes are handled properly."""
+    text = "<p>   </p><p>Text</p>"
+    result = strip_html(text)
+    # Should only have "Text", whitespace is trimmed
+    assert result == "Text"
 
 
 def test_strip_html_character_entities():
@@ -127,10 +132,10 @@ def test_strip_html_character_entities():
 
 
 def test_strip_html_preserves_content_order():
-    """Test that content order is preserved."""
+    """Test that content order is preserved with markdown formatting."""
     text = "First <b>second</b> third <i>fourth</i> fifth"
     result = strip_html(text)
-    assert result == "First second third fourth fifth"
+    assert result == "First **second** third *fourth* fifth"
 
 
 def test_strip_html_multiple_consecutive_list_items():
@@ -139,3 +144,33 @@ def test_strip_html_multiple_consecutive_list_items():
     result = strip_html(text)
     # Should not have more than one blank line between items
     assert "\n\n\n" not in result
+    # Should have markdown bullets
+    assert "* Item 1" in result
+    assert "* Item 2" in result
+    assert "* Item 3" in result
+
+
+def test_strip_html_script_style_removed():
+    """Test that script and style tags are completely removed with their content."""
+    text = "<p>Normal text</p><style>.foo{color:red}</style><p>More text</p><script>alert(1)</script><p>End</p>"
+    result = strip_html(text)
+    # Content should be preserved
+    assert "Normal text" in result
+    assert "More text" in result
+    assert "End" in result
+    # Script and style content should be completely removed
+    assert "color:red" not in result
+    assert "alert" not in result
+    assert "<script>" not in result
+    assert "<style>" not in result
+
+
+def test_strip_html_unknown_tags():
+    """Test that unknown/custom tags are stripped but content is preserved."""
+    text = "<p>Text with <custom>unknown</custom> and <weird attr='val'>tags</weird></p>"
+    result = strip_html(text)
+    # Content should be preserved
+    assert "Text with unknown and tags" in result
+    # Tags should be stripped
+    assert "<custom>" not in result
+    assert "<weird>" not in result

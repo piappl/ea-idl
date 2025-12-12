@@ -1,65 +1,39 @@
 """HTML utilities for processing note content from Enterprise Architect."""
 
-from html.parser import HTMLParser
 import re
+from markdownify import MarkdownConverter
 
 
-class HTMLStripper(HTMLParser):
-    """Simple HTML to text converter that strips tags and converts basic formatting."""
+class CleanMarkdownConverter(MarkdownConverter):
+    """Custom markdown converter that completely removes script/style tags."""
 
-    def __init__(self):
-        super().__init__()
-        self.reset()
-        self.strict = False
-        self.convert_charrefs = True
-        self.text = []
-        self.in_list_item = False
+    def convert_script(self, el, text, **kwargs):
+        """Completely ignore script tags and their content."""
+        return ""
 
-    def handle_data(self, data):
-        """Handle text data between tags."""
-        if data.strip():  # Only add non-empty text
-            self.text.append(data)
-
-    def handle_starttag(self, tag, attrs):
-        """Handle opening tags."""
-        if tag in ["li"]:
-            # Mark that we're in a list item
-            self.in_list_item = True
-            # Add newline before list item if there's already content
-            if self.text:
-                self.text.append("\n")
-        elif tag in ["p", "br"]:
-            # Add newline for paragraphs and breaks
-            if self.text:
-                self.text.append("\n")
-
-    def handle_endtag(self, tag):
-        """Handle closing tags."""
-        if tag in ["li"]:
-            # End of list item
-            self.in_list_item = False
-        elif tag in ["p"]:
-            # Add newline after paragraph
-            if self.text:
-                self.text.append("\n")
-
-    def get_text(self):
-        """Get the cleaned text."""
-        return "".join(self.text)
+    def convert_style(self, el, text, **kwargs):
+        """Completely ignore style tags and their content."""
+        return ""
 
 
 def strip_html(text: str) -> str:
-    """Remove HTML tags from text and convert basic formatting to plain text.
+    """Convert HTML to markdown, stripping unsupported tags.
+
+    Converts EA note HTML to clean markdown format:
+    - Lists (<ul>, <ol>) become markdown lists
+    - Bold/italic (<b>, <i>) become **bold** and *italic*
+    - Unknown tags are stripped (content preserved)
+    - Script/style tags are completely removed
 
     :param text: Text potentially containing HTML tags
-    :return: Plain text with HTML removed
+    :return: Markdown formatted text
     """
     if not text:
         return text
 
-    stripper = HTMLStripper()
-    stripper.feed(text)
-    result = stripper.get_text()
+    # Convert HTML to markdown
+    converter = CleanMarkdownConverter()
+    result = converter.convert(text)
 
     # Clean up excessive newlines (more than 2 in a row)
     result = re.sub(r"\n{3,}", "\n\n", result)

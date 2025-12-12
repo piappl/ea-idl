@@ -94,15 +94,15 @@ module core {
         This is formatted note.
         We have bullets:
 
-        one
-        two
+        * one
+        * two
+
         Enumeration
 
-        one
-        two
+        1. one
+        2. two
 
-
-        Ther is bold, italic, underline and all of them.
+        Ther is **bold,** *italic,* underline ***and all of them.***
     */
 
     module message {
