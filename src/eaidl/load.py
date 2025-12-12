@@ -5,6 +5,7 @@ from eaidl.utils import (
     try_cast,
 )
 from eaidl.config import Configuration
+from eaidl.html_utils import strip_html
 from sqlalchemy.ext.automap import automap_base
 from typing import Optional
 import sqlalchemy
@@ -309,6 +310,8 @@ class ModelParser:
         package.stereotypes = self.get_stereotypes(package.guid)
         if parse_children:
             self.package_parse_children(package)
+        # Load unlinked notes for this package
+        package.unlinked_notes = self.get_unlinked_notes(package.package_id)
         # There is some validation
         validation.base.run("package", self.config, package=package)
         return package
@@ -403,6 +406,82 @@ class ModelParser:
     def get_object(self, object_id: int) -> Any:
         TObject = base.classes.t_object
         return self.session.query(TObject).filter(TObject.attr_object_id == object_id).scalar()
+
+    def get_linked_notes(self, object_id: int) -> List[str]:
+        """Get notes linked to an object via NoteLink connectors.
+
+        Notes are always loaded for spell checking, regardless of output_linked_notes setting.
+
+        :param object_id: object identifier
+        :return: list of note contents (HTML stripped)
+        """
+        notes = []
+        TConnector = base.classes.t_connector
+        TObject = base.classes.t_object
+
+        # NoteLink connectors have Start_Object_ID = object, End_Object_ID = note
+        t_connectors = (
+            self.session.query(TConnector)
+            .filter(
+                TConnector.attr_connector_type == "NoteLink",
+                TConnector.attr_start_object_id == object_id,
+            )
+            .all()
+        )
+
+        for connector in t_connectors:
+            note_obj = (
+                self.session.query(TObject).filter(TObject.attr_object_id == connector.attr_end_object_id).scalar()
+            )
+            if note_obj and note_obj.attr_object_type == "Note" and note_obj.attr_note:
+                # Strip HTML formatting from note
+                clean_note = strip_html(note_obj.attr_note)
+                if clean_note:
+                    notes.append(clean_note)
+
+        return notes
+
+    def get_unlinked_notes(self, package_id: int) -> List[str]:
+        """Get notes in a package that are not linked to any object.
+
+        Notes are always loaded for spell checking, regardless of output_unlinked_notes setting.
+
+        :param package_id: package identifier
+        :return: list of note contents (HTML stripped)
+        """
+        notes = []
+        TObject = base.classes.t_object
+        TConnector = base.classes.t_connector
+
+        # Get all note objects in this package
+        note_objects = (
+            self.session.query(TObject)
+            .filter(
+                TObject.attr_package_id == package_id,
+                TObject.attr_object_type == "Note",
+            )
+            .all()
+        )
+
+        for note_obj in note_objects:
+            # Check if this note is linked to anything via NoteLink
+            linked_connector = (
+                self.session.query(TConnector)
+                .filter(
+                    TConnector.attr_connector_type == "NoteLink",
+                    TConnector.attr_end_object_id == note_obj.attr_object_id,
+                )
+                .first()
+            )
+
+            # If not linked and has content, add it
+            if not linked_connector and note_obj.attr_note:
+                # Strip HTML formatting from note
+                clean_note = strip_html(note_obj.attr_note)
+                if clean_note:
+                    notes.append(clean_note)
+
+        return notes
 
     def get_all_class_id(self, parent_package: ModelPackage) -> List[int]:
         ret = []
@@ -763,6 +842,9 @@ class ModelParser:
                 if prop.name not in []:
                     # Those are set by EA on bunch of things, so lets skip the warning
                     log.warning("Custom property %s is not configured", prop.name)
+
+        # Load linked notes for this class
+        model_class.linked_notes = self.get_linked_notes(model_class.object_id)
 
         # Check if we have one of proper stereotypes on all P7
         if self.config.stereotypes.main_class in model_class.stereotypes:

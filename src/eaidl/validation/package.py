@@ -73,3 +73,28 @@ def name_spelling(config: Configuration, package: ModelPackage):
 
     if errors:
         raise ValueError(format_spelling_errors(errors, context(package)))
+
+
+@validator
+def unlinked_notes_spelling(config: Configuration, package: ModelPackage):
+    """Check spelling in unlinked notes (notes not connected to any object)."""
+    if not config.spellcheck.enabled or not config.spellcheck.check_notes:
+        return
+
+    if not package.unlinked_notes:
+        return  # No unlinked notes to check
+
+    for idx, note in enumerate(package.unlinked_notes):
+        if not note or not note.strip():
+            continue
+
+        errors = check_spelling(
+            text=note,
+            language=config.spellcheck.language,
+            min_word_length=config.spellcheck.min_word_length,
+            custom_words=config.spellcheck.custom_words,
+        )
+
+        if errors:
+            ctx = f"{context(package)} - unlinked note #{idx + 1}"
+            raise ValueError(format_spelling_errors(errors, ctx))

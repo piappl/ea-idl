@@ -136,3 +136,28 @@ def name_spelling(config: Configuration, cls: ModelClass):
 
     if errors:
         raise ValueError(format_spelling_errors(errors, context(cls)))
+
+
+@validator
+def linked_notes_spelling(config: Configuration, cls: ModelClass):
+    """Check spelling in linked notes (notes connected via NoteLink)."""
+    if not config.spellcheck.enabled or not config.spellcheck.check_notes:
+        return
+
+    if not cls.linked_notes:
+        return  # No linked notes to check
+
+    for idx, note in enumerate(cls.linked_notes):
+        if not note or not note.strip():
+            continue
+
+        errors = check_spelling(
+            text=note,
+            language=config.spellcheck.language,
+            min_word_length=config.spellcheck.min_word_length,
+            custom_words=config.spellcheck.custom_words,
+        )
+
+        if errors:
+            ctx = f"{context(cls)} - linked note #{idx + 1}"
+            raise ValueError(format_spelling_errors(errors, ctx))

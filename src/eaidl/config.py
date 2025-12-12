@@ -170,8 +170,10 @@ class Configuration(BaseModel):
         "attribute.name_spelling",
         "struct.notes_spelling",
         "struct.name_spelling",
+        "struct.linked_notes_spelling",
         "package.notes_spelling",
         "package.name_spelling",
+        "package.unlinked_notes_spelling",
     ]
     #: Enable abstract class flattening (copy attributes to concrete children)
     flatten_abstract_classes: bool = True
@@ -179,3 +181,7 @@ class Configuration(BaseModel):
     filter_unused_classes: bool = False
     #: Property that marks root classes for unused detection (e.g., "ext::interface")
     unused_root_property: str = "ext::interface"
+    #: Output notes that are linked to classes/objects via NoteLink connectors (always loaded for spell checking)
+    output_linked_notes: bool = False
+    #: Output notes that are not linked to any object in packages (always loaded for spell checking)
+    output_unlinked_notes: bool = False

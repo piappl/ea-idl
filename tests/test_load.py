@@ -34,9 +34,9 @@ def test_reflect():
     # If this fails, just check the file and fix numbers here.
     contents = {
         "t_package": 7,
-        "t_object": 33,
+        "t_object": 36,  # 33 + 3 note objects (67, 68, 69)
         "t_attribute": 38,
-        "t_connector": 35,
+        "t_connector": 36,  # 35 + 1 NoteLink connector to Nationality
         "t_objectproperties": 65,
         "t_xref": 49,  #     Stereotypes, properties
     }
@@ -119,3 +119,72 @@ def test_get_namespace() -> None:
     assert parser.get_namespace(3) == []
     assert parser.get_namespace(9) == []
     assert parser.get_namespace(11) == []
+
+
+def test_linked_notes() -> None:
+    """Test loading notes linked to classes via NoteLink connectors."""
+    config = Configuration()
+    parser = ModelParser(config)
+    packages = parser.load()
+
+    # Find Nationality class in message package
+    message_package = packages[1].packages[2]  # core.message
+    assert message_package.name == "message"
+
+    nationality_class = None
+    for cls in message_package.classes:
+        if cls.name == "Nationality":
+            nationality_class = cls
+            break
+
+    assert nationality_class is not None, "Nationality class not found"
+    # Notes are always loaded for spell checking
+    assert len(nationality_class.linked_notes) == 1, "Expected 1 linked note"
+    assert "Note about nationality." in nationality_class.linked_notes[0]
+
+
+def test_unlinked_notes() -> None:
+    """Test loading notes that are not linked to any object."""
+    config = Configuration()
+    parser = ModelParser(config)
+    packages = parser.load()
+
+    # Find message package
+    message_package = packages[1].packages[2]  # core.message
+    assert message_package.name == "message"
+
+    # Notes are always loaded for spell checking
+    assert len(message_package.unlinked_notes) >= 1, "Expected at least 1 unlinked note"
+    # Check if our random note is there
+    found_random = False
+    for note in message_package.unlinked_notes:
+        if "Random note." in note:
+            found_random = True
+            break
+    assert found_random, "Random note not found in unlinked notes"
+
+
+def test_notes_always_loaded() -> None:
+    """Test that notes are always loaded (for spell checking) regardless of output settings."""
+    config = Configuration()
+    # Notes output is disabled by default, but notes are still loaded
+    assert config.output_linked_notes is False
+    assert config.output_unlinked_notes is False
+
+    parser = ModelParser(config)
+    packages = parser.load()
+
+    # Find Nationality class in message package
+    message_package = packages[1].packages[2]  # core.message
+    assert message_package.name == "message"
+
+    nationality_class = None
+    for cls in message_package.classes:
+        if cls.name == "Nationality":
+            nationality_class = cls
+            break
+
+    assert nationality_class is not None, "Nationality class not found"
+    # Notes are always loaded, even when output is disabled
+    assert len(nationality_class.linked_notes) == 1, "Expected linked notes to be loaded"
+    assert len(message_package.unlinked_notes) >= 1, "Expected unlinked notes to be loaded"

@@ -17,19 +17,23 @@ def create_env(config: Optional[Configuration] = None) -> Environment:
     :param config: configuration, defaults to None
     :return: environment
     """
-    return Environment(
+    env = Environment(
         loader=PackageLoader("eaidl"),
         autoescape=select_autoescape(),
         trim_blocks=True,
         lstrip_blocks=True,
         keep_trailing_newline=False,
     )
+    # Make config available as a global variable in all templates
+    if config:
+        env.globals["config"] = config
+    return env
 
 
 def render(config: Configuration, packages: List[ModelPackage]) -> str:
     env = create_env(config)
     template = env.get_template(config.template)
-    return template.render(packages=packages)
+    return template.render(packages=packages, config=config)
 
 
 def generate(config: Configuration, packages: List[ModelPackage]) -> str:

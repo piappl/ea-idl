@@ -4,13 +4,16 @@
 
 from eaidl.generate import create_env
 from eaidl.model import ModelClass, ModelAttribute, ModelPackage, ModelAnnotation
+from eaidl.config import Configuration
 from jinja2 import Template
 from typing import Optional, List
 import uuid
 
 
 def template(template: str) -> Template:
-    env = create_env()
+    # Create environment with a default configuration so templates can access config
+    config = Configuration()
+    env = create_env(config)
     return env.get_template(template)
 
 

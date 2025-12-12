@@ -41,6 +41,11 @@ module core {
             @value(1) MeasurementTypeEnum_TEMPERATURE_MEASUREMENT,
             @value(0) MeasurementTypeEnum_PRIMITIVE
         };
+        /**
+            Linked note:
+            Not that this enum has values set.
+            If not set those will be automatically assigned.
+        */
         enum IdentifierOrNameTypeEnum {
             @value(3) IdentifierOrNameTypeEnum_NAME,
             @value(1) IdentifierOrNameTypeEnum_IDENTIFIER
@@ -53,6 +58,25 @@ module core {
             @value(5) FlexibleNameValues_OTHER_VALUE
         };
     }; /* data */
+    /**
+        Note:
+        Random note.
+
+        Note:
+        This is formatted note.
+        We have bullets:
+
+        one
+        two
+        Enumeration
+
+        one
+        two
+
+
+        Ther is bold, italic, underline and all of them.
+    */
+
     module message {
         enum MessageTypeEnum {
             @value(0) MessageTypeEnum_MEASUREMENT,
@@ -61,6 +85,9 @@ module core {
         typedef string OptionValue;
         /**
             Nationality is 3 letter ISO country code.
+
+            Linked note:
+            Note about nationality.
         */
         typedef string Nationality[3];
         struct MessageHeader;
@@ -77,6 +104,10 @@ module core {
             case core::data::IdentifierOrNameTypeEnum_NAME:
                 core::common::types::Name name;
         };
+        /**
+            Linked note:
+            Various combinations of optional and multiplicity.
+        */
         struct Store {
             core::common::types::Identifier one;
             sequence<core::common::types::Identifier> _sequence;
@@ -99,6 +130,25 @@ module core {
             string value;
         };
     }; /* data */
+    /**
+        Note:
+        Random note.
+
+        Note:
+        This is formatted note.
+        We have bullets:
+
+        one
+        two
+        Enumeration
+
+        one
+        two
+
+
+        Ther is bold, italic, underline and all of them.
+    */
+
     module message {
         /**
             Message header

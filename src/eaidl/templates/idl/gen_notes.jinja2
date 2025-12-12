@@ -1,8 +1,37 @@
 {# Macro for generating notes for object, need notes field. #}
 {% macro gen_notes(cls) %}
-{% if cls.notes %}
+{% set has_notes = cls.notes %}
+{% set has_linked = config.output_linked_notes and cls.linked_notes %}
+{% set has_unlinked = config.output_unlinked_notes and cls.unlinked_notes %}
+{% if has_notes or has_linked or has_unlinked %}
 /**
+{% if cls.notes %}
 {{ cls.notes | trim | wordwrap(78) | indent(4, true) }}
+{% endif %}
+{% if has_linked %}
+{% if cls.notes %}
+
+{% endif %}
+{% for note in cls.linked_notes %}
+    Linked note:
+{{ note | trim | wordwrap(78) | indent(4, true) }}
+{% if not loop.last %}
+
+{% endif %}
+{% endfor %}
+{% endif %}
+{% if has_unlinked %}
+{% if cls.notes or has_linked %}
+
+{% endif %}
+{% for note in cls.unlinked_notes %}
+    Note:
+{{ note | trim | wordwrap(78) | indent(4, true) }}
+{% if not loop.last %}
+
+{% endif %}
+{% endfor %}
+{% endif %}
 */
 {% endif %}
 {% endmacro %}

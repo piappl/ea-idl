@@ -112,6 +112,8 @@ class ModelClass(LocalBaseModel):
     union_enum: Optional[str] = None
     #: If this class has <<values>> relationships to enums, the enums are listed here
     values_enums: List[str] = []
+    #: Additional notes linked to this class via NoteLink connectors
+    linked_notes: List[str] = []
     is_union: bool = False
     is_enum: bool = False
     is_typedef: bool = False
@@ -142,6 +144,8 @@ class ModelPackage(LocalBaseModel):
     depends_on: List[int] = []
     info: ModelPackageInfo = ModelPackageInfo()
     property_types: List[ModelPropertyType] = []
+    #: Notes that are not linked to any object in this package
+    unlinked_notes: List[str] = []
 
 
 class ModelAttribute(LocalBaseModel):
