@@ -50,8 +50,28 @@ class ConfigurationStereotypes(BaseModel):
     idl_typedef: str = "idlTypedef"
 
 
+class ConfigurationSpellcheck(BaseModel):
+    """Configuration for spellchecking."""
+
+    #: Enable spellchecking
+    enabled: bool = True
+    #: Check notes/documentation fields
+    check_notes: bool = True
+    #: Check identifiers (class names, attribute names, package names)
+    check_identifiers: bool = True
+    #: Minimum word length to check (default 3, avoids checking "id", "db", etc.)
+    min_word_length: int = 3
+    #: Custom words to add to dictionary (project-specific terms, abbreviations)
+    custom_words: List[str] = []
+    #: Auto-learn words from model (class/attribute/package names)
+    auto_learn_from_model: bool = True
+    #: Language code for spellchecker (default: en)
+    language: str = "en"
+
+
 class Configuration(BaseModel):
     stereotypes: ConfigurationStereotypes = ConfigurationStereotypes()
+    spellcheck: ConfigurationSpellcheck = ConfigurationSpellcheck()
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
     #: Database connection string, see https://docs.sqlalchemy.org/en/20/core/connections.html
     database_url: str = "sqlite+pysqlite:///tests/data/nafv4.qea"
@@ -145,6 +165,13 @@ class Configuration(BaseModel):
         "package.stereotypes",
         "package.name_snake_convention",
         "package.notes",
+        # Spellchecking validators
+        "attribute.notes_spelling",
+        "attribute.name_spelling",
+        "struct.notes_spelling",
+        "struct.name_spelling",
+        "package.notes_spelling",
+        "package.name_spelling",
     ]
     #: Enable abstract class flattening (copy attributes to concrete children)
     flatten_abstract_classes: bool = True

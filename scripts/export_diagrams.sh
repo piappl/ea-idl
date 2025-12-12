@@ -21,8 +21,8 @@ case "$(uname -s)" in
         echo "Detected Unix-like OS - using Wine"
 
         # Wine environment setup (32-bit)
-        export WINEPREFIX="${WINEPREFIX:-$HOME/.wine32}"
-        export WINEARCH=win32
+        # export WINEPREFIX="${WINEPREFIX:-$HOME/.wine32}"
+        # export WINEARCH=win32
 
         # Path to Wine Python (customize if needed)
         WINE_PYTHON="${WINE_PYTHON:-C:\\users\\${USER}\\AppData\\Local\\Programs\\Python\\Python313-32\\python.exe}"

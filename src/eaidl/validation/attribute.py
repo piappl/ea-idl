@@ -2,6 +2,7 @@ from eaidl.config import Configuration
 from eaidl.model import ModelAttribute, ModelClass
 from eaidl.utils import is_lower_snake_case
 from .base import validator, RESERVED_NAMES
+from .spellcheck import check_spelling, format_spelling_errors
 
 
 def context(attribute: ModelAttribute, cls: ModelClass) -> str:
@@ -87,3 +88,43 @@ def name_snake_convention(config: Configuration, attribute: ModelAttribute, cls:
 def notes(config: Configuration, attribute: ModelAttribute, cls: ModelClass):
     if attribute.notes is None or attribute.notes.strip() == "":
         raise ValueError(f"Attribute name has no description/comment/notes {context(attribute, cls)}")
+
+
+@validator
+def notes_spelling(config: Configuration, attribute: ModelAttribute, cls: ModelClass):
+    """Check spelling in attribute notes/documentation."""
+    if not config.spellcheck.enabled or not config.spellcheck.check_notes:
+        return
+
+    if attribute.notes is None or attribute.notes.strip() == "":
+        return  # No notes to check
+
+    errors = check_spelling(
+        text=attribute.notes,
+        language=config.spellcheck.language,
+        min_word_length=config.spellcheck.min_word_length,
+        custom_words=config.spellcheck.custom_words,
+    )
+
+    if errors:
+        raise ValueError(format_spelling_errors(errors, context(attribute, cls)))
+
+
+@validator
+def name_spelling(config: Configuration, attribute: ModelAttribute, cls: ModelClass):
+    """Check spelling in attribute name (parsed from snake_case)."""
+    if not config.spellcheck.enabled or not config.spellcheck.check_identifiers:
+        return
+
+    if attribute.name is None:
+        return
+
+    errors = check_spelling(
+        text=attribute.name,
+        language=config.spellcheck.language,
+        min_word_length=config.spellcheck.min_word_length,
+        custom_words=config.spellcheck.custom_words,
+    )
+
+    if errors:
+        raise ValueError(format_spelling_errors(errors, context(attribute, cls)))

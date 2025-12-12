@@ -2,6 +2,7 @@ from eaidl.config import Configuration
 from eaidl.model import ModelClass
 from eaidl.utils import is_camel_case
 from .base import validator, RESERVED_NAMES
+from .spellcheck import check_spelling, format_spelling_errors
 
 
 def context(cls: ModelClass) -> str:
@@ -95,3 +96,43 @@ def enum_attributes(config: Configuration, cls: ModelClass):
         raise ValueError(
             f"We expected to have values that match attributes numbers and all unique {context(cls)} {values}"
         )
+
+
+@validator
+def notes_spelling(config: Configuration, cls: ModelClass):
+    """Check spelling in class notes/documentation."""
+    if not config.spellcheck.enabled or not config.spellcheck.check_notes:
+        return
+
+    if cls.notes is None or cls.notes.strip() == "":
+        return  # No notes to check
+
+    errors = check_spelling(
+        text=cls.notes,
+        language=config.spellcheck.language,
+        min_word_length=config.spellcheck.min_word_length,
+        custom_words=config.spellcheck.custom_words,
+    )
+
+    if errors:
+        raise ValueError(format_spelling_errors(errors, context(cls)))
+
+
+@validator
+def name_spelling(config: Configuration, cls: ModelClass):
+    """Check spelling in class name (parsed from PascalCase)."""
+    if not config.spellcheck.enabled or not config.spellcheck.check_identifiers:
+        return
+
+    if cls.name is None:
+        return
+
+    errors = check_spelling(
+        text=cls.name,
+        language=config.spellcheck.language,
+        min_word_length=config.spellcheck.min_word_length,
+        custom_words=config.spellcheck.custom_words,
+    )
+
+    if errors:
+        raise ValueError(format_spelling_errors(errors, context(cls)))

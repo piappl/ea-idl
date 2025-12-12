@@ -126,6 +126,82 @@ uv run pytest tests/test_load.py::test_specific_function -v
 3. Existing commands: run, change, diagram, packages
 4. Add to `[project.scripts]` in pyproject.toml if new entry point
 
+### Configuring Spellchecking
+**Location**: Spellchecking is implemented in `src/eaidl/validation/spellcheck.py` and integrated via validators.
+
+#### Features
+- **Enabled by default**: Spellchecks notes/documentation and identifiers
+- **Warnings only**: Non-blocking by default (validators_warn)
+- **Smart filtering**: Automatically skips technical terms, acronyms, and identifiers
+- **Custom dictionary support**: Add project-specific terms
+
+#### Configuration Options
+In your YAML config or when creating Configuration:
+```yaml
+spellcheck:
+  enabled: true                    # Enable/disable spellchecking
+  check_notes: true                # Check package/class/attribute notes
+  check_identifiers: true          # Check class/attribute/package names
+  min_word_length: 3               # Minimum word length to check
+  custom_words:                    # Project-specific terms to allow
+    - seq
+    - lobw
+    - hibw
+    - nafv4
+    - myterm
+  language: en                     # Language code (default: English)
+```
+
+#### Disabling Spellchecking
+To disable spellchecking entirely:
+```yaml
+spellcheck:
+  enabled: false
+```
+
+Or remove spellcheck validators from validators_warn list:
+```yaml
+validators_warn:
+  - attribute.name_snake_convention
+  - struct.notes
+  # Remove these to disable spellcheck:
+  # - attribute.notes_spelling
+  # - attribute.name_spelling
+  # - struct.notes_spelling
+  # - struct.name_spelling
+  # - package.notes_spelling
+  # - package.name_spelling
+```
+
+#### Adding Custom Terms
+Add project-specific terms to your YAML configuration:
+```yaml
+spellcheck:
+  custom_words:
+    - seq        # abbreviation for sequence
+    - lobw       # low byte word
+    - hibw       # high byte word
+    - nafv4      # project name
+    - myterm     # your custom term
+```
+
+Terms are case-insensitive and apply to both notes and identifiers.
+
+#### Built-in Technical Terms
+The spellchecker automatically allows:
+- IDL keywords: struct, union, enum, typedef, module, etc.
+- EA terms: stereotype, connector, cardinality, etc.
+- Common abbreviations: uuid, guid, json, xml, http, sql, etc.
+- All-caps acronyms (automatically detected)
+
+#### Example Warning Output
+```
+WARNING: Spelling errors found (in core.message.DataMessage.test_seq:long):
+  - 'seq' (suggestions: 'sec', 'sea', 'sew')
+```
+
+Add 'seq' to `spellcheck.custom_words` in your config if it's a valid abbreviation.
+
 ## Configuration
 
 Sample configs in `config/` directory:
