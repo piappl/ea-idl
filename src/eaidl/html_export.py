@@ -275,7 +275,10 @@ def generate_class_pages(
 
 def generate_search_index(packages: List[ModelPackage], output_dir: Path) -> None:
     """
-    Generate JSON search index for client-side search.
+    Generate JavaScript search index for client-side search.
+
+    Creates both search.json (for backward compatibility) and search.js
+    (for file:// protocol support).
 
     :param packages: All model packages
     :param output_dir: Output directory
@@ -348,10 +351,16 @@ def generate_search_index(packages: List[ModelPackage], output_dir: Path) -> Non
         if package.name != "ext":
             process_package(package, [package.name])
 
-    # Write index JSON
-    index_file = output_dir / "search.json"
-    index_file.write_text(json.dumps(index, indent=2), encoding="utf-8")
-    log.info(f"Generated search index: {index_file} ({len(index)} items)")
+    # Write JSON index (for backward compatibility and debugging)
+    json_file = output_dir / "search.json"
+    json_file.write_text(json.dumps(index, indent=2), encoding="utf-8")
+    log.info(f"Generated search index (JSON): {json_file} ({len(index)} items)")
+
+    # Write JavaScript index (works with file:// protocol)
+    js_file = output_dir / "search.js"
+    js_content = f"// EA-IDL Search Index\n// Auto-generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\nconst SEARCH_INDEX = {json.dumps(index)};\n"
+    js_file.write_text(js_content, encoding="utf-8")
+    log.info(f"Generated search index (JS): {js_file} ({len(index)} items)")
 
 
 def calculate_model_statistics(packages: List[ModelPackage]) -> Dict[str, int]:

@@ -78,6 +78,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}EA-IDL Documentation{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="{{ assets_path }}/img/favicon.svg">
     <link rel="stylesheet" href="{{ assets_path }}/css/bootstrap.min.css">
     <style>
         :root {
@@ -280,33 +281,31 @@
     <!-- Scripts -->
     <script src="{{ assets_path }}/js/bootstrap.bundle.min.js"></script>
     <script src="{{ assets_path }}/js/fuse.min.js"></script>
+    <script src="{{ search_index_path.replace('.json', '.js') }}"></script>
     <script>
         // Search functionality
-        let searchIndex = [];
         let fuse;
 
-        // Load search index
-        // Check if we're running from file:// protocol (CORS restrictions)
-        if (window.location.protocol === 'file:') {
-            console.warn('Search disabled: Documentation opened from file system. Use a web server for search functionality.');
+        // Path to documentation root (used for resolving search result URLs)
+        const docRoot = '{{ index_link }}'.replace('index.html', '');
+
+        // Initialize search with loaded index
+        // SEARCH_INDEX is loaded from search.js (works with file:// protocol)
+        if (typeof SEARCH_INDEX !== 'undefined') {
+            fuse = new Fuse(SEARCH_INDEX, {
+                keys: ['name', 'content', 'namespace'],
+                threshold: 0.3,
+                includeScore: true
+            });
+            console.log(`Search initialized with ${SEARCH_INDEX.length} items`);
+        } else {
+            console.error('Search index not loaded');
             // Disable search input
             const searchInput = document.getElementById('searchInput');
             if (searchInput) {
                 searchInput.disabled = true;
-                searchInput.placeholder = 'Search unavailable when viewing local files. Serve via HTTP to enable.';
+                searchInput.placeholder = 'Search unavailable - index not loaded';
             }
-        } else {
-            fetch('{{ search_index_path }}')
-                .then(response => response.json())
-                .then(data => {
-                    searchIndex = data;
-                    fuse = new Fuse(searchIndex, {
-                        keys: ['name', 'content', 'namespace'],
-                        threshold: 0.3,
-                        includeScore: true
-                    });
-                })
-                .catch(err => console.error('Failed to load search index:', err));
         }
 
         // Search input handler
@@ -316,6 +315,11 @@
 
             if (query.length < 2) {
                 resultsDiv.innerHTML = '';
+                return;
+            }
+
+            if (!fuse) {
+                resultsDiv.innerHTML = '<p class="text-danger">Search not available</p>';
                 return;
             }
 
@@ -333,12 +337,10 @@
                              item.type === 'typedef' ? 'badge-typedef' :
                              'bg-secondary';
 
-                // Convert relative URL to absolute path from current page
-                // URLs in search.json are relative from root (e.g., "packages/core/index.html")
-                // We need to prepend the path to root from current page
-                const currentDepth = window.location.pathname.split('/').filter(p => p).length - 1;
-                const toRoot = '../'.repeat(currentDepth);
-                const absoluteUrl = toRoot + item.url;
+                // Convert search index URL to absolute URL from current page
+                // URLs in search index are relative from root (e.g., "packages/core/index.html")
+                // Use docRoot path (calculated from index_link) to resolve correctly
+                const absoluteUrl = docRoot + item.url;
 
                 return `
                     <div class="border-bottom pb-2 mb-2">

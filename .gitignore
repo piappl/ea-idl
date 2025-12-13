@@ -8,3 +8,7 @@ wheels/
 
 # Virtual environments
 .venv
+
+
+# Default html docs folder
+_docs/
