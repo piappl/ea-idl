@@ -2,6 +2,7 @@
 
 import re
 from markdownify import MarkdownConverter
+import markdown
 
 
 class CleanMarkdownConverter(MarkdownConverter):
@@ -42,3 +43,52 @@ def strip_html(text: str) -> str:
     result = result.strip()
 
     return result
+
+
+def format_notes_for_html(text: str) -> str:
+    """
+    Convert EA note HTML to formatted HTML for display.
+
+    This function:
+    1. Converts EA's HTML notes to markdown (stripping unsafe tags)
+    2. Fixes common markdown formatting issues
+    3. Converts the markdown back to safe HTML for display
+
+    :param text: Text potentially containing HTML tags (from EA notes)
+    :return: Clean HTML formatted text ready for display
+    """
+    if not text:
+        return text
+
+    # First convert HTML to markdown (strips unsafe content)
+    markdown_text = strip_html(text)
+
+    # Unescape escaped markdown characters (markdownify escapes them to preserve literal text)
+    # We want to treat them as markdown syntax instead
+    markdown_text = markdown_text.replace("\\*", "*").replace("\\_", "_")
+
+    # Fix common issues from EA HTML -> Markdown conversion
+    # Ensure proper spacing before lists (both * and numbered)
+    lines = markdown_text.split("\n")
+    fixed_lines = []
+    prev_was_list = False
+
+    for line in lines:
+        stripped = line.strip()
+        # Check if this is a list item
+        is_list = stripped.startswith("* ") or (stripped and stripped[0].isdigit() and ". " in stripped[:4])
+
+        # Add blank line before list start
+        if is_list and not prev_was_list and fixed_lines and fixed_lines[-1].strip():
+            fixed_lines.append("")
+
+        fixed_lines.append(line)
+        prev_was_list = is_list
+
+    markdown_text = "\n".join(fixed_lines)
+
+    # Then convert markdown to HTML for display
+    # Using 'extra' extension for tables, fenced code, etc.
+    html_output = markdown.markdown(markdown_text, extensions=["extra", "sane_lists"])
+
+    return html_output

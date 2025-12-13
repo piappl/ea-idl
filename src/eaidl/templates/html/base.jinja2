@@ -1,0 +1,360 @@
+{# Macros for reusable components - Define first so they're available in template #}
+
+{% macro render_package_tree(packages, current_namespace) %}
+<nav class="package-tree">
+    <h6 class="text-muted text-uppercase small mb-2">Packages</h6>
+    <ul>
+    {% for package in packages %}
+        {% if package.name != 'ext' %}
+        {{ render_package_node(package, current_namespace, [package.name]) }}
+        {% endif %}
+    {% endfor %}
+    </ul>
+</nav>
+{% endmacro %}
+
+{% macro render_package_node(package, current_namespace, namespace_path) %}
+<li>
+    <a href="{{ generate_package_link_from_current(current_namespace, namespace_path) }}"
+       class="{% if current_namespace == namespace_path %}active{% endif %}">
+        {{ package.name }}
+        {% if package.info.structs + package.info.enums + package.info.unions > 0 %}
+        <span class="badge bg-secondary class-badge">
+            {{ package.info.structs + package.info.enums + package.info.unions }}
+        </span>
+        {% endif %}
+    </a>
+    {% if package.packages %}
+    <ul>
+        {% for nested in package.packages %}
+        {{ render_package_node(nested, current_namespace, namespace_path + [nested.name]) }}
+        {% endfor %}
+    </ul>
+    {% endif %}
+</li>
+{% endmacro %}
+
+{% macro render_breadcrumbs(namespace) %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ index_link }}">Home</a></li>
+        {% for i in range(namespace|length) %}
+        <li class="breadcrumb-item {% if loop.last %}active{% endif %}">
+            {% if not loop.last %}
+            <a href="{{ generate_package_link_for_breadcrumb(namespace, namespace[:i+1]) }}">{{ namespace[i] }}</a>
+            {% else %}
+            {{ namespace[i] }}
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ol>
+</nav>
+{% endmacro %}
+
+{% macro render_notes(notes) %}
+{% if notes %}
+<div class="notes-section">
+    <h6>Notes</h6>
+    <div>{{ notes | format_notes | safe }}</div>
+</div>
+{% endif %}
+{% endmacro %}
+
+{% macro render_type_badge(cls) %}
+{% if cls.is_struct %}
+    <span class="badge badge-struct class-badge">struct</span>
+{% elif cls.is_enum %}
+    <span class="badge badge-enum class-badge">enum</span>
+{% elif cls.is_union %}
+    <span class="badge badge-union class-badge">union</span>
+{% elif cls.is_typedef %}
+    <span class="badge badge-typedef class-badge">typedef</span>
+{% endif %}
+{% endmacro %}
+
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}EA-IDL Documentation{% endblock %}</title>
+    <link rel="stylesheet" href="{{ assets_path }}/css/bootstrap.min.css">
+    <style>
+        :root {
+            --sidebar-width: 280px;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        .sidebar {
+            position: fixed;
+            top: 56px;
+            bottom: 0;
+            left: 0;
+            width: var(--sidebar-width);
+            overflow-y: auto;
+            background-color: var(--bs-light);
+            border-right: 1px solid var(--bs-border-color);
+            padding: 1rem;
+        }
+
+        .main-content {
+            margin-left: var(--sidebar-width);
+            padding: 2rem;
+            min-height: calc(100vh - 56px);
+        }
+
+        .package-tree {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .package-tree li {
+            margin: 0.25rem 0;
+        }
+
+        .package-tree ul {
+            list-style: none;
+            padding-left: 1.25rem;
+            margin-top: 0.25rem;
+        }
+
+        .package-tree a {
+            text-decoration: none;
+            color: var(--bs-body-color);
+            padding: 0.25rem 0.5rem;
+            display: block;
+            border-radius: 0.25rem;
+            transition: background-color 0.15s;
+        }
+
+        .package-tree a:hover {
+            background-color: var(--bs-secondary-bg);
+        }
+
+        .package-tree a.active {
+            background-color: var(--bs-primary);
+            color: white;
+        }
+
+        .class-badge {
+            font-size: 0.75rem;
+            padding: 0.15rem 0.4rem;
+            margin-left: 0.25rem;
+        }
+
+        .badge-struct {
+            background-color: #0d6efd;
+        }
+
+        .badge-enum {
+            background-color: #198754;
+        }
+
+        .badge-union {
+            background-color: #fd7e14;
+        }
+
+        .badge-typedef {
+            background-color: #6f42c1;
+        }
+
+        .badge-optional {
+            background-color: #6c757d;
+        }
+
+        .badge-collection {
+            background-color: #0dcaf0;
+        }
+
+        .attribute-table {
+            font-size: 0.9rem;
+        }
+
+        .attribute-table th {
+            background-color: var(--bs-light);
+        }
+
+        .type-link {
+            font-family: 'Courier New', monospace;
+            text-decoration: none;
+            color: var(--bs-link-color);
+        }
+
+        .type-link:hover {
+            text-decoration: underline;
+        }
+
+        .breadcrumb {
+            background-color: transparent;
+            padding: 0;
+            margin-bottom: 1rem;
+        }
+
+        .notes-section {
+            background-color: var(--bs-light);
+            padding: 1rem;
+            border-radius: 0.375rem;
+            border-left: 4px solid var(--bs-primary);
+            margin: 1rem 0;
+        }
+
+        pre code {
+            display: block;
+            padding: 1rem;
+            background-color: var(--bs-light);
+            border-radius: 0.375rem;
+            overflow-x: auto;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s;
+                z-index: 1000;
+            }
+
+            .sidebar.show {
+                transform: translateX(0);
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+        }
+    </style>
+    {% block extra_styles %}{% endblock %}
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+        <div class="container-fluid">
+            <button class="navbar-toggler me-2" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebar">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <a class="navbar-brand" href="{{ index_link }}">EA-IDL Documentation</a>
+            <button class="btn btn-outline-light btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#searchModal">
+                Search
+            </button>
+        </div>
+    </nav>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        {% block sidebar %}
+        {{ render_package_tree(all_packages, current_namespace) }}
+        {% endblock %}
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        {% if current_namespace %}
+        {{ render_breadcrumbs(current_namespace) }}
+        {% endif %}
+
+        {% block content %}{% endblock %}
+
+        <footer class="mt-5 pt-3 border-top text-muted small">
+            <p>Generated by EA-IDL on {{ generation_date }}</p>
+        </footer>
+    </main>
+
+    <!-- Search Modal -->
+    <div class="modal fade" id="searchModal" tabindex="-1" aria-labelledby="searchModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="searchModalLabel">Search Documentation</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="text" class="form-control mb-3" id="searchInput" placeholder="Search classes, attributes, packages...">
+                    <div id="searchResults"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="{{ assets_path }}/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ assets_path }}/js/fuse.min.js"></script>
+    <script>
+        // Search functionality
+        let searchIndex = [];
+        let fuse;
+
+        // Load search index
+        // Check if we're running from file:// protocol (CORS restrictions)
+        if (window.location.protocol === 'file:') {
+            console.warn('Search disabled: Documentation opened from file system. Use a web server for search functionality.');
+            // Disable search input
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) {
+                searchInput.disabled = true;
+                searchInput.placeholder = 'Search unavailable when viewing local files. Serve via HTTP to enable.';
+            }
+        } else {
+            fetch('{{ search_index_path }}')
+                .then(response => response.json())
+                .then(data => {
+                    searchIndex = data;
+                    fuse = new Fuse(searchIndex, {
+                        keys: ['name', 'content', 'namespace'],
+                        threshold: 0.3,
+                        includeScore: true
+                    });
+                })
+                .catch(err => console.error('Failed to load search index:', err));
+        }
+
+        // Search input handler
+        document.getElementById('searchInput')?.addEventListener('input', (e) => {
+            const query = e.target.value;
+            const resultsDiv = document.getElementById('searchResults');
+
+            if (query.length < 2) {
+                resultsDiv.innerHTML = '';
+                return;
+            }
+
+            const results = fuse.search(query);
+            if (results.length === 0) {
+                resultsDiv.innerHTML = '<p class="text-muted">No results found</p>';
+                return;
+            }
+
+            const html = results.slice(0, 20).map(result => {
+                const item = result.item;
+                const badge = item.type === 'struct' ? 'badge-struct' :
+                             item.type === 'enum' ? 'badge-enum' :
+                             item.type === 'union' ? 'badge-union' :
+                             item.type === 'typedef' ? 'badge-typedef' :
+                             'bg-secondary';
+
+                // Convert relative URL to absolute path from current page
+                // URLs in search.json are relative from root (e.g., "packages/core/index.html")
+                // We need to prepend the path to root from current page
+                const currentDepth = window.location.pathname.split('/').filter(p => p).length - 1;
+                const toRoot = '../'.repeat(currentDepth);
+                const absoluteUrl = toRoot + item.url;
+
+                return `
+                    <div class="border-bottom pb-2 mb-2">
+                        <a href="${absoluteUrl}" class="text-decoration-none">
+                            <strong>${item.name}</strong>
+                            <span class="badge ${badge} class-badge">${item.type}</span>
+                        </a>
+                        <div class="small text-muted">${item.namespace.join(' :: ')}</div>
+                        ${item.content ? `<div class="small">${item.content.substring(0, 100)}...</div>` : ''}
+                    </div>
+                `;
+            }).join('');
+
+            resultsDiv.innerHTML = html;
+        });
+    </script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

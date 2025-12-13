@@ -31,9 +31,10 @@ uv run eaidl --config config/sqlite.yaml
 uv run eaidl --config config/postgres.yaml > output.idl
 
 # CLI commands available
-uv run eaidl_cli run      # Generate IDL (default)
-uv run eaidl_cli diagram  # Generate PlantUML diagrams
-uv run eaidl_cli packages # List packages
+uv run eaidl run          # Generate IDL (default)
+uv run eaidl diagram      # Generate PlantUML diagrams
+uv run eaidl packages     # List packages
+uv run eaidl docs         # Generate interactive HTML documentation
 ```
 
 ### Development Setup
@@ -78,7 +79,11 @@ uv run ruff format .
 - `src/eaidl/load.py` - Database loading & parsing (ModelParser class)
 - `src/eaidl/transforms.py` - Model transformations (especially abstract class flattening)
 - `src/eaidl/validation/` - Validation framework (decorator-based)
-- `src/eaidl/templates/idl/` - Jinja2 templates (whitespace-sensitive!)
+- `src/eaidl/templates/idl/` - Jinja2 templates for IDL output (whitespace-sensitive!)
+- `src/eaidl/templates/html/` - Jinja2 templates for HTML documentation
+- `src/eaidl/html_export.py` - HTML documentation generator
+- `src/eaidl/mermaid_diagram.py` - Interactive Mermaid diagram generator
+- `src/eaidl/link_utils.py` - Link resolution for HTML documentation
 
 ### Critical Feature: Abstract Class Flattening
 **Location**: `transforms.py::flatten_abstract_classes()`
@@ -97,6 +102,92 @@ uv run pytest tests/test_transforms.py -v
 
 # Run specific test function
 uv run pytest tests/test_load.py::test_specific_function -v
+```
+
+## HTML Documentation Export
+
+### Architecture
+- **Static site generator**: Creates multi-page HTML with Bootstrap 5 UI
+- **Interactive diagrams**: Mermaid.js class diagrams with clickable links
+- **Offline-first**: All assets (CSS, JS, fonts) bundled locally
+- **Fuzzy search**: Client-side search using Fuse.js (~3KB)
+- **Cross-references**: Every type reference is a clickable link
+
+### Key Modules
+
+**`html_export.py`**: Main orchestration
+- `export_html()` - Entry point, creates directory structure
+- `generate_index_page()` - Landing page with statistics
+- `generate_package_pages()` - Package detail + diagram pages
+- `generate_class_pages()` - Class/struct/enum detail pages
+- `generate_search_index()` - JSON search index
+- `copy_assets()` - Copies Bootstrap, Mermaid, Fuse.js
+
+**`mermaid_diagram.py`**: Diagram generation
+- `MermaidClassDiagramGenerator` - Generates Mermaid class diagram syntax
+- Shows classes, attributes, relationships
+- Adds click handlers for navigation
+- Handles NAFv4 stereotypes (struct, enum, union, typedef)
+
+**`link_utils.py`**: Link resolution
+- `get_relative_path()` - Calculate relative paths between namespaces
+- `generate_class_link()` - Generate link to class page
+- `generate_package_link()` - Generate link to package page
+- `resolve_type_reference()` - Resolve attribute type to link
+
+### Templates
+
+**Base Template** (`templates/html/base.jinja2`):
+- Bootstrap 5 layout with sidebar navigation
+- Package tree with active highlighting
+- Search modal with Fuse.js integration
+- Macros: `render_package_tree`, `render_breadcrumbs`, `render_notes`, `render_type_badge`
+- **Important**: Macros must be defined BEFORE they're used in the template
+
+**Page Templates**:
+- `index.jinja2` - Landing page with model statistics
+- `package.jinja2` - Package detail with class table
+- `class.jinja2` - Class detail with attributes, relationships, metadata
+- `diagram.jinja2` - Interactive Mermaid diagram page
+
+### Assets
+
+Assets are downloaded once via `scripts/download_assets.py` and committed to repo:
+- `templates/html/assets/css/bootstrap.min.css` (Bootstrap 5.3.3)
+- `templates/html/assets/js/bootstrap.bundle.min.js`
+- `templates/html/assets/js/mermaid.min.js` (Mermaid 11)
+- `templates/html/assets/js/fuse.min.js` (Fuse.js 7.0)
+
+To update assets:
+```bash
+python scripts/download_assets.py
+```
+
+### CLI Integration
+
+**Command**: `eaidl docs --config config.yaml --output ./_docs`
+
+Options:
+- `--config` - Configuration file (required)
+- `--output` - Output directory (default: `./docs`)
+- `--debug` - Enable debug logging
+- `--no-diagrams` - Skip diagram generation (currently not implemented)
+
+The command:
+1. Loads EA model via ModelParser
+2. Applies transformations (flatten abstract classes, etc.)
+3. Calls `export_html()` to generate static site
+4. Outputs to specified directory
+
+### Testing HTML Export
+
+```bash
+# Generate docs from test database
+uv run eaidl docs --config config/sqlite.yaml --output /tmp/test-docs
+
+# Open in browser
+open /tmp/test-docs/index.html  # macOS
+xdg-open /tmp/test-docs/index.html  # Linux
 ```
 
 ## Common Tasks for AI Assistants

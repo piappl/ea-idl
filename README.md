@@ -48,18 +48,36 @@ pytest
 There are sample configuration files provided in [config](./config/).
 
 ```sh
-# This should run against sample SQLite database in unit tests:
-eaidl --config config/sqlite.yaml
-# This needs custom postgresql configuration to run
-eaidl --config config/postgres.yaml > res.idl
+# Generate IDL from sample SQLite database:
+eaidl run --config config/sqlite.yaml
+
+# Generate IDL from PostgreSQL (needs custom configuration):
+eaidl run --config config/postgres.yaml > res.idl
+
+# Other commands available:
+eaidl diagram --config config/sqlite.yaml --output diagram.puml  # Generate PlantUML diagram
+eaidl packages --config config/sqlite.yaml                        # List packages
+eaidl docs --config config/sqlite.yaml --output ./_docs           # Generate HTML docs
 ```
 ### using uvx
 
 ```sh
-uvx --with sqlite --from git+https://github.com/piappl/ea-idl/ eaidl --config config/sqlite.yaml
-uvx --with psycopg2 --from git+https://github.com/piappl/ea-idl/ eaidl --config config/postgres.yaml
+uvx --with sqlite --from git+https://github.com/piappl/ea-idl/ eaidl run --config config/sqlite.yaml
+uvx --with psycopg2 --from git+https://github.com/piappl/ea-idl/ eaidl run --config config/postgres.yaml
 ```
 
+
+## Generate Interactive HTML Documentation
+
+The `docs` command generates a complete static website with interactive documentation from your EA model:
+
+```sh
+# Generate HTML documentation
+eaidl docs --config config/sqlite.yaml --output ./docs
+
+# With debug logging
+eaidl docs --config config/sqlite.yaml --output ./docs --debug
+```
 
 ## Regenerate docs
 

@@ -1,0 +1,130 @@
+{% extends "base.jinja2" %}
+
+{% block title %}{{ package.name }} - EA-IDL Documentation{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mb-3">
+        {{ package.name }}
+        <small class="text-muted">package</small>
+    </h1>
+
+    {% if package.notes %}
+    {{ render_notes(package.notes) }}
+    {% endif %}
+
+    {% if package.unlinked_notes %}
+    <div class="alert alert-info">
+        <h6>Additional Notes</h6>
+        {% for note in package.unlinked_notes %}
+        <div class="mb-1">{{ note | format_notes | safe }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="row my-4">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Package Statistics</h5>
+                    <div class="row">
+                        <div class="col-6 col-md-3">
+                            <div class="text-center">
+                                <div class="h4">{{ package.info.structs }}</div>
+                                <div class="small text-muted">Structs</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="text-center">
+                                <div class="h4">{{ package.info.enums }}</div>
+                                <div class="small text-muted">Enums</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="text-center">
+                                <div class="h4">{{ package.info.unions }}</div>
+                                <div class="small text-muted">Unions</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="text-center">
+                                <div class="h4">{{ package.info.typedefs }}</div>
+                                <div class="small text-muted">Typedefs</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if package.classes %}
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Class Diagram</h5>
+                    <p class="card-text">View interactive class diagram showing relationships and structure.</p>
+                    <a href="diagram.html" class="btn btn-primary">View Diagram</a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if package.packages %}
+    <h2 class="mt-4 mb-3">Nested Packages</h2>
+    <div class="list-group mb-4">
+        {% for nested in package.packages %}
+        <a href="{{ nested.name }}/index.html" class="list-group-item list-group-item-action">
+            <div class="d-flex w-100 justify-content-between">
+                <h5 class="mb-1">{{ nested.name }}</h5>
+                <small>
+                    {% if nested.info.structs + nested.info.enums + nested.info.unions > 0 %}
+                        <span class="badge bg-secondary">
+                            {{ nested.info.structs + nested.info.enums + nested.info.unions }} classes
+                        </span>
+                    {% endif %}
+                </small>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if package.classes %}
+    <h2 class="mt-4 mb-3">Classes</h2>
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for cls in package.classes %}
+                <tr>
+                    <td>
+                        <a href="{{ generate_class_link(current_namespace, cls.namespace, cls.name) }}" class="type-link">
+                            {{ cls.name }}
+                        </a>
+                    </td>
+                    <td>
+                        {{ render_type_badge(cls) }}
+                        {% if cls.is_abstract %}
+                            <span class="badge bg-secondary class-badge">abstract</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if cls.notes %}
+                            {{ cls.notes | strip_html | truncate(100) }}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

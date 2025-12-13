@@ -1,0 +1,82 @@
+{% extends "base.jinja2" %}
+
+{% block title %}{{ package.name }} Diagram - EA-IDL Documentation{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .mermaid {
+        background-color: white;
+        border: 1px solid var(--bs-border-color);
+        border-radius: 0.375rem;
+        padding: 2rem;
+        margin: 2rem 0;
+    }
+
+    .diagram-container {
+        overflow-x: auto;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mb-3">{{ package.name }} - Class Diagram</h1>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Interactive Diagram</h5>
+            <p class="card-text">
+                This diagram shows the classes, relationships, and structure within the <strong>{{ package.name }}</strong> package.
+                Click on any class to navigate to its detailed documentation.
+            </p>
+            <a href="index.html" class="btn btn-outline-primary btn-sm">Back to Package</a>
+        </div>
+    </div>
+
+    {% if package.classes %}
+    <div class="diagram-container">
+        <pre class="mermaid">
+{{ mermaid_code }}
+        </pre>
+    </div>
+
+    <div class="card mt-4">
+        <div class="card-body">
+            <h6>Legend</h6>
+            <ul class="list-unstyled">
+                <li><strong>→</strong> Association (reference)</li>
+                <li><strong>⬥→</strong> Composition (contains)</li>
+                <li><strong>▷</strong> Inheritance (extends)</li>
+                <li><strong>⋯→</strong> Union relationship</li>
+            </ul>
+
+            <h6 class="mt-3">Note</h6>
+            <p class="small text-muted">
+                Class stereotypes (struct, enum, union, typedef) are not shown in the diagram due to Mermaid v11 limitations.
+                Click on any class to see its full type information and metadata.
+            </p>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        <p class="mb-0">This package has no classes to diagram.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ assets_path }}/js/mermaid.min.js"></script>
+<script>
+    // Initialize Mermaid
+    mermaid.initialize({
+        startOnLoad: true,
+        theme: 'default',
+        securityLevel: 'loose',
+        flowchart: {
+            useMaxWidth: true,
+            htmlLabels: true
+        }
+    });
+</script>
+{% endblock %}

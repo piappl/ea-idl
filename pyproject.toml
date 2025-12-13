@@ -17,10 +17,11 @@ dependencies = [
     "click>=8.1.7",
     "pyspellchecker>=0.8.0",
     "markdownify>=1.2.2",
+    "markdown>=3.10",
 ]
 
 [project.scripts]
-eaidl = "eaidl.cli:run"
+eaidl = "eaidl.cli:cli"
 eaidl_change = "eaidl.cli:change"
 eaidl_cli = "eaidl.cli:cli"
 

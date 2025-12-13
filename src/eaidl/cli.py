@@ -1,11 +1,14 @@
 import click
 import json
 import logging
+from pathlib import Path
 from eaidl.load import ModelParser
 from eaidl.change import ModelChanger
 from eaidl.utils import load_config, LogFormatter
 from eaidl.generate import generate
 from eaidl.diagram import PackageDiagramGenerator
+from eaidl.html_export import export_html
+from eaidl.transforms import flatten_abstract_classes
 
 log = logging.getLogger(__name__)
 
@@ -171,10 +174,41 @@ def packages(config, debug, output, format):
         click.echo(output_content)
 
 
+@click.command()
+@click.option("--config", default="config.yaml", help="Configuration file.")
+@click.option("--debug", default=False, is_flag=True, help="Enable debug.")
+@click.option("--output", default="./_docs", help="Output directory for HTML documentation.")
+@click.option("--no-diagrams", is_flag=True, help="Skip diagram generation.")
+def docs(config, debug, output, no_diagrams):
+    """Generate interactive HTML documentation from EA model."""
+    log_handler = logging.StreamHandler()
+    log_handler.setFormatter(LogFormatter())
+    logging.basicConfig(level=logging.DEBUG if debug else logging.INFO, handlers=[log_handler])
+
+    config_obj = load_config(config)
+    if debug:
+        log.debug(json.dumps(config_obj.model_dump(), indent=4))
+
+    parser = ModelParser(config_obj)
+    model = parser.load()
+
+    # Apply transformations (same as run command)
+    if config_obj.flatten_abstract_classes:
+        flatten_abstract_classes(model)
+
+    # Export HTML documentation
+    output_path = Path(output)
+    export_html(config_obj, model, output_path)
+
+    click.echo(f"✓ HTML documentation generated in {output_path}")
+    click.echo(f"  Open {output_path / 'index.html'} in your browser")
+
+
 cli.add_command(run)
 cli.add_command(change)
 cli.add_command(diagram)
 cli.add_command(packages)
+cli.add_command(docs)
 
 if __name__ == "__main__":
     cli()

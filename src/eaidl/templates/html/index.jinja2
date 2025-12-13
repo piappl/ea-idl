@@ -1,0 +1,111 @@
+{% extends "base.jinja2" %}
+
+{% block title %}EA-IDL Documentation - Home{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-lg-8">
+            <h1 class="display-4 mb-4">EA-IDL Documentation</h1>
+
+            <p class="lead">
+                Interactive documentation for Enterprise Architect data models.
+                Navigate through packages, explore class definitions, and view interactive diagrams.
+            </p>
+
+            <div class="row g-4 my-4">
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h2 class="display-6 text-primary">{{ stats.packages }}</h2>
+                            <p class="mb-0">Packages</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h2 class="display-6 text-info">{{ stats.structs }}</h2>
+                            <p class="mb-0">Structs</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h2 class="display-6 text-success">{{ stats.enums }}</h2>
+                            <p class="mb-0">Enums</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h2 class="display-6 text-warning">{{ stats.unions }}</h2>
+                            <p class="mb-0">Unions</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <h2 class="mt-5 mb-3">Getting Started</h2>
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Browse Packages</h5>
+                    <p class="card-text">
+                        Use the sidebar navigation to browse through the package hierarchy.
+                        Each package contains classes, structs, enums, and other type definitions.
+                    </p>
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Search</h5>
+                    <p class="card-text">
+                        Click the "Search" button in the navigation bar to search across all classes,
+                        attributes, and packages. Search supports fuzzy matching for easier discovery.
+                    </p>
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Interactive Diagrams</h5>
+                    <p class="card-text">
+                        Each package with classes has an interactive class diagram showing relationships
+                        and structure. Click on diagram elements to navigate to detailed class pages.
+                    </p>
+                </div>
+            </div>
+
+            <h2 class="mt-5 mb-3">Top-Level Packages</h2>
+            <div class="list-group">
+            {% for package in packages %}
+                {% if package.name != 'ext' %}
+                <a href="packages/{{ package.name }}/index.html" class="list-group-item list-group-item-action">
+                    <div class="d-flex w-100 justify-content-between">
+                        <h5 class="mb-1">{{ package.name }}</h5>
+                        <small>
+                            {% if package.info.structs > 0 %}
+                                <span class="badge badge-struct">{{ package.info.structs }} structs</span>
+                            {% endif %}
+                            {% if package.info.enums > 0 %}
+                                <span class="badge badge-enum">{{ package.info.enums }} enums</span>
+                            {% endif %}
+                            {% if package.info.unions > 0 %}
+                                <span class="badge badge-union">{{ package.info.unions }} unions</span>
+                            {% endif %}
+                        </small>
+                    </div>
+                    {% if package.notes %}
+                    <p class="mb-1 small">{{ package.notes | strip_html | truncate(150) }}</p>
+                    {% endif %}
+                </a>
+                {% endif %}
+            {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -103,6 +103,8 @@ class Configuration(BaseModel):
         "unsigned long",
         "long long",
         "unsigned long long",
+        "int",
+        "unsigned int",
         "float",
         "double",
         "long double",
@@ -112,7 +114,6 @@ class Configuration(BaseModel):
         "octet",
         "string",
         "wstring",
-        "octet",
     ]
     #: If we want to output stereotype as annotation
     annotations_from_stereotypes: List[str] = ["interface"]

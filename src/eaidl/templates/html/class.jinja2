@@ -1,0 +1,196 @@
+{% extends "base.jinja2" %}
+
+{% block title %}{{ cls.name }} - EA-IDL Documentation{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mb-3">
+        {{ cls.name }}
+        {{ render_type_badge(cls) }}
+        {% if cls.is_abstract %}
+            <span class="badge bg-secondary class-badge">abstract</span>
+        {% endif %}
+    </h1>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h6 class="text-muted">Fully Qualified Name</h6>
+            <code>{{ cls.namespace | join('::') }}::{{ cls.name }}</code>
+
+            {% if cls.stereotypes %}
+            <h6 class="text-muted mt-3">Stereotypes</h6>
+            <div>
+                {% for stereotype in cls.stereotypes %}
+                <span class="badge bg-info">{{ stereotype }}</span>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if cls.notes %}
+    {{ render_notes(cls.notes) }}
+    {% endif %}
+
+    {% if cls.linked_notes %}
+    <div class="alert alert-info">
+        <h6>Linked Notes</h6>
+        {% for note in cls.linked_notes %}
+        <div class="mb-1">{{ note | format_notes | safe }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if cls.generalization %}
+    <div class="card mb-3">
+        <div class="card-body">
+            <h5 class="card-title">Inheritance</h5>
+            <p>Inherits from: <code>{{ cls.generalization | join('::') }}</code></p>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if cls.parent_type %}
+    <div class="card mb-3">
+        <div class="card-body">
+            <h5 class="card-title">Typedef</h5>
+            <p>Type alias for: <code>{{ cls.parent_type }}</code></p>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if cls.union_enum %}
+    <div class="card mb-3">
+        <div class="card-body">
+            <h5 class="card-title">Union Discriminator</h5>
+            <p>Discriminated by enum: <code>{{ cls.union_enum }}</code></p>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if cls.values_enums %}
+    <div class="card mb-3">
+        <div class="card-body">
+            <h5 class="card-title">Allowed Values</h5>
+            <p>Values constrained by enums:</p>
+            <ul>
+                {% for enum in cls.values_enums %}
+                <li><code>{{ enum }}</code></li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if cls.attributes %}
+    <h2 class="mt-4 mb-3">
+        {% if cls.is_enum %}
+        Values
+        {% else %}
+        Attributes
+        {% endif %}
+    </h2>
+
+    <div class="table-responsive">
+        <table class="table table-striped attribute-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Multiplicity</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for attr in cls.attributes %}
+                <tr id="attr-{{ attr.name }}">
+                    <td>
+                        <strong>{{ attr.name }}</strong>
+                        {% if attr.is_optional %}
+                            <span class="badge badge-optional class-badge">optional</span>
+                        {% endif %}
+                        {% if attr.is_collection %}
+                            <span class="badge badge-collection class-badge">collection</span>
+                        {% endif %}
+                        {% if attr.stereotypes %}
+                            {% for stereotype in attr.stereotypes %}
+                            <span class="badge bg-secondary class-badge">{{ stereotype }}</span>
+                            {% endfor %}
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if attr.type %}
+                            {% set type_ref = resolve_type_reference(attr, current_namespace, all_packages) %}
+                            {% if type_ref.link %}
+                                <a href="{{ type_ref.link }}" class="type-link">{{ attr.type }}</a>
+                            {% else %}
+                                <code>{{ attr.type }}</code>
+                            {% endif %}
+
+                            {% if attr.is_collection %}
+                                <span class="text-muted small">(sequence)</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if attr.lower_bound or attr.upper_bound %}
+                            <code>[{{ attr.lower_bound or '0' }}..{{ attr.upper_bound or '*' }}]</code>
+                        {% else %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if attr.notes %}
+                            <div class="small">{{ attr.notes | format_notes | safe }}</div>
+                        {% endif %}
+
+                        {% if attr.properties %}
+                            <div class="mt-1">
+                                {% for prop_name, prop_value in attr.properties.items() %}
+                                <span class="badge bg-light text-dark">
+                                    {{ prop_name }}: {{ prop_value.value }}
+                                </span>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-muted">No attributes defined.</p>
+    {% endif %}
+
+    {% if cls.properties %}
+    <h3 class="mt-4 mb-3">Annotations</h3>
+    <div class="table-responsive">
+        <table class="table table-sm">
+            <thead>
+                <tr>
+                    <th>Property</th>
+                    <th>Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for prop_name, prop_value in cls.properties.items() %}
+                <tr>
+                    <td><code>{{ prop_name }}</code></td>
+                    <td>
+                        {% if prop_value.value is not none %}
+                            <code>{{ prop_value.value }}</code>
+                        {% else %}
+                            <span class="text-muted">present</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
