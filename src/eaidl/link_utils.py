@@ -276,3 +276,39 @@ def find_class_by_name(
             return result
 
     return None
+
+
+def get_inherited_attributes(cls: ModelClass, all_packages: List[ModelPackage]) -> List[ModelAttribute]:
+    """
+    Collect all inherited attributes from parent classes.
+
+    Walks up the inheritance hierarchy and collects attributes from each parent class.
+    Returns attributes in order from most distant ancestor to immediate parent.
+
+    :param cls: Class to get inherited attributes for
+    :param all_packages: All model packages (for parent class lookup)
+    :return: List of inherited attributes
+    """
+    inherited_attrs = []
+
+    # Check if class has a parent
+    if not cls.generalization:
+        return inherited_attrs
+
+    # Generalization is a namespace path like ['core', 'message', 'ParentClass']
+    # Last element is the class name, rest is the namespace
+    parent_namespace = cls.generalization[:-1]
+    parent_name = cls.generalization[-1]
+
+    # Find parent class
+    parent_class = find_class_by_name(all_packages, parent_name, parent_namespace)
+
+    if parent_class:
+        # Recursively get attributes from parent's parents first
+        parent_inherited = get_inherited_attributes(parent_class, all_packages)
+        inherited_attrs.extend(parent_inherited)
+
+        # Add parent's own attributes
+        inherited_attrs.extend(parent_class.attributes)
+
+    return inherited_attrs

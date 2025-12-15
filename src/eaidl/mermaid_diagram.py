@@ -8,7 +8,7 @@ including interactive links to class detail pages.
 from typing import List, Set
 from eaidl.model import ModelPackage, ModelClass, ModelAttribute
 from eaidl.config import Configuration
-from eaidl.link_utils import generate_class_link
+from eaidl.link_utils import generate_class_link, get_inherited_attributes
 import logging
 
 log = logging.getLogger(__name__)
@@ -17,15 +17,17 @@ log = logging.getLogger(__name__)
 class MermaidClassDiagramGenerator:
     """Generates Mermaid class diagrams from model packages."""
 
-    def __init__(self, package: ModelPackage, config: Configuration):
+    def __init__(self, package: ModelPackage, config: Configuration, all_packages: List[ModelPackage] = None):
         """
         Initialize Mermaid diagram generator.
 
         :param package: Package to generate diagram for
         :param config: Configuration object
+        :param all_packages: All packages in the model (for inheritance lookups)
         """
         self.package = package
         self.config = config
+        self.all_packages = all_packages or [package]
         self.processed_classes: Set[str] = set()
 
     def _collect_external_types(self) -> Set[str]:
@@ -60,14 +62,10 @@ class MermaidClassDiagramGenerator:
         """
         lines = ["classDiagram"]
 
-        # Collect external type references (types used but not defined in this package)
-        external_types = self._collect_external_types()
-
-        # Add stub definitions for external types (to avoid Mermaid errors)
-        # Note: No stereotype since Mermaid v11 doesn't support stereotypes on empty classes
-        for ext_type in sorted(external_types):
-            sanitized = self._sanitize_name(ext_type)
-            lines.append(f"class {sanitized}")
+        # Note: We don't declare external types as separate classes because:
+        # 1. They're already visible in attribute type annotations
+        # 2. Declaring them without relationships creates orphaned nodes
+        # 3. It keeps diagrams focused on the current package
 
         # Generate class definitions
         for cls in self.package.classes:
@@ -122,7 +120,7 @@ class MermaidClassDiagramGenerator:
 
     def _generate_class_definition(self, cls: ModelClass) -> List[str]:
         """
-        Generate Mermaid class definition.
+        Generate Mermaid class definition including inherited attributes.
 
         :param cls: Model class
         :return: List of Mermaid syntax lines
@@ -135,20 +133,43 @@ class MermaidClassDiagramGenerator:
         # Solution: Never add stereotypes - just show class name and attributes
         # The stereotype information is preserved in the class detail pages
 
-        if cls.attributes:
+        # Collect all attributes (inherited + own)
+        all_attrs = []
+
+        # Get inherited attributes first
+        if cls.generalization:
+            inherited_attrs = get_inherited_attributes(cls, self.all_packages)
+            all_attrs.extend(inherited_attrs)
+
+        # Add own attributes
+        all_attrs.extend(cls.attributes)
+
+        if all_attrs:
             # Class with attributes - show them
             lines.append(f"class {class_name} {{")
-            for i, attr in enumerate(cls.attributes[:10]):
+
+            # Show inherited attributes first
+            inherited_count = len(all_attrs) - len(cls.attributes)
+            for i, attr in enumerate(all_attrs[:15]):  # Limit total to 15
                 attr_line = self._format_attribute(attr)
+                # Mark inherited attributes - use asterisk prefix to avoid parser issues
+                if i < inherited_count:
+                    # Prepend asterisk to indicate inheritance
+                    # Split the line to insert asterisk after visibility marker
+                    if attr_line.startswith("+") or attr_line.startswith("-"):
+                        attr_line = attr_line[0] + "*" + attr_line[1:]
                 lines.append(f"    {attr_line}")
 
-            if len(cls.attributes) > 10:
-                lines.append(f"    ... ({len(cls.attributes) - 10} more)")
+            if len(all_attrs) > 15:
+                lines.append(f"    ... ({len(all_attrs) - 15} more)")
 
             lines.append("}")
         else:
-            # Class with no attributes - just declare it
-            lines.append(f"class {class_name}")
+            # Class with no attributes - add empty placeholder to help with layout
+            # Empty class declarations can cause "Could not find suitable point" errors
+            # when they are used in relationships
+            lines.append(f"class {class_name} {{")
+            lines.append("}")
 
         self.processed_classes.add(class_name)
         return lines
@@ -194,7 +215,7 @@ class MermaidClassDiagramGenerator:
         if cls.generalization:
             parent_name = cls.generalization[-1]  # Last element is class name
             sanitized_parent = self._sanitize_name(parent_name)
-            lines.append(f"{class_name} --|> {sanitized_parent} : inherits")
+            lines.append(f"{class_name} --|> {sanitized_parent}")
 
         # Associations (attributes referencing other classes)
         for attr in cls.attributes:
@@ -207,12 +228,13 @@ class MermaidClassDiagramGenerator:
 
                 if target_in_package and target_name != class_name:
                     # Use composition for non-optional, association for optional
+                    # Note: Labels removed to avoid "Could not find suitable point" errors in browser Mermaid.js
                     if attr.is_collection:
-                        lines.append(f'{class_name} "1" --> "*" {target_name} : {attr.name}')
+                        lines.append(f'{class_name} "1" --> "*" {target_name}')
                     elif attr.is_optional:
-                        lines.append(f"{class_name} --> {target_name} : {attr.name}")
+                        lines.append(f"{class_name} --> {target_name}")
                     else:
-                        lines.append(f"{class_name} *-- {target_name} : {attr.name}")
+                        lines.append(f"{class_name} *-- {target_name}")
 
         # Union-Enum relationship
         if cls.union_enum:
@@ -221,7 +243,7 @@ class MermaidClassDiagramGenerator:
             # Check if enum is in same package
             enum_in_package = any(c.name == enum_name for c in self.package.classes)
             if enum_in_package:
-                lines.append(f"{class_name} ..> {sanitized_enum} : <<union>>")
+                lines.append(f"{class_name} ..> {sanitized_enum}")
 
         return lines
 
@@ -247,7 +269,9 @@ class MermaidClassDiagramGenerator:
         return f'click {class_name} href "{link}" _self'
 
 
-def generate_package_diagram(package: ModelPackage, config: Configuration) -> str:
+def generate_package_diagram(
+    package: ModelPackage, config: Configuration, all_packages: List[ModelPackage] = None
+) -> str:
     """
     Generate Mermaid class diagram for a package.
 
@@ -256,7 +280,8 @@ def generate_package_diagram(package: ModelPackage, config: Configuration) -> st
 
     :param package: Package to diagram
     :param config: Configuration
+    :param all_packages: All packages in the model (for inheritance lookups)
     :return: Mermaid diagram syntax
     """
-    generator = MermaidClassDiagramGenerator(package, config)
+    generator = MermaidClassDiagramGenerator(package, config, all_packages)
     return generator.generate_mermaid()

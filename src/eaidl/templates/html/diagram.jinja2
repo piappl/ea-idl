@@ -5,15 +5,33 @@
 {% block extra_styles %}
 <style>
     .mermaid {
-        background-color: white;
-        border: 1px solid var(--bs-border-color);
-        border-radius: 0.375rem;
-        padding: 2rem;
-        margin: 2rem 0;
+        display: block;
+        width: 100%;
+        text-align: center;
+    }
+
+    .mermaid svg {
+        max-width: 100%;
+        height: auto;
     }
 
     .diagram-container {
-        overflow-x: auto;
+        overflow: auto;
+        border: 1px solid var(--bs-border-color);
+        border-radius: 0.375rem;
+        background-color: white;
+        position: relative;
+        padding: 2rem;
+        min-height: 400px;
+    }
+
+    .diagram-controls {
+        position: sticky;
+        top: 0;
+        background-color: white;
+        padding: 0.5rem;
+        border-bottom: 1px solid var(--bs-border-color);
+        z-index: 10;
     }
 </style>
 {% endblock %}
@@ -34,26 +52,39 @@
     </div>
 
     {% if package.classes %}
-    <div class="diagram-container">
-        <pre class="mermaid">
-{{ mermaid_code }}
-        </pre>
+    <div id="diagram-loading" class="alert alert-info">
+        <div class="spinner-border spinner-border-sm me-2" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        Loading diagram...
+    </div>
+    <div class="diagram-container" id="diagram-content">
+        <div class="mermaid">{{ mermaid_code }}</div>
+    </div>
+    <div id="diagram-error" class="alert alert-danger" style="display: none;">
+        <strong>Error rendering diagram:</strong> <span id="error-message"></span>
+        <details class="mt-2">
+            <summary>Diagram source code</summary>
+            <pre><code>{{ mermaid_code }}</code></pre>
+        </details>
     </div>
 
     <div class="card mt-4">
         <div class="card-body">
             <h6>Legend</h6>
             <ul class="list-unstyled">
-                <li><strong>→</strong> Association (reference)</li>
-                <li><strong>⬥→</strong> Composition (contains)</li>
-                <li><strong>▷</strong> Inheritance (extends)</li>
-                <li><strong>⋯→</strong> Union relationship</li>
+                <li><strong>→</strong> Association</li>
+                <li><strong>⬥→</strong> Composition</li>
+                <li><strong>▷</strong> Inheritance</li>
+                <li><strong>⋯→</strong> Dependency</li>
+                <li><strong>+*</strong> Inherited attribute (from parent class)</li>
             </ul>
 
             <h6 class="mt-3">Note</h6>
             <p class="small text-muted">
-                Class stereotypes (struct, enum, union, typedef) are not shown in the diagram due to Mermaid v11 limitations.
-                Click on any class to see its full type information and metadata.
+                Relationship labels and class stereotypes (struct, enum, union, typedef) are not shown in diagrams due to browser rendering limitations.
+                Click on any class to see its full type information, attributes, and relationships.
+                Inherited attributes are marked with an asterisk after the visibility marker (e.g., +*header).
             </p>
         </div>
     </div>
@@ -68,15 +99,133 @@
 {% block extra_scripts %}
 <script src="{{ assets_path }}/js/mermaid.min.js"></script>
 <script>
-    // Initialize Mermaid
+    // Initialize Mermaid with error handling
     mermaid.initialize({
-        startOnLoad: true,
+        startOnLoad: false,  // Manual rendering for better error handling
         theme: 'default',
         securityLevel: 'loose',
         flowchart: {
             useMaxWidth: true,
             htmlLabels: true
-        }
+        },
+        // Configuration for class diagrams
+        classDiagram: {
+            useMaxWidth: true
+        },
+        logLevel: 'debug'  // Enable debug to see what's happening
     });
+
+    // Render diagram with error handling
+    async function renderDiagram() {
+        const loadingDiv = document.getElementById('diagram-loading');
+        const diagramDiv = document.getElementById('diagram-content');
+        const errorDiv = document.getElementById('diagram-error');
+
+        try {
+            // Get the diagram source to debug
+            const mermaidElement = document.querySelector('.mermaid');
+            const diagramSource = mermaidElement ? mermaidElement.textContent : 'Not found';
+            console.log('Diagram source length:', diagramSource.length);
+            console.log('Diagram source preview:', diagramSource.substring(0, 200));
+
+            // Render mermaid diagrams
+            await mermaid.run({
+                querySelector: '.mermaid'
+            });
+
+            // Hide loading, show diagram
+            loadingDiv.style.display = 'none';
+            diagramDiv.style.display = 'block';
+
+            // Add zoom controls
+            setTimeout(addZoomControls, 100);
+
+        } catch (error) {
+            console.error('Mermaid rendering error:', error);
+            loadingDiv.style.display = 'none';
+            errorDiv.style.display = 'block';
+            document.getElementById('error-message').textContent = error.message || 'Unknown error';
+        }
+    }
+
+    function addZoomControls() {
+        const mermaidDiv = document.querySelector('.mermaid');
+        const svgElement = mermaidDiv ? mermaidDiv.querySelector('svg') : null;
+
+        if (!svgElement) {
+            console.error('SVG element not found');
+            return;
+        }
+
+        console.log('SVG found:', svgElement);
+        console.log('Original viewBox:', svgElement.getAttribute('viewBox'));
+        console.log('Original width:', svgElement.getAttribute('width'));
+        console.log('Original height:', svgElement.getAttribute('height'));
+
+        // Get the viewBox to understand the diagram dimensions
+        const viewBox = svgElement.getAttribute('viewBox');
+        if (viewBox) {
+            const [vbX, vbY, vbWidth, vbHeight] = viewBox.split(' ').map(Number);
+
+            // Set explicit width and height based on viewBox aspect ratio
+            // This ensures the entire diagram is visible
+            const aspectRatio = vbWidth / vbHeight;
+
+            // Remove explicit width/height attributes so CSS controls size
+            svgElement.removeAttribute('width');
+            svgElement.removeAttribute('height');
+
+            // Set CSS to make SVG 50% of container width initially
+            svgElement.style.width = '50%';
+            svgElement.style.height = 'auto';
+            svgElement.style.maxWidth = 'none';
+
+            console.log('ViewBox dimensions:', vbWidth, 'x', vbHeight, 'aspect ratio:', aspectRatio);
+        }
+
+        // Add zoom controls
+        const container = document.getElementById('diagram-content');
+        const controls = document.createElement('div');
+        controls.className = 'diagram-controls mb-2';
+        controls.innerHTML = `
+            <button class="btn btn-sm btn-outline-primary" onclick="zoomIn()">
+                <span>+</span> Zoom In
+            </button>
+            <button class="btn btn-sm btn-outline-primary" onclick="zoomOut()">
+                <span>−</span> Zoom Out
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="resetZoom()">
+                Reset
+            </button>
+            <span class="ms-3 text-muted" id="zoom-level">50%</span>
+        `;
+        container.insertBefore(controls, container.firstChild);
+
+        // Zoom by adjusting SVG width directly
+        let scale = 0.5;
+        const updateZoom = () => {
+            svgElement.style.width = `${scale * 100}%`;
+            document.getElementById('zoom-level').textContent = `${Math.round(scale * 100)}%`;
+        };
+
+        window.zoomIn = function() {
+            scale = Math.min(scale * 1.2, 3);
+            updateZoom();
+        };
+        window.zoomOut = function() {
+            scale = Math.max(scale / 1.2, 0.25);
+            updateZoom();
+        };
+        window.resetZoom = function() {
+            scale = 0.5;
+            updateZoom();
+        };
+
+        // Apply initial zoom
+        updateZoom();
+    }
+
+    // Start rendering when page loads
+    document.addEventListener('DOMContentLoaded', renderDiagram);
 </script>
 {% endblock %}

@@ -223,10 +223,10 @@ class TestMermaidDiagramGeneration:
             namespace=["test"],
             is_struct=True,
         )
-        # Create 15 attributes
+        # Create 20 attributes (limit is 15, so this should truncate)
         cls.attributes = [
             ModelAttribute(name=f"attr{i}", alias=f"attr{i}", attribute_id=i, guid=f"{{ATTR-{i}-GUID}}", type="string")
-            for i in range(15)
+            for i in range(20)
         ]
 
         pkg.classes = [cls]

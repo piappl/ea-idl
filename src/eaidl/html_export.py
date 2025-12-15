@@ -22,6 +22,7 @@ from eaidl.link_utils import (
     generate_package_link,
     generate_index_link,
     resolve_type_reference,
+    get_inherited_attributes,
 )
 from eaidl.html_utils import strip_html, format_notes_for_html
 
@@ -83,6 +84,7 @@ def export_html(config: Configuration, packages: List[ModelPackage], output_dir:
     env.globals["generate_package_link"] = generate_package_link
     env.globals["generate_index_link"] = generate_index_link
     env.globals["resolve_type_reference"] = resolve_type_reference
+    env.globals["get_inherited_attributes"] = get_inherited_attributes
     env.globals["all_packages"] = packages
     env.globals["generation_date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -196,7 +198,7 @@ def generate_package_pages(
 
         # Generate diagram page
         if package.classes:
-            mermaid_code = generate_package_diagram(package, config)
+            mermaid_code = generate_package_diagram(package, config, packages)
             html_diagram = template_diagram.render(
                 package=package,
                 mermaid_code=mermaid_code,

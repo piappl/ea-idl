@@ -48,6 +48,70 @@
             <p>Inherits from: <code>{{ cls.generalization | join('::') }}</code></p>
         </div>
     </div>
+
+    {# Display inherited attributes #}
+    {% set inherited_attrs = get_inherited_attributes(cls, all_packages) %}
+    {% if inherited_attrs %}
+    <h2 class="mt-4 mb-3">Inherited Attributes</h2>
+    <p class="text-muted">The following attributes are inherited from parent classes:</p>
+
+    <div class="table-responsive">
+        <table class="table table-striped attribute-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Multiplicity</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for attr in inherited_attrs %}
+                <tr class="table-secondary">
+                    <td>
+                        <strong>{{ attr.name }}</strong>
+                        <span class="badge bg-info class-badge" title="Inherited from parent">inherited</span>
+                        {% if attr.is_optional %}
+                            <span class="badge badge-optional class-badge">optional</span>
+                        {% endif %}
+                        {% if attr.is_collection %}
+                            <span class="badge badge-collection class-badge">collection</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if attr.type %}
+                            {% set type_ref = resolve_type_reference(attr, current_namespace, all_packages) %}
+                            {% if type_ref.link %}
+                                <a href="{{ type_ref.link }}" class="type-link">{{ attr.type }}</a>
+                            {% else %}
+                                <code>{{ attr.type }}</code>
+                            {% endif %}
+
+                            {% if attr.is_collection %}
+                                <span class="text-muted small">(sequence)</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if attr.lower_bound or attr.upper_bound %}
+                            <code>[{{ attr.lower_bound or '0' }}..{{ attr.upper_bound or '*' }}]</code>
+                        {% else %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if attr.notes %}
+                            <div class="small">{{ attr.notes | format_notes | safe }}</div>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
     {% endif %}
 
     {% if cls.parent_type %}

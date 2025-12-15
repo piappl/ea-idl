@@ -72,9 +72,12 @@ def format_notes_for_html(text: str) -> str:
     lines = markdown_text.split("\n")
     fixed_lines = []
     prev_was_list = False
+    prev_was_blank = False
 
     for line in lines:
         stripped = line.strip()
+        is_blank = not stripped
+
         # Check if this is a list item
         is_list = stripped.startswith("* ") or (stripped and stripped[0].isdigit() and ". " in stripped[:4])
 
@@ -82,13 +85,21 @@ def format_notes_for_html(text: str) -> str:
         if is_list and not prev_was_list and fixed_lines and fixed_lines[-1].strip():
             fixed_lines.append("")
 
-        fixed_lines.append(line)
+        # Preserve existing blank lines as paragraph breaks
+        # But don't add multiple consecutive blank lines
+        if is_blank and not prev_was_blank and fixed_lines:
+            fixed_lines.append("")
+        elif not is_blank:
+            fixed_lines.append(line)
+
         prev_was_list = is_list
+        prev_was_blank = is_blank
 
     markdown_text = "\n".join(fixed_lines)
 
     # Then convert markdown to HTML for display
     # Using 'extra' extension for tables, fenced code, etc.
-    html_output = markdown.markdown(markdown_text, extensions=["extra", "sane_lists"])
+    # nl2br converts single newlines to <br> tags for better paragraph handling
+    html_output = markdown.markdown(markdown_text, extensions=["extra", "sane_lists", "nl2br"])
 
     return html_output
