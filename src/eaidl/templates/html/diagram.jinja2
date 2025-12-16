@@ -1,6 +1,6 @@
 {% extends "base.jinja2" %}
 
-{% block title %}{{ package.name }} Diagram - EA-IDL Documentation{% endblock %}
+{% block title %}{{ package.name }} Diagrams - EA-IDL Documentation{% endblock %}
 
 {% block extra_styles %}
 <style>
@@ -33,45 +33,159 @@
         border-bottom: 1px solid var(--bs-border-color);
         z-index: 10;
     }
+
+    .nav-tabs {
+        border-bottom: 2px solid var(--bs-border-color);
+    }
+
+    .nav-tabs .nav-link {
+        border: 1px solid transparent;
+        border-top-left-radius: 0.375rem;
+        border-top-right-radius: 0.375rem;
+        margin-bottom: -2px;
+    }
+
+    .nav-tabs .nav-link:hover {
+        border-color: var(--bs-border-color);
+    }
+
+    .nav-tabs .nav-link.active {
+        color: var(--bs-primary);
+        background-color: var(--bs-body-bg);
+        border-color: var(--bs-border-color) var(--bs-border-color) transparent;
+        font-weight: 500;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid">
-    <h1 class="mb-3">{{ package.name }} - Class Diagram</h1>
+    <h1 class="mb-3">{{ package.name }} - Diagrams</h1>
 
     <div class="card mb-4">
         <div class="card-body">
-            <h5 class="card-title">Interactive Diagram</h5>
+            <h5 class="card-title">Interactive Diagrams</h5>
             <p class="card-text">
-                This diagram shows the classes, relationships, and structure within the <strong>{{ package.name }}</strong> package.
-                Click on any class to navigate to its detailed documentation.
+                {% if auto_mermaid_code and ea_diagrams %}
+                This package has {{ ea_diagrams | length }} EA diagram(s) plus an auto-generated class diagram.
+                {% elif ea_diagrams %}
+                This package has {{ ea_diagrams | length }} EA diagram(s).
+                {% elif auto_mermaid_code %}
+                This package has an auto-generated class diagram showing all classes and relationships.
+                {% endif %}
+                Click on any class in the diagrams to navigate to its detailed documentation.
             </p>
             <a href="index.html" class="btn btn-outline-primary btn-sm">Back to Package</a>
         </div>
     </div>
 
-    {% if package.classes %}
-    <div id="diagram-loading" class="alert alert-info">
-        <div class="spinner-border spinner-border-sm me-2" role="status">
-            <span class="visually-hidden">Loading...</span>
+    {% if auto_mermaid_code or ea_diagrams %}
+    <!-- Tab Navigation -->
+    <ul class="nav nav-tabs mb-3" id="diagramTabs" role="tablist">
+        <!-- Auto-generated diagram tab -->
+        {% if auto_mermaid_code %}
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="auto-tab" data-bs-toggle="tab"
+                    data-bs-target="#auto-diagram" type="button" role="tab"
+                    aria-controls="auto-diagram" aria-selected="true">
+                Auto-Generated Class Diagram
+            </button>
+        </li>
+        {% endif %}
+
+        <!-- EA diagram tabs -->
+        {% for ea_diagram in ea_diagrams %}
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if not auto_mermaid_code and loop.first %}active{% endif %}"
+                    id="ea-{{ loop.index }}-tab" data-bs-toggle="tab"
+                    data-bs-target="#ea-diagram-{{ loop.index }}" type="button" role="tab"
+                    aria-controls="ea-diagram-{{ loop.index }}" aria-selected="{% if not auto_mermaid_code and loop.first %}true{% else %}false{% endif %}">
+                {{ ea_diagram.name }}
+                {% if ea_diagram.type %}
+                <span class="badge bg-secondary ms-1">{{ ea_diagram.type }}</span>
+                {% endif %}
+            </button>
+        </li>
+        {% endfor %}
+    </ul>
+
+    <!-- Tab Content -->
+    <div class="tab-content" id="diagramTabsContent">
+        <!-- Auto-generated diagram pane -->
+        {% if auto_mermaid_code %}
+        <div class="tab-pane fade show active" id="auto-diagram" role="tabpanel" aria-labelledby="auto-tab">
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Auto-Generated Class Diagram</h5>
+                    <p class="text-muted">
+                        This diagram is automatically generated from the model structure,
+                        showing all classes, attributes, and relationships in this package.
+                    </p>
+                </div>
+            </div>
+
+            <div id="auto-loading" class="alert alert-info">
+                <div class="spinner-border spinner-border-sm me-2" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                Loading diagram...
+            </div>
+            <div class="diagram-container" id="auto-content" data-diagram-id="auto">
+                <div class="mermaid">{{ auto_mermaid_code }}</div>
+            </div>
+            <div id="auto-error" class="alert alert-danger" style="display: none;">
+                <strong>Error rendering diagram:</strong> <span class="error-message"></span>
+                <details class="mt-2">
+                    <summary>Diagram source code</summary>
+                    <pre><code>{{ auto_mermaid_code }}</code></pre>
+                </details>
+            </div>
         </div>
-        Loading diagram...
-    </div>
-    <div class="diagram-container" id="diagram-content">
-        <div class="mermaid">{{ mermaid_code }}</div>
-    </div>
-    <div id="diagram-error" class="alert alert-danger" style="display: none;">
-        <strong>Error rendering diagram:</strong> <span id="error-message"></span>
-        <details class="mt-2">
-            <summary>Diagram source code</summary>
-            <pre><code>{{ mermaid_code }}</code></pre>
-        </details>
+        {% endif %}
+
+        <!-- EA diagram panes -->
+        {% for ea_diagram in ea_diagrams %}
+        <div class="tab-pane fade {% if not auto_mermaid_code and loop.first %}show active{% endif %}"
+             id="ea-diagram-{{ loop.index }}" role="tabpanel" aria-labelledby="ea-{{ loop.index }}-tab">
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">{{ ea_diagram.name }}</h5>
+
+                    {% if ea_diagram.notes %}
+                    <div class="alert alert-info">
+                        {{ render_notes(ea_diagram.notes) }}
+                    </div>
+                    {% endif %}
+
+                </div>
+            </div>
+
+            <div id="ea-{{ loop.index }}-loading" class="alert alert-info">
+                <div class="spinner-border spinner-border-sm me-2" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                Loading diagram...
+            </div>
+            <div class="diagram-container" id="ea-{{ loop.index }}-content" data-diagram-id="ea-{{ loop.index }}">
+                <div class="mermaid">{{ ea_diagram.mermaid_code }}</div>
+            </div>
+            <div id="ea-{{ loop.index }}-error" class="alert alert-danger" style="display: none;">
+                <strong>Error rendering diagram:</strong> <span class="error-message"></span>
+                <details class="mt-2">
+                    <summary>Diagram source code</summary>
+                    <pre><code>{{ ea_diagram.mermaid_code }}</code></pre>
+                </details>
+            </div>
+        </div>
+        {% endfor %}
     </div>
 
+    <!-- Legend (shared across all diagrams) -->
     <div class="card mt-4">
+        <div class="card-header">
+            <h5 class="mb-0">Relationship Legend</h5>
+        </div>
         <div class="card-body">
-            <h6>Legend</h6>
             <ul class="list-unstyled">
                 <li><strong>→</strong> Association</li>
                 <li><strong>⬥→</strong> Composition</li>
@@ -81,7 +195,7 @@
             </ul>
 
             <h6 class="mt-3">Note</h6>
-            <p class="small text-muted">
+            <p class="small text-muted mb-0">
                 Relationship labels and class stereotypes (struct, enum, union, typedef) are not shown in diagrams due to browser rendering limitations.
                 Click on any class to see its full type information, attributes, and relationships.
                 Inherited attributes are marked with an asterisk after the visibility marker (e.g., +*header).
@@ -90,7 +204,7 @@
     </div>
     {% else %}
     <div class="alert alert-info">
-        <p class="mb-0">This package has no classes to diagram.</p>
+        <p class="mb-0">This package has no classes or diagrams.</p>
     </div>
     {% endif %}
 </div>
@@ -108,124 +222,176 @@
             useMaxWidth: true,
             htmlLabels: true
         },
-        // Configuration for class diagrams
         classDiagram: {
             useMaxWidth: true
         },
-        logLevel: 'debug'  // Enable debug to see what's happening
+        logLevel: 'debug'
     });
 
-    // Render diagram with error handling
-    async function renderDiagram() {
-        const loadingDiv = document.getElementById('diagram-loading');
-        const diagramDiv = document.getElementById('diagram-content');
-        const errorDiv = document.getElementById('diagram-error');
+    // Track which diagrams have been rendered
+    const renderedDiagrams = new Set();
 
-        try {
-            // Get the diagram source to debug
-            const mermaidElement = document.querySelector('.mermaid');
-            const diagramSource = mermaidElement ? mermaidElement.textContent : 'Not found';
-            console.log('Diagram source length:', diagramSource.length);
-            console.log('Diagram source preview:', diagramSource.substring(0, 200));
-
-            // Render mermaid diagrams
-            await mermaid.run({
-                querySelector: '.mermaid'
-            });
-
-            // Hide loading, show diagram
-            loadingDiv.style.display = 'none';
-            diagramDiv.style.display = 'block';
-
-            // Add zoom controls
-            setTimeout(addZoomControls, 100);
-
-        } catch (error) {
-            console.error('Mermaid rendering error:', error);
-            loadingDiv.style.display = 'none';
-            errorDiv.style.display = 'block';
-            document.getElementById('error-message').textContent = error.message || 'Unknown error';
+    // Render a specific diagram
+    async function renderDiagram(diagramId) {
+        if (renderedDiagrams.has(diagramId)) {
+            return;  // Already rendered
         }
-    }
 
-    function addZoomControls() {
-        const mermaidDiv = document.querySelector('.mermaid');
-        const svgElement = mermaidDiv ? mermaidDiv.querySelector('svg') : null;
+        const loadingDiv = document.getElementById(`${diagramId}-loading`);
+        const diagramDiv = document.getElementById(`${diagramId}-content`);
+        const errorDiv = document.getElementById(`${diagramId}-error`);
 
-        if (!svgElement) {
-            console.error('SVG element not found');
+        if (!diagramDiv) {
+            console.error(`Diagram container not found: ${diagramId}`);
             return;
         }
 
-        console.log('SVG found:', svgElement);
-        console.log('Original viewBox:', svgElement.getAttribute('viewBox'));
-        console.log('Original width:', svgElement.getAttribute('width'));
-        console.log('Original height:', svgElement.getAttribute('height'));
+        try {
+            const mermaidElement = diagramDiv.querySelector('.mermaid');
+            if (!mermaidElement) {
+                throw new Error('Mermaid element not found');
+            }
 
-        // Get the viewBox to understand the diagram dimensions
+            const diagramSource = mermaidElement.textContent;
+            console.log(`Rendering diagram ${diagramId}, source length:`, diagramSource.length);
+
+            // Render this specific diagram
+            await mermaid.run({
+                nodes: [mermaidElement]
+            });
+
+            // Hide loading, show diagram
+            if (loadingDiv) loadingDiv.style.display = 'none';
+            diagramDiv.style.display = 'block';
+
+            // Add zoom controls
+            setTimeout(() => addZoomControls(diagramId), 100);
+
+            renderedDiagrams.add(diagramId);
+
+        } catch (error) {
+            console.error(`Mermaid rendering error for ${diagramId}:`, error);
+            if (loadingDiv) loadingDiv.style.display = 'none';
+            if (errorDiv) {
+                errorDiv.style.display = 'block';
+                const errorMessage = errorDiv.querySelector('.error-message');
+                if (errorMessage) {
+                    errorMessage.textContent = error.message || 'Unknown error';
+                }
+            }
+        }
+    }
+
+    function addZoomControls(diagramId) {
+        const container = document.getElementById(`${diagramId}-content`);
+        if (!container) return;
+
+        const mermaidDiv = container.querySelector('.mermaid');
+        const svgElement = mermaidDiv ? mermaidDiv.querySelector('svg') : null;
+
+        if (!svgElement) {
+            console.error(`SVG element not found for ${diagramId}`);
+            return;
+        }
+
+        // Get the viewBox
         const viewBox = svgElement.getAttribute('viewBox');
         if (viewBox) {
             const [vbX, vbY, vbWidth, vbHeight] = viewBox.split(' ').map(Number);
-
-            // Set explicit width and height based on viewBox aspect ratio
-            // This ensures the entire diagram is visible
             const aspectRatio = vbWidth / vbHeight;
 
-            // Remove explicit width/height attributes so CSS controls size
+            // Remove explicit width/height attributes
             svgElement.removeAttribute('width');
             svgElement.removeAttribute('height');
 
-            // Set CSS to make SVG 50% of container width initially
+            // Set CSS to make SVG 50% initially
             svgElement.style.width = '50%';
             svgElement.style.height = 'auto';
             svgElement.style.maxWidth = 'none';
-
-            console.log('ViewBox dimensions:', vbWidth, 'x', vbHeight, 'aspect ratio:', aspectRatio);
         }
 
         // Add zoom controls
-        const container = document.getElementById('diagram-content');
         const controls = document.createElement('div');
         controls.className = 'diagram-controls mb-2';
+        controls.id = `${diagramId}-controls`;
         controls.innerHTML = `
-            <button class="btn btn-sm btn-outline-primary" onclick="zoomIn()">
+            <button class="btn btn-sm btn-outline-primary" onclick="zoomDiagram('${diagramId}', 1.2)">
                 <span>+</span> Zoom In
             </button>
-            <button class="btn btn-sm btn-outline-primary" onclick="zoomOut()">
+            <button class="btn btn-sm btn-outline-primary" onclick="zoomDiagram('${diagramId}', 0.833)">
                 <span>−</span> Zoom Out
             </button>
-            <button class="btn btn-sm btn-outline-secondary" onclick="resetZoom()">
+            <button class="btn btn-sm btn-outline-secondary" onclick="resetDiagramZoom('${diagramId}')">
                 Reset
             </button>
-            <span class="ms-3 text-muted" id="zoom-level">50%</span>
+            <span class="ms-3 text-muted" id="${diagramId}-zoom-level">50%</span>
         `;
         container.insertBefore(controls, container.firstChild);
 
-        // Zoom by adjusting SVG width directly
-        let scale = 0.5;
-        const updateZoom = () => {
-            svgElement.style.width = `${scale * 100}%`;
-            document.getElementById('zoom-level').textContent = `${Math.round(scale * 100)}%`;
-        };
-
-        window.zoomIn = function() {
-            scale = Math.min(scale * 1.2, 3);
-            updateZoom();
-        };
-        window.zoomOut = function() {
-            scale = Math.max(scale / 1.2, 0.25);
-            updateZoom();
-        };
-        window.resetZoom = function() {
-            scale = 0.5;
-            updateZoom();
-        };
-
-        // Apply initial zoom
-        updateZoom();
+        // Store initial scale
+        svgElement.dataset.scale = '0.5';
     }
 
-    // Start rendering when page loads
-    document.addEventListener('DOMContentLoaded', renderDiagram);
+    // Zoom functions
+    window.zoomDiagram = function(diagramId, factor) {
+        const container = document.getElementById(`${diagramId}-content`);
+        if (!container) return;
+
+        const svg = container.querySelector('svg');
+        if (!svg) return;
+
+        let scale = parseFloat(svg.dataset.scale || 0.5);
+        scale = Math.min(Math.max(scale * factor, 0.25), 3);
+        svg.dataset.scale = scale.toString();
+
+        svg.style.width = `${scale * 100}%`;
+        const zoomLabel = document.getElementById(`${diagramId}-zoom-level`);
+        if (zoomLabel) {
+            zoomLabel.textContent = `${Math.round(scale * 100)}%`;
+        }
+    };
+
+    window.resetDiagramZoom = function(diagramId) {
+        const container = document.getElementById(`${diagramId}-content`);
+        if (!container) return;
+
+        const svg = container.querySelector('svg');
+        if (!svg) return;
+
+        svg.dataset.scale = '0.5';
+        svg.style.width = '50%';
+
+        const zoomLabel = document.getElementById(`${diagramId}-zoom-level`);
+        if (zoomLabel) {
+            zoomLabel.textContent = '50%';
+        }
+    };
+
+    // Render active diagram when page loads or tab switches
+    document.addEventListener('DOMContentLoaded', function() {
+        // Render the initially active diagram
+        const activePane = document.querySelector('.tab-pane.active');
+        if (activePane) {
+            const container = activePane.querySelector('[data-diagram-id]');
+            if (container) {
+                renderDiagram(container.dataset.diagramId);
+            }
+        }
+
+        // Add event listener for tab switches
+        const tabButtons = document.querySelectorAll('[data-bs-toggle="tab"]');
+        tabButtons.forEach(button => {
+            button.addEventListener('shown.bs.tab', function(event) {
+                const targetId = event.target.getAttribute('data-bs-target');
+                const targetPane = document.querySelector(targetId);
+                if (targetPane) {
+                    const container = targetPane.querySelector('[data-diagram-id]');
+                    if (container) {
+                        renderDiagram(container.dataset.diagramId);
+                    }
+                }
+            });
+        });
+    });
 </script>
 {% endblock %}

@@ -96,6 +96,49 @@ class ModelAnnotation(LocalBaseModel):
     value: ModelAnnotationType = None
 
 
+class ModelDiagramObject(LocalBaseModel):
+    """Represents an object placement on an EA diagram."""
+
+    object_id: int
+    diagram_id: int
+    rect_top: int
+    rect_left: int
+    rect_right: int
+    rect_bottom: int
+    sequence: int  # Z-order
+    object_style: Optional[str] = None
+
+
+class ModelDiagramLink(LocalBaseModel):
+    """Represents a connector on an EA diagram."""
+
+    connector_id: int
+    diagram_id: int
+    geometry: Optional[str] = None  # EA's encoded path data
+    style: Optional[str] = None
+    hidden: int = 0
+    path: Optional[str] = None
+
+
+class ModelDiagram(LocalBaseModel):
+    """Represents an EA diagram."""
+
+    diagram_id: int
+    package_id: int
+    name: str
+    diagram_type: Optional[str] = None  # "Class", "Custom", "Sequence", etc.
+    stereotype: Optional[str] = None
+    author: Optional[str] = None
+    created_date: Optional[str] = None
+    modified_date: Optional[str] = None
+    guid: Optional[str] = None
+    cx: Optional[int] = None  # Canvas width
+    cy: Optional[int] = None  # Canvas height
+    scale: Optional[int] = None  # Scale percentage
+    objects: List[ModelDiagramObject] = []
+    links: List[ModelDiagramLink] = []
+
+
 class ModelClass(LocalBaseModel):
     name: str
     parent: Optional["ModelPackage"] = None
@@ -146,6 +189,8 @@ class ModelPackage(LocalBaseModel):
     property_types: List[ModelPropertyType] = []
     #: Notes that are not linked to any object in this package
     unlinked_notes: List[str] = []
+    #: EA diagrams associated with this package
+    diagrams: List[ModelDiagram] = []
 
 
 class ModelAttribute(LocalBaseModel):

@@ -179,10 +179,46 @@ The command:
 3. Calls `export_html()` to generate static site
 4. Outputs to specified directory
 
+### EA Diagrams in HTML Export
+
+The HTML export includes both auto-generated class diagrams AND diagrams authored in Enterprise Architect.
+
+**What are EA Diagrams?**
+EA diagrams are hand-crafted views created by modelers in Enterprise Architect. They show focused perspectives of the model, often highlighting specific aspects or relationships that are important for understanding the system.
+
+**Data Loading**: EA diagrams are loaded from three database tables:
+- `t_diagram` - Diagram metadata (name, type, author, notes)
+- `t_diagramobjects` - Object positions (which classes appear on the diagram)
+- `t_diagramlinks` - Connector paths (which relationships are shown)
+
+**Rendering**: EA diagrams are converted to Mermaid syntax for consistency with auto-generated diagrams. The converter:
+- Only shows objects that appear on the EA diagram (preserves author's intent)
+- Converts EA connector types to Mermaid relationship syntax
+- Adds click handlers for navigation to class pages
+- Handles common diagram types (Class, Custom, Sequence, etc.)
+
+**Display**: Multiple diagrams shown as Bootstrap tabs on diagram page:
+- Auto-generated diagram (if package has classes)
+- EA diagrams (one tab per diagram)
+- Each tab shows diagram metadata (author, notes, type)
+- Lazy rendering (only renders active tab for performance)
+
+**Files**:
+- `src/eaidl/ea_diagram_converter.py` - Converts EA diagram data to Mermaid
+- `src/eaidl/model.py` - Model classes: `ModelDiagram`, `ModelDiagramObject`, `ModelDiagramLink`
+- `src/eaidl/load.py` - Database loading methods: `load_package_diagrams()`, `diagram_parse()`
+- `src/eaidl/templates/html/diagram.jinja2` - Template with Bootstrap tabs
+- `tests/test_diagram_loading.py` - Unit tests for diagram loading and conversion
+
+**Error Handling**: Graceful degradation if conversion fails:
+- Logs warning with diagram name and error
+- Continues with other diagrams
+- Does not break HTML export
+
 ### Testing HTML Export
 
 ```bash
-# Generate docs from test database
+# Generate docs from test database (includes EA diagrams)
 uv run eaidl docs --config config/sqlite.yaml --output /tmp/test-docs
 
 # Open in browser

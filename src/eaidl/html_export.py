@@ -17,6 +17,7 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 from eaidl.model import ModelPackage
 from eaidl.config import Configuration
 from eaidl.mermaid_diagram import generate_package_diagram
+from eaidl.ea_diagram_converter import EADiagramToMermaidConverter
 from eaidl.link_utils import (
     generate_class_link,
     generate_package_link,
@@ -25,6 +26,8 @@ from eaidl.link_utils import (
     get_inherited_attributes,
 )
 from eaidl.html_utils import strip_html, format_notes_for_html
+import sqlalchemy
+from sqlalchemy.orm import Session
 
 log = logging.getLogger(__name__)
 
@@ -174,6 +177,10 @@ def generate_package_pages(
     template_package = env.get_template("package.jinja2")
     template_diagram = env.get_template("diagram.jinja2")
 
+    # Create database session for EA diagram conversion
+    engine = sqlalchemy.create_engine(config.database_url, echo=False, future=True)
+    session = Session(engine)
+
     def process_package(package: ModelPackage, namespace_path: List[str]) -> None:
         """Recursively process package and nested packages."""
         # Create package directory
@@ -196,12 +203,39 @@ def generate_package_pages(
         )
         (pkg_dir / "index.html").write_text(html, encoding="utf-8")
 
-        # Generate diagram page
-        if package.classes:
-            mermaid_code = generate_package_diagram(package, config, packages)
+        # Generate diagram page with both auto-generated and EA diagrams
+        if package.classes or package.diagrams:
+            # Generate auto-generated Mermaid diagram
+            auto_mermaid_code = None
+            if package.classes:
+                auto_mermaid_code = generate_package_diagram(package, config, packages)
+
+            # Convert EA diagrams to Mermaid
+            ea_diagrams = []
+            for ea_diagram in package.diagrams:
+                try:
+                    converter = EADiagramToMermaidConverter(ea_diagram, packages, config, session)
+                    ea_mermaid = converter.convert()
+                    ea_diagrams.append(
+                        {
+                            "name": ea_diagram.name,
+                            "type": ea_diagram.diagram_type,
+                            "notes": ea_diagram.notes,
+                            "author": ea_diagram.author,
+                            "mermaid_code": ea_mermaid,
+                        }
+                    )
+                except Exception as e:
+                    log.warning(
+                        f"Failed to convert EA diagram '{ea_diagram.name}' " f"in package '{package.name}': {e}"
+                    )
+                    # Continue with other diagrams
+
+            # Render diagram page with tabs
             html_diagram = template_diagram.render(
                 package=package,
-                mermaid_code=mermaid_code,
+                auto_mermaid_code=auto_mermaid_code,
+                ea_diagrams=ea_diagrams,
                 current_namespace=namespace_path,
                 index_link=index_rel_link,
                 assets_path=assets_rel_path,
@@ -219,6 +253,9 @@ def generate_package_pages(
     for package in packages:
         if package.name != "ext":  # Skip internal 'ext' package
             process_package(package, [package.name])
+
+    # Close session
+    session.close()
 
     log.info("Generated all package pages")
 

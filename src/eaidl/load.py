@@ -29,6 +29,9 @@ from eaidl.model import (
     ModelConnectionEnd,
     ModelPropertyType,
     ModelCustomProperty,
+    ModelDiagram,
+    ModelDiagramObject,
+    ModelDiagramLink,
 )
 from eaidl import validation
 from eaidl.sorting import topological_sort_classes, topological_sort_packages, CircularDependencyError
@@ -310,6 +313,8 @@ class ModelParser:
         package.stereotypes = self.get_stereotypes(package.guid)
         if parse_children:
             self.package_parse_children(package)
+        # Load diagrams for this package
+        package.diagrams = self.load_package_diagrams(package.package_id)
         # Load unlinked notes for this package
         package.unlinked_notes = self.get_unlinked_notes(package.package_id)
         # There is some validation
@@ -482,6 +487,112 @@ class ModelParser:
                     notes.append(clean_note)
 
         return notes
+
+    def load_package_diagrams(self, package_id: int) -> List[ModelDiagram]:
+        """Load all diagrams for a package.
+
+        :param package_id: package identifier
+        :return: list of diagrams in this package
+        """
+        TDiagram = base.classes.t_diagram
+        t_diagrams = self.session.query(TDiagram).filter(TDiagram.attr_package_id == package_id).all()
+
+        diagrams = []
+        for t_diagram in t_diagrams:
+            try:
+                diagram = self.diagram_parse(t_diagram)
+                diagrams.append(diagram)
+            except Exception as e:
+                log.warning(
+                    "Failed to parse diagram %s (ID: %s): %s",
+                    getattr(t_diagram, "attr_name", "unknown"),
+                    getattr(t_diagram, "attr_diagram_id", "unknown"),
+                    str(e),
+                )
+                continue
+
+        return diagrams
+
+    def diagram_parse(self, t_diagram: Any) -> ModelDiagram:
+        """Parse a single EA diagram.
+
+        :param t_diagram: SQLAlchemy t_diagram object
+        :return: ModelDiagram with objects and links loaded
+        """
+        diagram = ModelDiagram(
+            diagram_id=t_diagram.attr_diagram_id,
+            package_id=t_diagram.attr_package_id,
+            name=t_diagram.attr_name,
+            diagram_type=getattr(t_diagram, "attr_diagram_type", None),
+            notes=getattr(t_diagram, "attr_notes", None),
+            stereotype=getattr(t_diagram, "attr_stereotype", None),
+            author=getattr(t_diagram, "attr_author", None),
+            created_date=getattr(t_diagram, "attr_createddate", None),
+            modified_date=getattr(t_diagram, "attr_modifieddate", None),
+            guid=getattr(t_diagram, "attr_ea_guid", None),
+            cx=getattr(t_diagram, "attr_cx", None),
+            cy=getattr(t_diagram, "attr_cy", None),
+            scale=getattr(t_diagram, "attr_scale", None),
+        )
+
+        # Load objects and links
+        diagram.objects = self.load_diagram_objects(diagram.diagram_id)
+        diagram.links = self.load_diagram_links(diagram.diagram_id)
+
+        return diagram
+
+    def load_diagram_objects(self, diagram_id: int) -> List[ModelDiagramObject]:
+        """Load positioned objects on a diagram.
+
+        :param diagram_id: diagram identifier
+        :return: list of objects positioned on this diagram
+        """
+        TDiagramObjects = base.classes.t_diagramobjects
+        t_objects = (
+            self.session.query(TDiagramObjects)
+            .filter(TDiagramObjects.attr_diagram_id == diagram_id)
+            .order_by(TDiagramObjects.attr_sequence)
+            .all()
+        )
+
+        objects = []
+        for t_obj in t_objects:
+            obj = ModelDiagramObject(
+                object_id=t_obj.attr_object_id,
+                diagram_id=t_obj.attr_diagram_id,
+                rect_top=t_obj.attr_recttop,
+                rect_left=t_obj.attr_rectleft,
+                rect_right=t_obj.attr_rectright,
+                rect_bottom=t_obj.attr_rectbottom,
+                sequence=t_obj.attr_sequence,
+                object_style=getattr(t_obj, "attr_objectstyle", None),
+            )
+            objects.append(obj)
+
+        return objects
+
+    def load_diagram_links(self, diagram_id: int) -> List[ModelDiagramLink]:
+        """Load connector links on a diagram.
+
+        :param diagram_id: diagram identifier
+        :return: list of connector links on this diagram
+        """
+        TDiagramLinks = base.classes.t_diagramlinks
+        t_links = self.session.query(TDiagramLinks).filter(TDiagramLinks.attr_diagramid == diagram_id).all()
+
+        links = []
+        for t_link in t_links:
+            link = ModelDiagramLink(
+                connector_id=t_link.attr_connectorid,
+                diagram_id=t_link.attr_diagramid,
+                geometry=getattr(t_link, "attr_geometry", None),
+                style=getattr(t_link, "attr_style", None),
+                hidden=getattr(t_link, "attr_hidden", 0),
+                path=getattr(t_link, "attr_path", None),
+            )
+            links.append(link)
+
+        return links
 
     def get_all_class_id(self, parent_package: ModelPackage) -> List[int]:
         ret = []

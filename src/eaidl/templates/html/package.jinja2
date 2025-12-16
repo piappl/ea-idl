@@ -57,13 +57,29 @@
             </div>
         </div>
 
-        {% if package.classes %}
+        {% if package.classes or package.diagrams %}
         <div class="col-md-4">
             <div class="card">
                 <div class="card-body">
-                    <h5 class="card-title">Class Diagram</h5>
-                    <p class="card-text">View interactive class diagram showing relationships and structure.</p>
-                    <a href="diagram.html" class="btn btn-primary">View Diagram</a>
+                    <h5 class="card-title">Diagrams</h5>
+                    <p class="card-text">
+                        {% if package.diagrams %}
+                        This package has {{ package.diagrams | length }} EA diagram(s)
+                        {% if package.classes %}
+                        plus an auto-generated class diagram.
+                        {% else %}
+                        .
+                        {% endif %}
+                        {% else %}
+                        View interactive class diagram showing relationships and structure.
+                        {% endif %}
+                    </p>
+                    <a href="diagram.html" class="btn btn-primary">
+                        View Diagrams
+                        {% if package.diagrams %}
+                        <span class="badge bg-light text-dark ms-2">{{ package.diagrams | length + (1 if package.classes else 0) }}</span>
+                        {% endif %}
+                    </a>
                 </div>
             </div>
         </div>
