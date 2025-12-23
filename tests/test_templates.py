@@ -2,6 +2,7 @@
 # Ignore types because we are calling methods on jinja2 modules.
 # Those don't have types.
 
+import pytest
 from eaidl.generate import create_env
 from eaidl.model import ModelClass, ModelAttribute, ModelPackage, ModelAnnotation
 from jinja2 import Template
@@ -305,26 +306,108 @@ def test_gen_enum_class() -> None:
     assert ret == ENUM_NOTES
 
 
-def test_gen_annotations() -> None:
+@pytest.mark.parametrize(
+    "annotations,expected",
+    [
+        ({}, ""),  # No properties
+        ({"name": ModelAnnotation(note="A note", value_type="str", value="value")}, "@name(value)\n"),
+        (
+            {
+                "name": ModelAnnotation(note="A note", value_type="str", value="value"),
+                "optional": ModelAnnotation(value_type="none"),
+            },
+            "@name(value)\n@optional\n",
+        ),
+    ],
+)
+def test_gen_annotations(annotations, expected) -> None:
+    """Test annotation generation with various inputs."""
     idl = template("idl/gen_annotations.jinja2")
-    ret = idl.module.gen_annotations({})
-    assert ret == ""  # No properties
-    ret = idl.module.gen_annotations({"name": ModelAnnotation(note="A note", value_type="str", value="value")})
-    assert ret == "@name(value)\n"
-    ret = idl.module.gen_annotations(
-        {
-            "name": ModelAnnotation(note="A note", value_type="str", value="value"),
-            "optional": ModelAnnotation(value_type="none"),
-        }
-    )
-    assert ret == "@name(value)\n@optional\n"
+    ret = idl.module.gen_annotations(annotations)
+    assert ret == expected
 
 
-def test_gen_notes() -> None:
+@pytest.mark.parametrize(
+    "notes,expected",
+    [
+        (None, ""),  # None returns empty string
+        ("", ""),  # Empty notes return empty string
+        ("A line.", """/**\n    A line.\n*/\n"""),  # Notes with text
+    ],
+)
+def test_gen_notes(notes, expected) -> None:
+    """Test note generation with various inputs."""
     idl = template("idl/gen_notes.jinja2")
-    ret = idl.module.gen_notes(cls=m_class())
-    assert ret == ""  # None return empty string
-    ret = idl.module.gen_notes(cls=m_class(notes=""))
-    assert ret == ""  # Empty notes return empty string
-    ret = idl.module.gen_notes(cls=m_class(notes="A line."))
-    assert ret == """/**\n    A line.\n*/\n"""
+    ret = idl.module.gen_notes(cls=m_class(notes=notes))
+    assert ret == expected
+
+
+@pytest.mark.parametrize(
+    "entity_type,notes,expected_declaration,expected_definition",
+    [
+        # Typedef without notes
+        ("typedef", None, TYPEDEF, TYPEDEF),
+        # Typedef with notes
+        ("typedef", "A typedef.", TYPEDEF_NOTES, TYPEDEF_NOTES),
+        # Enum without notes
+        ("enum", None, ENUM, ENUM),
+        # Enum with notes
+        ("enum", "An enum.", ENUM_NOTES, ENUM_NOTES),
+        # Struct without notes (declaration only, no definition for this test)
+        ("struct", None, STRUCT_DECLARATION, None),
+        # Struct with notes (declaration only)
+        ("struct", "A struct.", STRUCT_DECLARATION, None),
+    ],
+)
+def test_gen_class_declaration_with_notes(entity_type, notes, expected_declaration, expected_definition) -> None:
+    """Test class declaration/definition generation with and without notes."""
+    idl = template("idl/gen_class.jinja2")
+    mod = m_module()
+
+    if entity_type == "typedef":
+        cls = m_class(notes=notes)
+        cls.parent_type = "string"
+        cls.is_typedef = True
+        mod.classes = [cls]
+
+        assert idl.module.gen_class_declaration(mod, cls) == expected_declaration
+        assert idl.module.gen_class_definition_full(mod, cls) == expected_definition
+
+    elif entity_type == "enum":
+        cls = m_class(notes=notes)
+        cls.attributes.append(m_attr(name="one"))
+        cls.attributes.append(m_attr(name="two"))
+        cls.is_enum = True
+        mod.classes = [cls]
+
+        assert idl.module.gen_class_declaration(mod, cls) == expected_declaration
+        assert idl.module.gen_class_definition_full(mod, cls) == expected_definition
+
+    elif entity_type == "struct":
+        cls = m_class(notes=notes)
+        cls.is_struct = True
+        cls.attributes = [m_attr(name="one", type="string"), m_attr(name="two", type="int")]
+        mod.classes = [cls]
+
+        assert idl.module.gen_class_declaration(mod, cls) == expected_declaration
+
+
+@pytest.mark.parametrize(
+    "template_name,setup_fn,expected_empty",
+    [
+        ("idl/gen_enum.jinja2", lambda cls: setattr(cls, "is_enum", True), "enum ClassName {\n};"),
+        ("idl/gen_union.jinja2", lambda cls: setattr(cls, "is_union", True), UNION),
+    ],
+)
+def test_gen_template_empty(template_name, setup_fn, expected_empty) -> None:
+    """Test template generation for empty entities."""
+    idl = template(template_name)
+    cls = m_class()
+    setup_fn(cls)
+
+    if "enum" in template_name:
+        ret = idl.module.gen_enum(cls)
+    elif "union" in template_name:
+        ret = idl.module.gen_union_definition(cls)
+
+    assert ret == expected_empty

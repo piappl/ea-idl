@@ -6,23 +6,17 @@ from copy import deepcopy
 
 from eaidl.model import ModelPackage, ModelClass, ModelAttribute
 from eaidl.config import Configuration
+from eaidl.utils import find_class
 
 log = logging.getLogger(__name__)
 
 
-def find_class(roots: List[ModelPackage], condition: Callable[[ModelClass], bool]) -> Optional[ModelClass]:
-    for root in roots:
-        for cls in root.classes:
-            if condition(cls):
-                return cls
-        for pkg in root.packages:
-            sub = find_class([pkg], condition)
-            if sub is not None:
-                return sub
-    return None
-
-
 def remove_attr(root: ModelPackage, condition: Callable[[ModelAttribute], bool]) -> None:
+    """Remove attributes matching condition from package tree recursively.
+
+    :param root: Root package to process
+    :param condition: Function to test if attribute should be removed
+    """
     for cls in root.classes:
         for attr in cls.attributes[:]:
             if condition(attr):
@@ -32,6 +26,12 @@ def remove_attr(root: ModelPackage, condition: Callable[[ModelAttribute], bool])
 
 
 def get_attrs(root: ModelPackage, condition: Callable[[ModelAttribute], bool]) -> List[ModelAttribute]:
+    """Collect all attributes matching condition from package tree recursively.
+
+    :param root: Root package to search
+    :param condition: Function to test if attribute should be collected
+    :return: List of matching attributes
+    """
     attrs = []
     for cls in root.classes:
         for attr in cls.attributes[:]:
@@ -43,6 +43,13 @@ def get_attrs(root: ModelPackage, condition: Callable[[ModelAttribute], bool]) -
 
 
 def attr_by_name(cls: ModelClass, name: str) -> ModelAttribute:
+    """Find attribute by name in a class.
+
+    :param cls: Class to search
+    :param name: Attribute name to find
+    :return: Matching attribute
+    :raises AttributeError: If attribute not found
+    """
     for attr in cls.attributes:
         if attr.name == name:
             return attr
@@ -130,10 +137,13 @@ def filter_stereotypes(
     packages: List[ModelPackage],
     config: Configuration,
 ) -> None:
-    """Walks through model filters out attributes with configured stereotypes.
+    """Filter out classes and attributes with unwanted stereotypes.
 
-    :param root: model root package
-    :param config: configuration
+    Removes classes and packages tagged with stereotypes listed in config.filter_stereotypes.
+    Also removes attributes that reference filtered classes.
+
+    :param packages: Root packages to process
+    :param config: Configuration with filter_stereotypes list
     """
     for package in packages:
         _filter_stereotypes(package, package, config)
@@ -182,10 +192,13 @@ def filter_empty_unions(
     packages: List[ModelPackage],
     config: Configuration,
 ) -> None:
-    """Walks through model filters unions that are empty or have one option.
+    """Filter out empty unions and simplify single-element unions.
 
-    :param root: model root package
-    :param config: configuration
+    Empty unions are removed along with all attributes referencing them.
+    Single-element unions are replaced by their single attribute type.
+
+    :param packages: Root packages to process
+    :param config: Configuration with keep_union_stereotype to preserve specific unions
     """
     for package in packages:
         _filter_empty_unions(packages, package, config)

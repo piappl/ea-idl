@@ -1,13 +1,44 @@
 import click
 import json
 import logging
+from functools import wraps
 from eaidl.load import ModelParser
 from eaidl.change import ModelChanger
-from eaidl.utils import load_config, LogFormatter
+from eaidl.utils import load_config, LogFormatter, flatten_packages
 from eaidl.generate import generate
 from eaidl.diagram import PackageDiagramGenerator
 
 log = logging.getLogger(__name__)
+
+
+def setup_command(func):
+    """Decorator to handle common CLI setup (logging, config loading, version)."""
+
+    @wraps(func)
+    def wrapper(config, debug, version=None, **kwargs):
+        # Handle --version flag
+        if version is not None and version:
+            import tomllib
+
+            with open("pyproject.toml", "rb") as f:
+                data = tomllib.load(f)
+            click.echo(data["project"]["version"])
+            return
+
+        # Setup logging
+        log_handler = logging.StreamHandler()
+        log_handler.setFormatter(LogFormatter())
+        logging.basicConfig(level=logging.DEBUG if debug else logging.WARNING, handlers=[log_handler])
+
+        # Load config
+        config_obj = load_config(config)
+        if debug:
+            log.debug(json.dumps(config_obj.model_dump(), indent=4))
+
+        # Call actual command with config_obj
+        return func(config_obj=config_obj, debug=debug, **kwargs)
+
+    return wrapper
 
 
 @click.group()
@@ -19,46 +50,22 @@ def cli():
 @click.option("--config", default="config.yaml", help="Configuration file.")
 @click.option("--debug", default=False, is_flag=True, help="Enable debug.")
 @click.option("--version", is_flag=True, help="Show the application's version.")
-def run(config, debug, version):
-    if version:
-        import toml
-
-        with open("pyproject.toml", "r") as f:
-            data = toml.load(f)
-        click.echo(data["project"]["version"])
-        return
-
-    log_handler = logging.StreamHandler()
-    log_handler.setFormatter(LogFormatter())
-    logging.basicConfig(level=logging.DEBUG if debug else logging.WARNING, handlers=[log_handler])
-    config = load_config(config)
-    if debug:
-        log.debug(json.dumps(config.model_dump(), indent=4))
-    parser = ModelParser(config)
+@setup_command
+def run(config_obj, debug):
+    """Generate IDL from EA model."""
+    parser = ModelParser(config_obj)
     model = parser.load()
-    print(generate(config, model))
+    print(generate(config_obj, model))
 
 
 @click.command()
 @click.option("--config", default="config.yaml", help="Configuration file.")
 @click.option("--debug", default=False, is_flag=True, help="Enable debug.")
 @click.option("--version", is_flag=True, help="Show the application's version.")
-def change(config, debug, version):
-    if version:
-        import toml
-
-        with open("pyproject.toml", "r") as f:
-            data = toml.load(f)
-        click.echo(data["project"]["version"])
-        return
-
-    log_handler = logging.StreamHandler()
-    log_handler.setFormatter(LogFormatter())
-    logging.basicConfig(level=logging.DEBUG if debug else logging.WARNING, handlers=[log_handler])
-    config = load_config(config)
-    if debug:
-        log.debug(json.dumps(config.model_dump(), indent=4))
-    changer = ModelChanger(config)
+@setup_command
+def change(config_obj, debug):
+    """Apply changes to EA model."""
+    changer = ModelChanger(config_obj)
     changer.change()
 
 
@@ -68,27 +75,13 @@ def change(config, debug, version):
 @click.option("--output", default=None, help="Output file path (default: stdout).")
 @click.option("--max-depth", default=None, type=int, help="Maximum package nesting depth to show.")
 @click.option("--show-empty/--no-show-empty", default=True, help="Include packages with no classes.")
-def diagram(config, debug, output, max_depth, show_empty):
+@setup_command
+def diagram(config_obj, debug, output, max_depth, show_empty):
     """Generate a PlantUML diagram of package structure and dependencies."""
-    log_handler = logging.StreamHandler()
-    log_handler.setFormatter(LogFormatter())
-    logging.basicConfig(level=logging.DEBUG if debug else logging.WARNING, handlers=[log_handler])
-
-    config_obj = load_config(config)
-    if debug:
-        log.debug(json.dumps(config_obj.model_dump(), indent=4))
-
     parser = ModelParser(config_obj)
     model = parser.load()
 
     # Flatten all packages for diagram generation
-    def flatten_packages(packages):
-        result = []
-        for pkg in packages:
-            result.append(pkg)
-            result.extend(flatten_packages(pkg.packages))
-        return result
-
     all_packages = flatten_packages(model)
 
     # Generate diagram
@@ -117,27 +110,13 @@ def diagram(config, debug, output, max_depth, show_empty):
 @click.option(
     "--format", type=click.Choice(["json", "csv", "text"], case_sensitive=False), default="text", help="Output format."
 )
-def packages(config, debug, output, format):
+@setup_command
+def packages(config_obj, debug, output, format):
     """Generate a list of package names (namespaced) and package GUIDs."""
-    log_handler = logging.StreamHandler()
-    log_handler.setFormatter(LogFormatter())
-    logging.basicConfig(level=logging.DEBUG if debug else logging.WARNING, handlers=[log_handler])
-
-    config_obj = load_config(config)
-    if debug:
-        log.debug(json.dumps(config_obj.model_dump(), indent=4))
-
     parser = ModelParser(config_obj)
     model = parser.load()
 
     # Flatten all packages
-    def flatten_packages(packages):
-        result = []
-        for pkg in packages:
-            result.append(pkg)
-            result.extend(flatten_packages(pkg.packages))
-        return result
-
     all_packages = flatten_packages(model)
 
     # Generate output based on format

@@ -1,5 +1,8 @@
-from typing import Literal, Optional, List, Dict
+from typing import Literal, Optional, List, Dict, TYPE_CHECKING
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from eaidl.config import Configuration
 
 ModelScope = Literal["Private", "Public", "Protected", "Package"]
 
@@ -118,6 +121,27 @@ class ModelClass(LocalBaseModel):
     is_struct: bool = False
     is_map: bool = False
 
+    @property
+    def full_name(self) -> str:
+        """Get fully qualified name (e.g., 'root::MyClass')."""
+        return "::".join(self.namespace + [self.name])
+
+    def has_stereotype(self, stereotype: str) -> bool:
+        """Check if class has a specific stereotype."""
+        return stereotype in self.stereotypes
+
+    def is_enum_type(self, config: "Configuration") -> bool:
+        """Check if this is an enum class."""
+        return config.stereotypes.idl_enum in self.stereotypes
+
+    def is_struct_type(self, config: "Configuration") -> bool:
+        """Check if this is a struct class."""
+        return config.stereotypes.idl_struct in self.stereotypes
+
+    def is_union_type(self, config: "Configuration") -> bool:
+        """Check if this is a union class."""
+        return config.stereotypes.idl_union in self.stereotypes
+
 
 class ModelPackageInfo(LocalBaseModel):
     structs: int = 0
@@ -142,6 +166,11 @@ class ModelPackage(LocalBaseModel):
     depends_on: List[int] = []
     info: ModelPackageInfo = ModelPackageInfo()
     property_types: List[ModelPropertyType] = []
+
+    @property
+    def full_namespace(self) -> str:
+        """Get fully qualified namespace."""
+        return "::".join(self.namespace)
 
 
 class ModelAttribute(LocalBaseModel):

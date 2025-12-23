@@ -35,49 +35,73 @@ def test_load_file_wrong_data() -> None:
         load_config(path)
 
 
-def test_is_camel_case() -> None:
-    assert is_camel_case("") is False
-    assert is_camel_case(" ") is False
-    assert is_camel_case("core module") is False
-    assert is_camel_case("coreModule") is False
-    assert is_camel_case("coreModule1") is False
-    assert is_camel_case("CoreModule1") is True
-    assert is_camel_case("CoreModule_1") is False
-    assert is_camel_case("Quaternion") is True
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("", False),
+        (" ", False),
+        ("core module", False),
+        ("coreModule", False),
+        ("coreModule1", False),
+        ("CoreModule1", True),
+        ("CoreModule_1", False),
+        ("Quaternion", True),
+    ],
+)
+def test_is_camel_case(value, expected) -> None:
+    assert is_camel_case(value) == expected
 
 
-def test_is_lower_camel_case() -> None:
-    assert is_lower_camel_case("") is False
-    assert is_lower_camel_case(" ") is False
-    assert is_lower_camel_case("core module") is False
-    assert is_lower_camel_case("coreModule") is True
-    assert is_lower_camel_case("coreModule1") is True
-    assert is_lower_camel_case("coreModule_1") is False
-    assert is_lower_camel_case("CoreModule") is False
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("", False),
+        (" ", False),
+        ("core module", False),
+        ("coreModule", True),
+        ("coreModule1", True),
+        ("coreModule_1", False),
+        ("CoreModule", False),
+    ],
+)
+def test_is_lower_camel_case(value, expected) -> None:
+    assert is_lower_camel_case(value) == expected
 
 
-def test_is_snake_case() -> None:
-    assert is_snake_case("") is False
-    assert is_snake_case(" ") is False
-    assert is_snake_case("core module") is False
-    assert is_snake_case("coreModule") is True
-    assert is_snake_case("coreModule1") is False
-    assert is_snake_case("coreModule_1") is True
-    assert is_snake_case("CoreModule") is True
-    assert is_snake_case("core_module") is True
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("", False),
+        (" ", False),
+        ("core module", False),
+        ("coreModule", True),
+        ("coreModule1", False),
+        ("coreModule_1", True),
+        ("CoreModule", True),
+        ("core_module", True),
+    ],
+)
+def test_is_snake_case(value, expected) -> None:
+    assert is_snake_case(value) == expected
 
 
-def test_is_lower_snake_case() -> None:
-    assert is_lower_snake_case("") is False
-    assert is_lower_snake_case(" ") is False
-    assert is_lower_snake_case("core module") is False
-    assert is_lower_snake_case("coreModule") is False
-    assert is_lower_snake_case("coreModule1") is False
-    assert is_lower_snake_case("coreModule_1") is False
-    assert is_lower_snake_case("CoreModule") is False
-    assert is_lower_snake_case("core_module_1") is True
-    assert is_lower_snake_case("core_module") is True
-    assert is_lower_snake_case("core") is True
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("", False),
+        (" ", False),
+        ("core module", False),
+        ("coreModule", False),
+        ("coreModule1", False),
+        ("coreModule_1", False),
+        ("CoreModule", False),
+        ("core_module_1", True),
+        ("core_module", True),
+        ("core", True),
+    ],
+)
+def test_is_lower_snake_case(value, expected) -> None:
+    assert is_lower_snake_case(value) == expected
 
 
 def test_enum_name_from_union() -> None:
