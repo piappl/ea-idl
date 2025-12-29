@@ -3,6 +3,7 @@ from eaidl.utils import (
     get_prop,
     enum_name_from_union_attr,
     try_cast,
+    find_class_by_id,
 )
 from eaidl.config import Configuration
 from eaidl.html_utils import strip_html
@@ -60,16 +61,7 @@ def column_reflect(inspector, table, column_info):
     column_info["key"] = "attr_%s" % column_info["name"].lower()
 
 
-def find_class(trees: List[ModelPackage], object_id: int) -> Optional[ModelClass]:
-    for tree in trees:
-        for cls in tree.classes:
-            if cls.object_id == object_id:
-                return cls
-        for package in tree.packages:
-            ret = find_class([package], object_id)
-            if ret is not None:
-                return ret
-    return None
+# find_class moved to eaidl.utils.find_class_by_id for reusability
 
 
 class ModelParser:
@@ -156,8 +148,8 @@ class ModelParser:
                         stereotypes,
                         obj.attr_name,
                     )
-            union_class = find_class(trees, union_obj.attr_object_id)
-            enum_class = find_class(trees, enum_obj.attr_object_id)
+            union_class = find_class_by_id(trees, union_obj.attr_object_id)
+            enum_class = find_class_by_id(trees, enum_obj.attr_object_id)
             if union_class is None or enum_class is None:
                 # This is not really an error, if we are in package that is not
                 # used (as we iterate on all connectors...)
@@ -178,8 +170,8 @@ class ModelParser:
             struct_obj = self.get_object(connector.attr_start_object_id)
             enum_obj = self.get_object(connector.attr_end_object_id)
 
-            struct_class = find_class(trees, struct_obj.attr_object_id)
-            enum_class = find_class(trees, enum_obj.attr_object_id)
+            struct_class = find_class_by_id(trees, struct_obj.attr_object_id)
+            enum_class = find_class_by_id(trees, enum_obj.attr_object_id)
 
             if struct_class is None or enum_class is None:
                 # Not an error if classes are in different packages

@@ -92,16 +92,56 @@ IDL doesn't support abstract classes. The tool automatically flattens them by co
 
 **Configuration**: `flatten_abstract_classes: bool = True` (default)
 
+### Shared Utilities
+
+**Tree Search** (`src/eaidl/utils.py`):
+- `find_class(packages, condition)` - Generic search with condition function
+- `find_class_by_id(packages, object_id)` - Find class by ID
+- `flatten_packages(packages)` - Flatten package hierarchy to list
+
+Example:
+```python
+from eaidl.utils import find_class, find_class_by_id
+
+# Find class by condition
+cls = find_class(packages, lambda c: c.name == "Message")
+
+# Find class by ID
+cls = find_class_by_id(packages, 123)
+```
+
+**Model Helpers** (`src/eaidl/model.py`):
+
+Use these properties/methods instead of manual checks:
+```python
+# Get fully qualified name
+namespace = cls.full_name  # "root::data::Message"
+
+# Check stereotypes
+if cls.has_stereotype("interface"):
+    ...
+
+# Type checking
+if cls.is_enum_type(config):
+    ...
+if cls.is_struct_type(config):
+    ...
+```
+
 ## Testing
 
 Test database: `tests/data/nafv4.qea` (SQLite EA database used by most tests)
 
+### Running Tests
 ```bash
 # Run specific test file
 uv run pytest tests/test_transforms.py -v
 
 # Run specific test function
 uv run pytest tests/test_load.py::test_specific_function -v
+
+# Check coverage
+uv run pytest --cov=src/eaidl --cov-report=term-missing
 ```
 
 ## HTML Documentation Export
@@ -230,9 +270,31 @@ xdg-open /tmp/test-docs/index.html  # Linux
 
 ### Adding a New Validator
 1. Add to `src/eaidl/validation/{struct,attribute,package}.py`
-2. Use `@validators_fail`, `@validators_error`, or `@validators_warn` decorator
-3. Function signature: `validate_xyz(config, cls, attr=None)`
+2. Use `@validator` decorator (configured via `validators_fail`, `validators_error`, or `validators_warn` in config)
+3. Write function with signature: `validate_xyz(config: Configuration, cls: ModelClass)` for struct validators, or `validate_xyz(config: Configuration, attribute: ModelAttribute, cls: ModelClass)` for attribute validators
 4. Add test to `tests/test_validators.py`
+
+**Important**: The `@validator` decorator wraps your function and changes it to accept `**kwargs`, so when calling validators in tests, use keyword arguments:
+
+```python
+# Example struct validator
+@validator
+def my_struct_validator(config: Configuration, cls: ModelClass):
+    if some_condition:
+        raise ValueError("Validation failed")
+
+# Call in tests with keyword arguments
+v.struct.my_struct_validator(config, cls=my_class)
+
+# Example attribute validator
+@validator
+def my_attr_validator(config: Configuration, attribute: ModelAttribute, cls: ModelClass):
+    if attribute.name == "forbidden":
+        raise ValueError("Bad name")
+
+# Call in tests with keyword arguments
+v.attribute.my_attr_validator(config, attribute=my_attr, cls=my_class)
+```
 
 ### Adding a New Transformation
 1. Add function to `src/eaidl/transforms.py`
@@ -249,8 +311,8 @@ xdg-open /tmp/test-docs/index.html  # Linux
 
 ### Adding CLI Commands
 1. Edit `src/eaidl/cli.py`
-2. Use Click decorators
-3. Existing commands: run, change, diagram, packages
+2. Use the `@setup_command` decorator to handle common setup (logging, config loading, version)
+3. Use Click decorators for command definition
 4. Add to `[project.scripts]` in pyproject.toml if new entry point
 
 ### Configuring Spellchecking

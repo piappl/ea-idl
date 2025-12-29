@@ -12,3 +12,6 @@ wheels/
 
 # Default html docs folder
 _docs/
+# coverage
+.coverage
+coverage.json
