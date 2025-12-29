@@ -54,8 +54,44 @@ class EADiagramToMermaidConverter:
         """
         Convert EA diagram to Mermaid syntax.
 
-        :return: Mermaid class diagram syntax
+        :return: Mermaid diagram syntax (class or sequence)
         """
+        # Route to appropriate converter based on diagram type or presence of sequence connectors
+        if self._is_sequence_diagram():
+            return self._convert_sequence_diagram()
+        else:
+            return self._convert_class_diagram()
+
+    def _is_sequence_diagram(self) -> bool:
+        """
+        Determine if this is a sequence diagram.
+
+        Checks both diagram type and presence of Sequence-type connectors.
+        """
+        # Explicit sequence diagram type
+        if self.diagram.diagram_type == "Sequence":
+            return True
+
+        # Check if diagram has Sequence-type connectors
+        # Get all object IDs on the diagram
+        object_ids = [obj.object_id for obj in self.diagram.objects]
+        if not object_ids:
+            return False
+
+        # Query for any Sequence connectors involving these objects
+        TConnector = base.classes.t_connector
+        sequence_connectors = (
+            self.session.query(TConnector)
+            .filter(TConnector.attr_connector_type == "Sequence")
+            .filter((TConnector.attr_start_object_id.in_(object_ids)) | (TConnector.attr_end_object_id.in_(object_ids)))
+            .limit(1)
+            .first()
+        )
+
+        return sequence_connectors is not None
+
+    def _convert_class_diagram(self) -> str:
+        """Convert EA class/custom diagram to Mermaid class diagram."""
         lines = ["classDiagram"]
 
         # Build object and connector lookups
@@ -67,6 +103,13 @@ class EADiagramToMermaidConverter:
             class_def = self._generate_class_from_object(diag_obj)
             if class_def:
                 lines.extend(class_def)
+
+        # Add stereotypes as notes
+        for diag_obj in self.diagram.objects:
+            cls = self.object_lookup.get(diag_obj.object_id)
+            if cls and cls.stereotypes:
+                for stereotype in cls.stereotypes:
+                    lines.append(f'    note for {self._sanitize_name(cls.name)} "{stereotype}"')
 
         # Generate relationships from diagram links
         for diag_link in self.diagram.links:
@@ -84,6 +127,181 @@ class EADiagramToMermaidConverter:
 
         return "\n".join(lines)
 
+    def _convert_sequence_diagram(self) -> str:
+        """Convert EA sequence diagram to Mermaid sequence diagram."""
+        lines = ["sequenceDiagram"]
+
+        # Build object lookup for participants
+        self._build_object_lookup()
+
+        # Also load Part objects for sequence diagrams (instances in composite structures)
+        self._load_part_objects()
+
+        # Define participants
+        for diag_obj in self.diagram.objects:
+            cls = self.object_lookup.get(diag_obj.object_id)
+            if cls:
+                lines.append(f"    participant {self._sanitize_name(cls.name)}")
+
+        # Add notes on participants
+        for note in self.diagram.notes:
+            # Find closest participant by position
+            closest_participant = self._find_closest_participant(note)
+            if closest_participant:
+                position = "right" if note.rect_left > closest_participant[1] else "left"
+                lines.append(f"    Note {position} of {closest_participant[0]}: {note.name}")
+
+        # For sequence diagrams, messages are not in t_diagramlinks
+        # Query t_connector directly for Sequence connectors involving diagram participants
+        participant_ids = [obj.object_id for obj in self.diagram.objects]
+        sequence_connectors = self._load_sequence_connectors(participant_ids)
+
+        # Separate messages into those inside fragments and those outside
+        # Simple heuristic: if there are fragments, put the last N messages inside them
+        # TODO: Improve this by analyzing EA's fragment position/sequence data
+        messages_before_fragment = []
+        messages_in_fragment = []
+
+        if self.diagram.fragments and sequence_connectors:
+            # Put last message(s) inside the fragment (simple heuristic)
+            # Ideally we'd analyze position data or explicit relationships
+            num_in_fragment = len(self.diagram.fragments)  # One message per fragment for now
+            messages_before_fragment = sequence_connectors[:-num_in_fragment]
+            messages_in_fragment = sequence_connectors[-num_in_fragment:]
+        else:
+            messages_before_fragment = sequence_connectors
+
+        # Add messages before fragments
+        for conn in messages_before_fragment:
+            msg_line = self._generate_sequence_message(conn)
+            if msg_line:
+                lines.append(msg_line)
+
+        # Add interaction fragments with their messages
+        for i, fragment in enumerate(self.diagram.fragments):
+            if fragment.stereotype:
+                fragment_type = fragment.stereotype.lower()
+            else:
+                fragment_type = "alt"  # Default
+
+            lines.append(f"    {fragment_type} {fragment.name}")
+
+            # Add message(s) inside this fragment
+            if i < len(messages_in_fragment):
+                msg_line = self._generate_sequence_message(messages_in_fragment[i])
+                if msg_line:
+                    lines.append(msg_line)
+
+            lines.append("    end")
+
+        return "\n".join(lines)
+
+    def _find_closest_participant(self, note) -> Optional[tuple]:
+        """Find the closest participant to a note by X position.
+
+        Returns: tuple of (participant_name, x_position) or None
+        """
+        closest = None
+        min_distance = float("inf")
+
+        for diag_obj in self.diagram.objects:
+            cls = self.object_lookup.get(diag_obj.object_id)
+            if cls:
+                distance = abs(note.rect_left - diag_obj.rect_left)
+                if distance < min_distance:
+                    min_distance = distance
+                    closest = (self._sanitize_name(cls.name), diag_obj.rect_left)
+
+        return closest
+
+    def _sort_connectors_by_seqno(self, connectors: List[ModelConnection]) -> List[ModelConnection]:
+        """Sort connectors by SeqNo field from database."""
+        # We need to query the database for SeqNo
+        TConnector = base.classes.t_connector
+        connector_ids = [c.connector_id for c in connectors]
+
+        t_connectors = (
+            self.session.query(TConnector)
+            .filter(TConnector.attr_connector_id.in_(connector_ids))
+            .order_by(TConnector.attr_seqno)
+            .all()
+        )
+
+        # Create a mapping of connector_id to seqno
+        seqno_map = {tc.attr_connector_id: getattr(tc, "attr_seqno", 0) for tc in t_connectors}
+
+        # Sort connectors by seqno
+        return sorted(connectors, key=lambda c: seqno_map.get(c.connector_id, 0))
+
+    def _generate_sequence_message(self, conn: ModelConnection) -> Optional[str]:
+        """Generate Mermaid sequence message syntax."""
+        source_cls = self.object_lookup.get(conn.start_object_id)
+        dest_cls = self.object_lookup.get(conn.end_object_id)
+
+        if not source_cls or not dest_cls:
+            return None
+
+        source_name = self._sanitize_name(source_cls.name)
+        dest_name = self._sanitize_name(dest_cls.name)
+
+        # Parse message data from connector (PDATA fields)
+        TConnector = base.classes.t_connector
+        t_conn = self.session.query(TConnector).filter(TConnector.attr_connector_id == conn.connector_id).first()
+
+        if not t_conn:
+            return None
+
+        # Get message name
+        msg_name = getattr(t_conn, "attr_name", "Message")
+
+        # Parse PDATA2 for parameters and return value
+        pdata2 = getattr(t_conn, "attr_pdata2", "")
+        params_dict = {}
+        if pdata2:
+            for item in pdata2.split(";"):
+                if "=" in item:
+                    key, val = item.split("=", 1)
+                    params_dict[key] = val
+
+        # Parse StyleEx for parameter values
+        styleex = getattr(t_conn, "attr_styleex", "")
+        param_values = ""
+        if styleex:
+            for item in styleex.split(";"):
+                if item.startswith("paramvalues="):
+                    param_values = item.split("=", 1)[1]
+                    break
+
+        # Build message label
+        if param_values:
+            label = f"{msg_name}({param_values})"
+        elif params_dict.get("paramsDlg"):
+            label = f"{msg_name}({params_dict['paramsDlg']})"
+        else:
+            label = f"{msg_name}()"
+
+        # Add return value if not void
+        retval = params_dict.get("retval", "void")
+        if retval and retval != "void":
+            label += f": {retval}"
+
+        # Determine arrow type
+        msg_type = getattr(t_conn, "attr_pdata1", "Synchronous")
+        if msg_type == "Asynchronous":
+            arrow = "->>"
+        else:
+            arrow = "->>"  # Synchronous
+
+        message_line = f"    {source_name}{arrow}{dest_name}: {label}"
+
+        # Add stereotype as note if present
+        stereotype = getattr(t_conn, "attr_stereotype", None)
+        if stereotype:
+            # Return list with message and note
+            return message_line + f"\n    Note right of {dest_name}: {stereotype}"
+
+        return message_line
+
     def _build_object_lookup(self):
         """Map object_id to ModelClass for quick lookup."""
         for package in self.all_packages:
@@ -95,6 +313,79 @@ class EADiagramToMermaidConverter:
             self.object_lookup[cls.object_id] = cls
         for child_pkg in package.packages:
             self._index_package_objects(child_pkg)
+
+    def _load_part_objects(self):
+        """Load Part objects from the diagram for sequence diagram participants.
+
+        Part objects are composite structure instances that aren't loaded as ModelClass.
+        We create minimal class-like objects for them to enable sequence diagram rendering.
+        """
+        TObject = base.classes.t_object
+        TDiagramObjects = base.classes.t_diagramobjects
+
+        # Query for Part objects on this diagram
+        part_objects = (
+            self.session.query(TObject)
+            .join(TDiagramObjects, TObject.attr_object_id == TDiagramObjects.attr_object_id)
+            .filter(TDiagramObjects.attr_diagram_id == self.diagram.diagram_id)
+            .filter(TObject.attr_object_type == "Part")
+            .all()
+        )
+
+        # Create minimal ModelClass entries for each Part
+        for part_obj in part_objects:
+            if part_obj.attr_object_id not in self.object_lookup:
+                # Create a minimal class-like object for the part
+                from eaidl.model import ModelClass
+
+                part_class = ModelClass(
+                    name=part_obj.attr_name or f"Part{part_obj.attr_object_id}",
+                    object_id=part_obj.attr_object_id,
+                    namespace=[],  # Parts don't have namespaces
+                )
+                self.object_lookup[part_obj.attr_object_id] = part_class
+                log.debug(f"Loaded Part object: {part_class.name} (ID: {part_obj.attr_object_id})")
+
+    def _load_sequence_connectors(self, participant_ids: List[int]) -> List[ModelConnection]:
+        """Load Sequence type connectors for sequence diagram participants.
+
+        Sequence diagram messages are not stored in t_diagramlinks. Instead, we query
+        t_connector for all Sequence type connectors involving the diagram participants.
+
+        :param participant_ids: List of object IDs that are participants on the diagram
+        :return: List of sequence connectors, sorted by SeqNo
+        """
+        if not participant_ids:
+            return []
+
+        TConnector = base.classes.t_connector
+
+        # Query for Sequence connectors involving any of the participants
+        t_connectors = (
+            self.session.query(TConnector)
+            .filter(TConnector.attr_connector_type == "Sequence")
+            .filter(
+                (TConnector.attr_start_object_id.in_(participant_ids))
+                | (TConnector.attr_end_object_id.in_(participant_ids))
+            )
+            .order_by(TConnector.attr_seqno)
+            .all()
+        )
+
+        # Parse connectors
+        connectors = []
+        for t_conn in t_connectors:
+            try:
+                conn = self._parse_connector(t_conn)
+                connectors.append(conn)
+                log.debug(
+                    f"Loaded sequence message: {getattr(t_conn, 'attr_name', 'unnamed')} "
+                    f"(SeqNo: {getattr(t_conn, 'attr_seqno', 0)})"
+                )
+            except Exception as e:
+                log.warning(f"Failed to parse connector {t_conn.attr_connector_id}: {e}")
+
+        return connectors
 
     def _build_connector_lookup(self):
         """Load connector details for all diagram links."""

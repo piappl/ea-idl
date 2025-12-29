@@ -151,9 +151,9 @@
                 <div class="card-body">
                     <h5 class="card-title">{{ ea_diagram.name }}</h5>
 
-                    {% if ea_diagram.notes %}
+                    {% if ea_diagram.diagram_notes %}
                     <div class="alert alert-info">
-                        {{ render_notes(ea_diagram.notes) }}
+                        {{ render_notes(ea_diagram.diagram_notes) }}
                     </div>
                     {% endif %}
 

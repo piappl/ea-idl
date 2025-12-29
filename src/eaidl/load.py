@@ -33,6 +33,8 @@ from eaidl.model import (
     ModelDiagram,
     ModelDiagramObject,
     ModelDiagramLink,
+    ModelDiagramNote,
+    ModelInteractionFragment,
 )
 from eaidl import validation
 from eaidl.sorting import topological_sort_classes, topological_sort_packages, CircularDependencyError
@@ -516,7 +518,7 @@ class ModelParser:
             package_id=t_diagram.attr_package_id,
             name=t_diagram.attr_name,
             diagram_type=getattr(t_diagram, "attr_diagram_type", None),
-            notes=getattr(t_diagram, "attr_notes", None),
+            diagram_notes=getattr(t_diagram, "attr_notes", None),
             stereotype=getattr(t_diagram, "attr_stereotype", None),
             author=getattr(t_diagram, "attr_author", None),
             created_date=getattr(t_diagram, "attr_createddate", None),
@@ -527,9 +529,11 @@ class ModelParser:
             scale=getattr(t_diagram, "attr_scale", None),
         )
 
-        # Load objects and links
+        # Load objects, links, notes, and fragments
         diagram.objects = self.load_diagram_objects(diagram.diagram_id)
         diagram.links = self.load_diagram_links(diagram.diagram_id)
+        diagram.notes = self.load_diagram_notes(diagram.diagram_id)
+        diagram.fragments = self.load_interaction_fragments(diagram.diagram_id)
 
         return diagram
 
@@ -585,6 +589,80 @@ class ModelParser:
             links.append(link)
 
         return links
+
+    def load_diagram_notes(self, diagram_id: int) -> List["ModelDiagramNote"]:
+        """Load notes on a diagram.
+
+        :param diagram_id: diagram identifier
+        :return: list of notes on this diagram
+        """
+        TDiagramObjects = base.classes.t_diagramobjects
+        TObject = base.classes.t_object
+
+        # Query for notes: join t_diagramobjects with t_object where Object_Type = 'Note'
+        notes_query = (
+            self.session.query(TDiagramObjects, TObject)
+            .join(TObject, TDiagramObjects.attr_object_id == TObject.attr_object_id)
+            .filter(TDiagramObjects.attr_diagram_id == diagram_id)
+            .filter(TObject.attr_object_type == "Note")
+            .all()
+        )
+
+        notes = []
+        for t_diag_obj, t_obj in notes_query:
+            # EA stores note text in either Name or Note field
+            name = getattr(t_obj, "attr_name", None)
+            note_text = getattr(t_obj, "attr_note", None)
+            # Use note_text as fallback if name is None
+            if name is None and note_text:
+                name = note_text.strip()
+            elif name is None:
+                name = ""
+
+            note = ModelDiagramNote(
+                object_id=t_obj.attr_object_id,
+                diagram_id=diagram_id,
+                name=name,
+                note_text=note_text,
+                rect_left=getattr(t_diag_obj, "attr_rectleft", 0),
+                rect_top=getattr(t_diag_obj, "attr_recttop", 0),
+                rect_right=getattr(t_diag_obj, "attr_rectright", 0),
+                rect_bottom=getattr(t_diag_obj, "attr_rectbottom", 0),
+            )
+            notes.append(note)
+
+        return notes
+
+    def load_interaction_fragments(self, diagram_id: int) -> List["ModelInteractionFragment"]:
+        """Load interaction fragments (alt, opt, loop, etc.) from a sequence diagram.
+
+        :param diagram_id: diagram identifier
+        :return: list of interaction fragments on this diagram
+        """
+        TObject = base.classes.t_object
+        TDiagramObjects = base.classes.t_diagramobjects
+
+        # Query for interaction fragments via t_diagramobjects join
+        fragments_query = (
+            self.session.query(TObject)
+            .join(TDiagramObjects, TObject.attr_object_id == TDiagramObjects.attr_object_id)
+            .filter(TDiagramObjects.attr_diagram_id == diagram_id)
+            .filter((TObject.attr_object_type == "InteractionFragment") | (TObject.attr_object_type == "Interaction"))
+            .all()
+        )
+
+        fragments = []
+        for t_obj in fragments_query:
+            fragment = ModelInteractionFragment(
+                object_id=t_obj.attr_object_id,
+                name=getattr(t_obj, "attr_name", ""),
+                stereotype=getattr(t_obj, "attr_stereotype", None),
+                note=getattr(t_obj, "attr_note", None),
+                parent_id=getattr(t_obj, "attr_parentid", None),
+            )
+            fragments.append(fragment)
+
+        return fragments
 
     def get_all_class_id(self, parent_package: ModelPackage) -> List[int]:
         ret = []

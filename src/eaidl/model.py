@@ -123,6 +123,30 @@ class ModelDiagramLink(LocalBaseModel):
     path: Optional[str] = None
 
 
+class ModelDiagramNote(LocalBaseModel):
+    """Represents a note on an EA diagram."""
+
+    object_id: int
+    diagram_id: int
+    name: str  # Note content
+    note_text: Optional[str] = None  # Additional note text
+    rect_left: int = 0
+    rect_top: int = 0
+    rect_right: int = 0
+    rect_bottom: int = 0
+
+
+class ModelInteractionFragment(LocalBaseModel):
+    """Represents an interaction fragment (alt, opt, loop, etc.) in a sequence diagram."""
+
+    object_id: int
+    name: str  # Fragment label
+    stereotype: Optional[str] = None  # "alt", "opt", "loop", "par", etc.
+    note: Optional[str] = None  # Condition text
+    parent_id: Optional[int] = None
+    messages: List[int] = []  # Connector IDs of messages in this fragment
+
+
 class ModelDiagram(LocalBaseModel):
     """Represents an EA diagram."""
 
@@ -138,8 +162,11 @@ class ModelDiagram(LocalBaseModel):
     cx: Optional[int] = None  # Canvas width
     cy: Optional[int] = None  # Canvas height
     scale: Optional[int] = None  # Scale percentage
+    diagram_notes: Optional[str] = None  # Diagram metadata notes (from t_diagram.notes)
     objects: List[ModelDiagramObject] = []
     links: List[ModelDiagramLink] = []
+    notes: List[ModelDiagramNote] = []  # Note objects on the diagram
+    fragments: List[ModelInteractionFragment] = []
 
 
 class ModelClass(LocalBaseModel):
