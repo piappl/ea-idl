@@ -46,7 +46,12 @@ def run(config, debug, version):
 @click.option("--config", default="config.yaml", help="Configuration file.")
 @click.option("--debug", default=False, is_flag=True, help="Enable debug.")
 @click.option("--version", is_flag=True, help="Show the application's version.")
-def change(config, debug, version):
+@click.option("--check-enum-prefixes", is_flag=True, help="Check enum attribute prefixes for correctness.")
+@click.option("--fix-enum-prefixes", is_flag=True, help="Fix enum attribute prefixes to match enum name.")
+@click.option("--enum-name", default=None, help="Specific enum name to check/fix (default: all enums).")
+@click.option("--dry-run/--no-dry-run", default=True, help="Dry run mode (show changes without committing).")
+def change(config, debug, version, check_enum_prefixes, fix_enum_prefixes, enum_name, dry_run):
+    """Make bulk changes to EA model database (enums, connectors, etc.)."""
     if version:
         import toml
 
@@ -57,12 +62,40 @@ def change(config, debug, version):
 
     log_handler = logging.StreamHandler()
     log_handler.setFormatter(LogFormatter())
-    logging.basicConfig(level=logging.DEBUG if debug else logging.WARNING, handlers=[log_handler])
-    config = load_config(config)
+    logging.basicConfig(level=logging.DEBUG if debug else logging.INFO, handlers=[log_handler])
+    config_obj = load_config(config)
     if debug:
-        log.debug(json.dumps(config.model_dump(), indent=4))
-    changer = ModelChanger(config)
-    changer.change()
+        log.debug(json.dumps(config_obj.model_dump(), indent=4))
+
+    changer = ModelChanger(config_obj)
+
+    if check_enum_prefixes:
+        issues = changer.check_enum_prefixes(enum_name)
+        if not issues:
+            click.echo("✓ All enum prefixes are correct!")
+        else:
+            click.echo(f"Found prefix issues in {len(issues)} enum(s):\n")
+            for enum, enum_issues in issues.items():
+                click.echo(f"Enum: {enum}")
+                for issue in enum_issues:
+                    click.echo(f"  {issue['current']} -> {issue['expected']}")
+                click.echo()
+            click.echo(f"Total: {sum(len(e) for e in issues.values())} attributes need correction")
+            if not fix_enum_prefixes:
+                click.echo("\nRun with --fix-enum-prefixes to apply changes")
+    elif fix_enum_prefixes:
+        stats = changer.fix_enum_prefixes(enum_name, dry_run=dry_run)
+        if dry_run:
+            click.echo(
+                f"\nDry run complete: would fix {stats['checked']} attributes in {stats['enums_affected']} enums"
+            )
+            click.echo("Run with --no-dry-run to apply changes")
+        else:
+            click.echo(f"✓ Fixed {stats['fixed']} attributes in {stats['enums_affected']} enums")
+    else:
+        # Run custom change() method
+        changer.change()
+        click.echo("✓ Custom changes completed")
 
 
 @click.command()
