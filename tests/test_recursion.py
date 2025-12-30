@@ -544,60 +544,125 @@ def test_union_struct_circular_dependency():
 
 
 def test_non_collection_circular_dependency_rejected():
-    """Test that circular dependencies with non-sequence attributes are rejected with helpful error."""
-    # Create types with circular dependency using NON-collection attributes (multiplicity 1..1)
-    union_expr = ModelClass(
-        name="Expression",
+    """Test that circular dependencies with NO sequence edges are rejected with helpful error."""
+    # Create struct → struct cycle with NO sequences (all direct references)
+    struct_a = ModelClass(
+        name="StructA",
         object_id=3001,
-        is_union=True,
-        stereotypes=["union"],
-        namespace=["cql"],
+        is_struct=True,
+        stereotypes=["struct"],
+        namespace=["test"],
         attributes=[
             ModelAttribute(
-                name="and_expr",
-                type="AndExpression",
-                is_collection=False,  # NOT a sequence - this is the problem!
-                namespace=["cql"],
+                name="b_ref",
+                type="StructB",
+                is_collection=False,  # Direct reference - no sequence
+                namespace=["test"],
                 attribute_id=1,
                 guid="guid1",
-                alias="and_expr",
+                alias="b_ref",
             )
         ],
     )
-    struct_and = ModelClass(
-        name="AndExpression",
+    struct_b = ModelClass(
+        name="StructB",
         object_id=3002,
         is_struct=True,
         stereotypes=["struct"],
-        namespace=["cql"],
+        namespace=["test"],
         attributes=[
             ModelAttribute(
-                name="expr",
-                type="Expression",
-                is_collection=False,  # NOT a sequence - this is the problem!
-                namespace=["cql"],
+                name="a_ref",
+                type="StructA",
+                is_collection=False,  # Direct reference - no sequence
+                namespace=["test"],
                 attribute_id=2,
                 guid="guid2",
-                alias="expr",
+                alias="a_ref",
             )
         ],
     )
 
     package = ModelPackage(
-        name="cql",
+        name="test",
         package_id=300,
         object_id=300,
-        guid="cql-guid",
+        guid="test-guid",
     )
-    package.classes = [union_expr, struct_and]
-    package.namespace = ["cql"]
+    package.classes = [struct_a, struct_b]
+    package.namespace = ["test"]
 
     # This should raise ValueError with helpful message when check is enabled
     with pytest.raises(ValueError) as exc_info:
         find_type_cycles([package], check_non_collection_cycles=True)
 
     error_msg = str(exc_info.value)
-    assert "Circular dependency detected with non-sequence attributes" in error_msg
-    assert "sequence<> types" in error_msg or "sequence types" in error_msg
+    assert "Circular dependency with no sequence edges" in error_msg
+    assert "at least one sequence" in error_msg
     assert "IsCollection" in error_msg
-    assert "cql::Expression.and_expr" in error_msg or "cql::AndExpression.expr" in error_msg
+    # Check that both structs are mentioned in the cycle
+    assert "StructA" in error_msg
+    assert "StructB" in error_msg
+
+
+def test_mutual_recursion_with_one_sequence_allowed():
+    """Test that mutual recursion with at least one sequence is allowed."""
+    # Create struct → struct cycle where ONE edge uses a sequence
+    struct_a = ModelClass(
+        name="StructA",
+        object_id=4001,
+        is_struct=True,
+        stereotypes=["struct"],
+        namespace=["test"],
+        attributes=[
+            ModelAttribute(
+                name="b_ref",
+                type="StructB",
+                is_collection=False,  # Direct reference - OK because other edge has sequence
+                namespace=["test"],
+                attribute_id=1,
+                guid="guid1",
+                alias="b_ref",
+            )
+        ],
+    )
+    struct_b = ModelClass(
+        name="StructB",
+        object_id=4002,
+        is_struct=True,
+        stereotypes=["struct"],
+        namespace=["test"],
+        attributes=[
+            ModelAttribute(
+                name="a_list",
+                type="StructA",
+                is_collection=True,  # SEQUENCE - this breaks the cycle!
+                namespace=["test"],
+                attribute_id=2,
+                guid="guid2",
+                alias="a_list",
+            )
+        ],
+    )
+
+    package = ModelPackage(
+        name="test",
+        package_id=400,
+        object_id=400,
+        guid="test-guid",
+    )
+    package.classes = [struct_a, struct_b]
+    package.namespace = ["test"]
+
+    # This should NOT raise - cycle has a sequence edge
+    needs_forward_decl, scc_map = detect_types_needing_forward_declarations([package])
+
+    # Both should need forward declarations (they're in a cycle)
+    assert len(needs_forward_decl) == 2
+    assert struct_a.object_id in needs_forward_decl
+    assert struct_b.object_id in needs_forward_decl
+
+    # Both should be in the same SCC
+    assert struct_a.object_id in scc_map
+    assert struct_b.object_id in scc_map
+    assert scc_map[struct_a.object_id] == scc_map[struct_b.object_id]

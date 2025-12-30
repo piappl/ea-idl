@@ -166,23 +166,24 @@ def linked_notes_spelling(config: Configuration, cls: ModelClass):
 @validator
 def recursive_type_uses_sequence(config: Configuration, cls: ModelClass):
     """
-    Ensure recursive struct/union references use sequences (IDL requirement).
+    Ensure self-referencing struct attributes use sequences (IDL requirement).
 
     IDL does not support direct self-reference without sequence<>.
-    A struct or union can only reference itself through a sequence type.
+    Note: This only checks SELF-reference. Mutual recursion (A → B → A)
+    is handled by cycle detection and can have direct references as long
+    as at least one edge in the cycle uses a sequence.
     """
     if not config.allow_recursive_structs:
         return  # Skip if recursion support is disabled
 
-    if not (cls.is_struct or cls.is_union):
-        return  # Only applies to structs and unions
+    if not cls.is_struct:
+        return  # Only applies to structs (unions can self-reference via discriminator)
 
     for attr in cls.attributes:
-        # Check if attribute type references the parent type
+        # Check if attribute type references the parent struct (self-reference)
         if attr.type == cls.name and attr.namespace == cls.namespace:
             if not attr.is_collection:
-                type_kind = "struct" if cls.is_struct else "union"
                 raise ValueError(
-                    f"Recursive attribute '{cls.full_name}.{attr.name}' must be a sequence. "
-                    f"IDL does not support direct self-reference in {type_kind}s without sequence<>. {context(cls)}"
+                    f"Self-referencing attribute '{cls.full_name}.{attr.name}' must be a sequence. "
+                    f"IDL does not support direct self-reference in structs without sequence<>. {context(cls)}"
                 )

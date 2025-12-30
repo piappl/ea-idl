@@ -65,8 +65,12 @@ def find_type_cycles(packages: List[ModelPackage], check_non_collection_cycles: 
     """
     Find all strongly connected components (cycles) in struct and union dependencies.
 
-    Only considers dependencies through sequence attributes (collections),
-    as direct references are not allowed for recursive types in IDL.
+    IDL allows recursive types if at least one edge in each cycle uses a sequence<>.
+    This prevents infinite size and allows forward declarations.
+
+    Rules:
+    - Self-reference (A → A) MUST use sequence
+    - Mutual recursion (A → B → A) can have direct refs if at least one edge uses sequence
 
     This handles:
     - Struct ↔ Struct cycles
@@ -75,29 +79,27 @@ def find_type_cycles(packages: List[ModelPackage], check_non_collection_cycles: 
 
     Args:
         packages: List of model packages to analyze
-        check_non_collection_cycles: If True, raises ValueError for circular dependencies
-                                     through non-sequence attributes
+        check_non_collection_cycles: If True, raises ValueError for cycles with no sequences
 
     Returns:
         Dict mapping each struct/union object_id in a cycle to its SCC
         (set of object_ids in the same cycle, including itself)
 
     Raises:
-        ValueError: If check_non_collection_cycles=True and non-collection circular
-                   dependencies are detected
+        ValueError: If check_non_collection_cycles=True and a cycle has no sequence edges
     """
-    # Build dependency graph for structs and unions
-    graph = {}  # object_id -> list of object_ids it depends on (via sequence)
-    non_collection_deps = {}  # Track non-collection dependencies for error messages
+    # Build dependency graphs
+    all_deps_graph = {}  # All dependencies (collection and non-collection)
+    sequence_deps_graph = {}  # Only dependencies through sequences
     all_types = {}  # object_id -> ModelClass
 
-    # First pass: collect all structs and unions and initialize graph
+    # First pass: collect all structs and unions and initialize graphs
     for pkg in flatten_packages(packages):
         for cls in pkg.classes:
             if cls.is_struct or cls.is_union:
                 all_types[cls.object_id] = cls
-                graph[cls.object_id] = []
-                non_collection_deps[cls.object_id] = []
+                all_deps_graph[cls.object_id] = []
+                sequence_deps_graph[cls.object_id] = []
 
     # Second pass: build dependency edges
     for cls_id, cls in all_types.items():
@@ -106,74 +108,60 @@ def find_type_cycles(packages: List[ModelPackage], check_non_collection_cycles: 
             target = find_class(packages, lambda c: c.name == attr.type and c.namespace == attr.namespace)
 
             if target and (target.is_struct or target.is_union) and target.object_id in all_types:
-                if attr.is_collection:
-                    # Valid dependency through sequence
-                    graph[cls_id].append(target.object_id)
-                else:
-                    # Non-collection dependency - track for error reporting
-                    non_collection_deps[cls_id].append((target.object_id, attr.name))
+                # Track in all_deps_graph
+                all_deps_graph[cls_id].append((target.object_id, attr.name, attr.is_collection))
 
-    # Run Tarjan's SCC algorithm on collection-based dependencies
-    sccs = tarjan_scc(graph)
+                # For sequence_deps_graph: only track sequences (for structs) or all members (for unions)
+                if cls.is_union or attr.is_collection:
+                    sequence_deps_graph[cls_id].append(target.object_id)
 
-    # Optionally check for cycles in NON-collection dependencies
-    if check_non_collection_cycles:
-        # Build graph with ALL dependencies (including non-collections)
-        full_graph = {cls_id: list(graph[cls_id]) for cls_id in graph}
-        for cls_id, deps in non_collection_deps.items():
-            for target_id, attr_name in deps:
-                full_graph[cls_id].append(target_id)
+    # Find ALL cycles using the full dependency graph
+    # Convert all_deps_graph to simple format for Tarjan
+    simple_all_graph = {cls_id: [dep[0] for dep in deps] for cls_id, deps in all_deps_graph.items()}
+    all_sccs = tarjan_scc(simple_all_graph)
 
-        # Run SCC on full graph to detect ALL cycles
-        full_sccs = tarjan_scc(full_graph)
-
-        # Find cycles that exist in full graph but NOT in collection-only graph
-        for scc in full_sccs:
-            is_cycle = len(scc) > 1 or (len(scc) == 1 and list(scc)[0] in full_graph[list(scc)[0]])
-
-            if is_cycle:
-                # Check if this cycle exists in the collection-only graph
-                has_collection_cycle = any(
-                    node_id in scc_node
-                    for scc_node in sccs
-                    for node_id in scc
-                    if len(scc_node) > 1 or (len(scc_node) == 1 and list(scc_node)[0] in graph[list(scc_node)[0]])
-                )
-
-                # If cycle exists in full graph but not in collection graph, we have a problem
-                if not has_collection_cycle:
-                    # Build error message showing the problematic dependencies
-                    error_parts = []
-                    for cls_id in scc:
-                        cls = all_types[cls_id]
-                        # Find non-collection deps within this SCC
-                        for target_id, attr_name in non_collection_deps[cls_id]:
-                            if target_id in scc:
-                                target = all_types[target_id]
-                                error_parts.append(f"{cls.full_name}.{attr_name} → {target.full_name}")
-
-                    if error_parts:
-                        raise ValueError(
-                            "Circular dependency detected with non-sequence attributes. "
-                            "IDL requires recursive references to use sequence<> types.\n"
-                            "Problematic dependencies:\n  " + "\n  ".join(error_parts) + "\n"
-                            "To fix: In Enterprise Architect, ensure circular references use "
-                            "sequence types (IsCollection=true), regardless of multiplicity."
-                        )
-
-    # Map each node to its SCC (only for nodes actually in cycles with sequences)
+    # Find cycles and check if they have at least one sequence edge
     scc_map = {}
-    for scc in sccs:
-        # An SCC is a cycle if:
-        # 1. It has multiple nodes (mutual recursion), OR
-        # 2. It has one node that depends on itself (self-reference)
-        is_cycle = len(scc) > 1 or (len(scc) == 1 and list(scc)[0] in graph[list(scc)[0]])
+    for scc in all_sccs:
+        # Check if this is actually a cycle
+        is_cycle = len(scc) > 1 or (len(scc) == 1 and list(scc)[0] in simple_all_graph[list(scc)[0]])
 
-        if is_cycle:
+        if not is_cycle:
+            continue  # Not a cycle, skip
+
+        # Check if cycle has at least one sequence edge
+        has_sequence = False
+        missing_sequence_edges = []
+
+        for cls_id in scc:
+            cls = all_types[cls_id]
+            for target_id, attr_name, is_collection in all_deps_graph[cls_id]:
+                if target_id in scc:  # Dependency within this SCC
+                    if cls.is_union or is_collection:
+                        has_sequence = True
+                    else:
+                        # Non-sequence edge in cycle
+                        target = all_types[target_id]
+                        missing_sequence_edges.append((cls.full_name, attr_name, target.full_name))
+
+        if has_sequence:
+            # Valid cycle with at least one sequence - mark all types for forward declaration
             for node_id in scc:
                 scc_map[node_id] = scc
                 type_kind = "struct" if all_types[node_id].is_struct else "union"
                 log.debug(f"{type_kind.capitalize()} {all_types[node_id].full_name} is in SCC of size {len(scc)}")
+        elif check_non_collection_cycles:
+            # Cycle with NO sequences - this is an error if checking is enabled
+            cycle_types = [all_types[cls_id].full_name for cls_id in scc]
+            raise ValueError(
+                f"Circular dependency with no sequence edges detected.\n"
+                f"IDL requires at least one sequence<> in each cycle to break recursion.\n"
+                f"Cycle: {' ↔ '.join(cycle_types)}\n"
+                f"Non-sequence edges:\n  "
+                + "\n  ".join([f"{src}.{attr} → {tgt}" for src, attr, tgt in missing_sequence_edges])
+                + "\n"
+                "To fix: Change at least one attribute in the cycle to use IsCollection=true."
+            )
 
     return scc_map
 
