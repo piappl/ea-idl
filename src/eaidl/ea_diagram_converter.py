@@ -16,6 +16,13 @@ from eaidl.model import (
 )
 from eaidl.config import Configuration
 from eaidl.link_utils import generate_class_link
+from eaidl.mermaid_utils import (
+    sanitize_id,
+    escape_label,
+    get_class_label,
+    get_participant_declaration,
+    format_note_text,
+)
 from sqlalchemy.orm import Session
 import logging
 
@@ -108,8 +115,10 @@ class EADiagramToMermaidConverter:
         for diag_obj in self.diagram.objects:
             cls = self.object_lookup.get(diag_obj.object_id)
             if cls and cls.stereotypes:
+                safe_id = self._sanitize_name(cls.name)
                 for stereotype in cls.stereotypes:
-                    lines.append(f'    note for {self._sanitize_name(cls.name)} "{stereotype}"')
+                    safe_stereotype = escape_label(stereotype)
+                    lines.append(f'    note for {safe_id} "{safe_stereotype}"')
 
         # Generate relationships from diagram links
         for diag_link in self.diagram.links:
@@ -141,7 +150,8 @@ class EADiagramToMermaidConverter:
         for diag_obj in self.diagram.objects:
             cls = self.object_lookup.get(diag_obj.object_id)
             if cls:
-                lines.append(f"    participant {self._sanitize_name(cls.name)}")
+                participant_decl = get_participant_declaration(cls.name)
+                lines.append(f"    {participant_decl}")
 
         # Add notes on participants
         for note in self.diagram.notes:
@@ -149,7 +159,8 @@ class EADiagramToMermaidConverter:
             closest_participant = self._find_closest_participant(note)
             if closest_participant:
                 position = "right" if note.rect_left > closest_participant[1] else "left"
-                lines.append(f"    Note {position} of {closest_participant[0]}: {note.name}")
+                safe_note_text = format_note_text(note.name, max_length=80)
+                lines.append(f"    Note {position} of {closest_participant[0]}: {safe_note_text}")
 
         # For sequence diagrams, messages are not in t_diagramlinks
         # Query t_connector directly for Sequence connectors involving diagram participants
@@ -184,7 +195,8 @@ class EADiagramToMermaidConverter:
             else:
                 fragment_type = "alt"  # Default
 
-            lines.append(f"    {fragment_type} {fragment.name}")
+            safe_fragment_name = escape_label(fragment.name)
+            lines.append(f"    {fragment_type} {safe_fragment_name}")
 
             # Add message(s) inside this fragment
             if i < len(messages_in_fragment):
@@ -272,18 +284,22 @@ class EADiagramToMermaidConverter:
                     param_values = item.split("=", 1)[1]
                     break
 
-        # Build message label
+        # Build message label - sanitize parameters and return values
+        safe_msg_name = escape_label(msg_name)
         if param_values:
-            label = f"{msg_name}({param_values})"
+            safe_params = escape_label(param_values)
+            label = f"{safe_msg_name}({safe_params})"
         elif params_dict.get("paramsDlg"):
-            label = f"{msg_name}({params_dict['paramsDlg']})"
+            safe_params = escape_label(params_dict["paramsDlg"])
+            label = f"{safe_msg_name}({safe_params})"
         else:
-            label = f"{msg_name}()"
+            label = f"{safe_msg_name}()"
 
         # Add return value if not void
         retval = params_dict.get("retval", "void")
         if retval and retval != "void":
-            label += f": {retval}"
+            safe_retval = escape_label(retval)
+            label += f": {safe_retval}"
 
         # Determine arrow type
         msg_type = getattr(t_conn, "attr_pdata1", "Synchronous")
@@ -297,8 +313,9 @@ class EADiagramToMermaidConverter:
         # Add stereotype as note if present
         stereotype = getattr(t_conn, "attr_stereotype", None)
         if stereotype:
+            safe_stereotype = escape_label(stereotype)
             # Return list with message and note
-            return message_line + f"\n    Note right of {dest_name}: {stereotype}"
+            return message_line + f"\n    Note right of {dest_name}: {safe_stereotype}"
 
         return message_line
 
@@ -441,6 +458,8 @@ class EADiagramToMermaidConverter:
         """
         Generate Mermaid class definition from diagram object.
 
+        Uses label syntax for names with special characters.
+
         :param diag_obj: Diagram object placement
         :return: List of Mermaid syntax lines
         """
@@ -451,13 +470,14 @@ class EADiagramToMermaidConverter:
             return []
 
         lines = []
-        class_name = self._sanitize_name(cls.name)
+        # Use label syntax if name contains special characters
+        class_decl = get_class_label(cls.name)
 
         # Show limited attributes (EA diagrams often hide attributes anyway)
         visible_attrs = cls.attributes[:5]  # Show first 5 attributes
 
         if visible_attrs:
-            lines.append(f"class {class_name} {{")
+            lines.append(f"class {class_decl} {{")
             for attr in visible_attrs:
                 attr_line = self._format_attribute(attr)
                 lines.append(f"    {attr_line}")
@@ -466,7 +486,7 @@ class EADiagramToMermaidConverter:
             lines.append("}")
         else:
             # Class with no attributes
-            lines.append(f"class {class_name} {{")
+            lines.append(f"class {class_decl} {{")
             lines.append("}")
 
         return lines
@@ -497,12 +517,12 @@ class EADiagramToMermaidConverter:
         # Map EA connector types to Mermaid relationship syntax
         rel_syntax = self._get_relationship_syntax(conn)
 
-        # Build relationship with labels
+        # Build relationship with labels - sanitize role names
         label_parts = []
         if conn.source.role:
-            label_parts.append(conn.source.role)
+            label_parts.append(escape_label(conn.source.role))
         if conn.destination.role:
-            label_parts.append(conn.destination.role)
+            label_parts.append(escape_label(conn.destination.role))
 
         if label_parts:
             label = " : " + " / ".join(label_parts)
@@ -556,28 +576,31 @@ class EADiagramToMermaidConverter:
 
     def _sanitize_name(self, name: str) -> str:
         """
-        Sanitize name for Mermaid syntax.
+        Generate safe Mermaid identifier from name.
+
+        Uses mermaid_utils.sanitize_id for robust handling of special characters.
 
         :param name: Original name
-        :return: Sanitized name
+        :return: Safe identifier
         """
-        sanitized = name.replace("::", "_")
-        sanitized = sanitized.replace("-", "_")
-        sanitized = sanitized.replace(" ", "_")
-        return sanitized
+        return sanitize_id(name)
 
     def _format_attribute(self, attr) -> str:
         """
         Format attribute for Mermaid.
 
+        Sanitizes attribute names and types.
+
         :param attr: Model attribute
         :return: Formatted attribute string
         """
         visibility = "+"
-        attr_name = attr.name.lstrip("_")
-        attr_name = attr_name.replace("-", "_")
+        # Sanitize attribute name
+        attr_name = sanitize_id(attr.name)
+        attr_name = attr_name.lstrip("_")
 
-        type_str = attr.type or "unknown"
+        # Sanitize type name
+        type_str = sanitize_id(attr.type) if attr.type else "unknown"
         if attr.is_collection:
             type_str = f"{type_str}[]"
 

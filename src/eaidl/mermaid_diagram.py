@@ -9,6 +9,7 @@ from typing import List, Set
 from eaidl.model import ModelPackage, ModelClass, ModelAttribute
 from eaidl.config import Configuration
 from eaidl.link_utils import generate_class_link, get_inherited_attributes
+from eaidl.mermaid_utils import sanitize_id, get_class_label
 import logging
 
 log = logging.getLogger(__name__)
@@ -87,19 +88,14 @@ class MermaidClassDiagramGenerator:
 
     def _sanitize_name(self, name: str) -> str:
         """
-        Sanitize name for Mermaid syntax.
+        Generate safe Mermaid identifier from name.
 
-        Replaces special characters that might break Mermaid syntax.
+        Uses mermaid_utils.sanitize_id for robust handling of special characters.
 
         :param name: Original name
-        :return: Sanitized name
+        :return: Safe identifier
         """
-        # Mermaid class names should be alphanumeric + underscore
-        # Replace :: with _ for namespace separators
-        sanitized = name.replace("::", "_")
-        sanitized = sanitized.replace("-", "_")
-        sanitized = sanitized.replace(" ", "_")
-        return sanitized
+        return sanitize_id(name)
 
     def _get_stereotype_marker(self, cls: ModelClass) -> str:
         """
@@ -122,11 +118,16 @@ class MermaidClassDiagramGenerator:
         """
         Generate Mermaid class definition including inherited attributes.
 
+        Uses label syntax for names with special characters.
+
         :param cls: Model class
         :return: List of Mermaid syntax lines
         """
         lines = []
-        class_name = self._sanitize_name(cls.name)
+        safe_id = self._sanitize_name(cls.name)
+
+        # Use label syntax if name contains special characters
+        class_decl = get_class_label(cls.name)
 
         # CRITICAL: Mermaid v11 does NOT support stereotypes in class diagrams
         # Neither "class Foo <<stereotype>>" nor "class Foo <<stereotype>> {}" work
@@ -146,7 +147,7 @@ class MermaidClassDiagramGenerator:
 
         if all_attrs:
             # Class with attributes - show them
-            lines.append(f"class {class_name} {{")
+            lines.append(f"class {class_decl} {{")
 
             # Show inherited attributes first
             inherited_count = len(all_attrs) - len(cls.attributes)
@@ -168,28 +169,31 @@ class MermaidClassDiagramGenerator:
             # Class with no attributes - add empty placeholder to help with layout
             # Empty class declarations can cause "Could not find suitable point" errors
             # when they are used in relationships
-            lines.append(f"class {class_name} {{")
+            lines.append(f"class {class_decl} {{")
             lines.append("}")
 
-        self.processed_classes.add(class_name)
+        self.processed_classes.add(safe_id)
         return lines
 
     def _format_attribute(self, attr: ModelAttribute) -> str:
         """
         Format attribute for Mermaid class diagram.
 
+        Sanitizes attribute names to avoid special characters.
+
         :param attr: Model attribute
         :return: Formatted attribute string
         """
-        # Sanitize attribute name (remove leading underscores, special chars)
-        attr_name = attr.name.lstrip("_") if attr.name.startswith("_") else attr.name
-        attr_name = attr_name.replace("-", "_")
+        # Sanitize attribute name (remove special chars)
+        attr_name = sanitize_id(attr.name)
+        # Remove leading underscores for display
+        attr_name = attr_name.lstrip("_") if attr_name.startswith("_") else attr_name
 
         # Determine visibility
         visibility = "+"  # Public by default
 
-        # Build type string
-        type_str = attr.type or "unknown"
+        # Build type string - sanitize type name too
+        type_str = sanitize_id(attr.type) if attr.type else "unknown"
 
         # Add collection indicator (use simpler syntax for better compatibility)
         if attr.is_collection:
