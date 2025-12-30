@@ -541,3 +541,63 @@ def test_union_struct_circular_dependency():
     assert struct_or.object_id in scc_map
     assert scc_map[union_expr.object_id] == scc_map[struct_and.object_id]
     assert scc_map[struct_and.object_id] == scc_map[struct_or.object_id]
+
+
+def test_non_collection_circular_dependency_rejected():
+    """Test that circular dependencies with non-sequence attributes are rejected with helpful error."""
+    # Create types with circular dependency using NON-collection attributes (multiplicity 1..1)
+    union_expr = ModelClass(
+        name="Expression",
+        object_id=3001,
+        is_union=True,
+        stereotypes=["union"],
+        namespace=["cql"],
+        attributes=[
+            ModelAttribute(
+                name="and_expr",
+                type="AndExpression",
+                is_collection=False,  # NOT a sequence - this is the problem!
+                namespace=["cql"],
+                attribute_id=1,
+                guid="guid1",
+                alias="and_expr",
+            )
+        ],
+    )
+    struct_and = ModelClass(
+        name="AndExpression",
+        object_id=3002,
+        is_struct=True,
+        stereotypes=["struct"],
+        namespace=["cql"],
+        attributes=[
+            ModelAttribute(
+                name="expr",
+                type="Expression",
+                is_collection=False,  # NOT a sequence - this is the problem!
+                namespace=["cql"],
+                attribute_id=2,
+                guid="guid2",
+                alias="expr",
+            )
+        ],
+    )
+
+    package = ModelPackage(
+        name="cql",
+        package_id=300,
+        object_id=300,
+        guid="cql-guid",
+    )
+    package.classes = [union_expr, struct_and]
+    package.namespace = ["cql"]
+
+    # This should raise ValueError with helpful message when check is enabled
+    with pytest.raises(ValueError) as exc_info:
+        find_type_cycles([package], check_non_collection_cycles=True)
+
+    error_msg = str(exc_info.value)
+    assert "Circular dependency detected with non-sequence attributes" in error_msg
+    assert "sequence<> types" in error_msg or "sequence types" in error_msg
+    assert "IsCollection" in error_msg
+    assert "cql::Expression.and_expr" in error_msg or "cql::AndExpression.expr" in error_msg
