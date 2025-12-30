@@ -4,11 +4,11 @@ import pytest
 from eaidl.model import ModelClass, ModelAttribute, ModelPackage
 from eaidl.recursion import (
     tarjan_scc,
-    find_struct_cycles,
+    find_type_cycles,
     validate_cycles_within_modules,
-    detect_structs_needing_forward_declarations,
+    detect_types_needing_forward_declarations,
 )
-from eaidl.validation.struct import recursive_struct_uses_sequence
+from eaidl.validation.struct import recursive_type_uses_sequence
 from eaidl.config import Configuration
 
 
@@ -93,7 +93,7 @@ def test_detect_self_referential_struct():
 
     package = ModelPackage(package_id=1, object_id=1, name="root", guid="pkg1", classes=[node])
 
-    scc_map = find_struct_cycles([package])
+    scc_map = find_type_cycles([package])
 
     # Should detect the self-reference
     assert 100 in scc_map
@@ -140,7 +140,7 @@ def test_detect_mutual_recursion_same_module():
 
     package = ModelPackage(package_id=1, object_id=1, name="root", guid="pkg1", classes=[struct_a, struct_b])
 
-    scc_map = find_struct_cycles([package])
+    scc_map = find_type_cycles([package])
 
     # Should detect mutual recursion
     assert 200 in scc_map
@@ -189,7 +189,7 @@ def test_detect_multiple_self_referential_structs_same_module():
 
     package = ModelPackage(package_id=1, object_id=1, name="root", guid="pkg1", classes=[struct_a, struct_b])
 
-    scc_map = find_struct_cycles([package])
+    scc_map = find_type_cycles([package])
 
     # Should detect both self-references
     assert 300 in scc_map
@@ -219,7 +219,7 @@ def test_non_recursive_struct_not_detected():
 
     package = ModelPackage(package_id=1, object_id=1, name="root", guid="pkg1", classes=[simple])
 
-    scc_map = find_struct_cycles([package])
+    scc_map = find_type_cycles([package])
 
     # Should not detect any cycles
     assert 400 not in scc_map
@@ -247,7 +247,7 @@ def test_direct_reference_not_detected():
 
     package = ModelPackage(package_id=1, object_id=1, name="root", guid="pkg1", classes=[struct_a])
 
-    scc_map = find_struct_cycles([package])
+    scc_map = find_type_cycles([package])
 
     # Should NOT detect cycle (only sequences are considered)
     assert 500 not in scc_map
@@ -293,7 +293,7 @@ def test_validate_cross_module_cycle_rejected():
 
     package = ModelPackage(package_id=1, object_id=1, name="root", guid="pkg1", classes=[struct_a, struct_b])
 
-    scc_map = find_struct_cycles([package])
+    scc_map = find_type_cycles([package])
 
     # Should detect the cycle
     assert 600 in scc_map
@@ -304,7 +304,7 @@ def test_validate_cross_module_cycle_rejected():
         validate_cycles_within_modules([package], scc_map)
 
 
-def test_detect_structs_needing_forward_declarations_integration():
+def test_detect_types_needing_forward_declarations_integration():
     """Test the full integration of detection."""
     node = ModelClass(
         name="Node",
@@ -326,7 +326,7 @@ def test_detect_structs_needing_forward_declarations_integration():
 
     package = ModelPackage(package_id=1, object_id=1, name="root", guid="pkg1", classes=[node])
 
-    needs_forward_decl, scc_map = detect_structs_needing_forward_declarations([package])
+    needs_forward_decl, scc_map = detect_types_needing_forward_declarations([package])
 
     # Should detect that Node needs forward declaration
     assert 700 in needs_forward_decl
@@ -337,7 +337,7 @@ def test_validator_rejects_direct_self_reference():
     """Test that validator rejects non-sequence recursive reference."""
     config = Configuration(
         allow_recursive_structs=True,
-        validators_fail=["struct.recursive_struct_uses_sequence"],
+        validators_fail=["struct.recursive_type_uses_sequence"],
     )
 
     bad_node = ModelClass(
@@ -359,14 +359,14 @@ def test_validator_rejects_direct_self_reference():
     )
 
     with pytest.raises(ValueError, match="must be a sequence"):
-        recursive_struct_uses_sequence(config, cls=bad_node)
+        recursive_type_uses_sequence(config, cls=bad_node)
 
 
 def test_validator_allows_sequence_self_reference():
     """Test that validator allows sequence recursive reference."""
     config = Configuration(
         allow_recursive_structs=True,
-        validators_fail=["struct.recursive_struct_uses_sequence"],
+        validators_fail=["struct.recursive_type_uses_sequence"],
     )
 
     good_node = ModelClass(
@@ -388,7 +388,7 @@ def test_validator_allows_sequence_self_reference():
     )
 
     # Should not raise
-    recursive_struct_uses_sequence(config, cls=good_node)
+    recursive_type_uses_sequence(config, cls=good_node)
 
 
 def test_validator_skips_when_disabled():
@@ -415,14 +415,14 @@ def test_validator_skips_when_disabled():
     )
 
     # Should not raise (validator is disabled)
-    recursive_struct_uses_sequence(config, cls=bad_node)
+    recursive_type_uses_sequence(config, cls=bad_node)
 
 
 def test_validator_only_checks_self_references():
     """Test that validator only checks self-references, not other types."""
     config = Configuration(
         allow_recursive_structs=True,
-        validators_fail=["struct.recursive_struct_uses_sequence"],
+        validators_fail=["struct.recursive_type_uses_sequence"],
     )
 
     # Struct with reference to OTHER type (not self-reference)
@@ -445,4 +445,99 @@ def test_validator_only_checks_self_references():
     )
 
     # Should not raise (not a self-reference)
-    recursive_struct_uses_sequence(config, cls=struct_a)
+    recursive_type_uses_sequence(config, cls=struct_a)
+
+
+def test_union_struct_circular_dependency():
+    """Test that union ↔ struct circular dependencies are detected and allowed with sequences."""
+    # Create a union that has struct members
+    union_expr = ModelClass(
+        name="Expression",
+        object_id=2001,
+        is_union=True,
+        stereotypes=["union"],
+        namespace=["cql"],
+        attributes=[
+            ModelAttribute(
+                name="and_expr",
+                type="AndExpression",
+                is_collection=True,  # sequence<AndExpression>
+                namespace=["cql"],
+                attribute_id=1,
+                guid="guid1",
+                alias="and_expr",
+            ),
+            ModelAttribute(
+                name="or_expr",
+                type="OrExpression",
+                is_collection=True,  # sequence<OrExpression>
+                namespace=["cql"],
+                attribute_id=2,
+                guid="guid2",
+                alias="or_expr",
+            ),
+        ],
+    )
+    # Create structs that have union members
+    struct_and = ModelClass(
+        name="AndExpression",
+        object_id=2002,
+        is_struct=True,
+        stereotypes=["struct"],
+        namespace=["cql"],
+        attributes=[
+            ModelAttribute(
+                name="args",
+                type="Expression",
+                is_collection=True,  # sequence<Expression>
+                namespace=["cql"],
+                attribute_id=3,
+                guid="guid3",
+                alias="args",
+            )
+        ],
+    )
+    struct_or = ModelClass(
+        name="OrExpression",
+        object_id=2003,
+        is_struct=True,
+        stereotypes=["struct"],
+        namespace=["cql"],
+        attributes=[
+            ModelAttribute(
+                name="args",
+                type="Expression",
+                is_collection=True,  # sequence<Expression>
+                namespace=["cql"],
+                attribute_id=4,
+                guid="guid4",
+                alias="args",
+            )
+        ],
+    )
+
+    # Create package with all three
+    package = ModelPackage(
+        name="cql",
+        package_id=200,
+        object_id=200,
+        guid="cql-guid",
+    )
+    package.classes = [union_expr, struct_and, struct_or]
+    package.namespace = ["cql"]
+
+    # This should detect the cycle
+    needs_forward_decl, scc_map = detect_types_needing_forward_declarations([package])
+
+    # All three should need forward declarations (they're in a cycle)
+    assert len(needs_forward_decl) == 3
+    assert union_expr.object_id in needs_forward_decl
+    assert struct_and.object_id in needs_forward_decl
+    assert struct_or.object_id in needs_forward_decl
+
+    # All three should be in the same SCC
+    assert union_expr.object_id in scc_map
+    assert struct_and.object_id in scc_map
+    assert struct_or.object_id in scc_map
+    assert scc_map[union_expr.object_id] == scc_map[struct_and.object_id]
+    assert scc_map[struct_and.object_id] == scc_map[struct_or.object_id]

@@ -12,10 +12,12 @@ module {{ module.name }} {
 {% for submodule in module.packages %}
 {{ gen_module_definition(submodule, loop) | trim | indent(4, true) }}
 {% endfor %}
-{# Forward declarations for recursive structs #}
+{# Forward declarations for recursive structs and unions #}
 {% for cls in module.classes %}
 {% if cls.is_struct and cls.needs_forward_declaration %}
     struct {{ cls.name }};
+{% elif cls.is_union and cls.needs_forward_declaration %}
+    union {{ cls.name }};
 {% endif %}
 {% endfor %}
 {# Full class definitions #}
@@ -45,10 +47,12 @@ module {{package.name}} {
 {% for child in package.packages %}
 {{ gen_module_definition(child, loop) | trim | indent(4, true) }}
 {% endfor %}
-{# Forward declarations for recursive structs at top level #}
+{# Forward declarations for recursive structs and unions at top level #}
 {% for cls in package.classes %}
 {% if cls.is_struct and cls.needs_forward_declaration %}
     struct {{ cls.name }};
+{% elif cls.is_union and cls.needs_forward_declaration %}
+    union {{ cls.name }};
 {% endif %}
 {% endfor %}
 {# Full class definitions #}

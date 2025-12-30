@@ -7,8 +7,9 @@ from eaidl.utils import (
 )
 from eaidl.config import Configuration
 from eaidl.html_utils import strip_html
+from eaidl.recursion import detect_types_needing_forward_declarations
 from sqlalchemy.ext.automap import automap_base
-from typing import Optional
+from typing import Optional, Set, Dict
 import sqlalchemy
 from sqlalchemy.orm import Session
 from typing import Any, List, Literal, Deque
@@ -364,8 +365,36 @@ class ModelParser:
                 log.error("Not parsing %s", child_t_object.attr_object_type)
                 # inspect(child_t_object)
         log.debug("Sorting classes %s", parent_package.name)
+
+        # Detect circular dependencies for recursion support
+        scc_map: Dict[int, Set[int]] = {}
+        if self.config.allow_recursive_structs and classes:
+            try:
+                # Create a temporary package with just these classes for cycle detection
+                temp_pkg = ModelPackage(
+                    name=parent_package.name,
+                    package_id=parent_package.package_id,
+                    object_id=parent_package.object_id,
+                    guid=parent_package.guid,
+                )
+                temp_pkg.classes = list(classes)
+                temp_pkg.namespace = parent_package.namespace
+
+                # Detect cycles (this validates same-module requirement)
+                needs_forward_decl, scc_map = detect_types_needing_forward_declarations([temp_pkg])
+
+                # Mark classes that need forward declarations
+                for cls in classes:
+                    if cls.object_id in needs_forward_decl:
+                        cls.needs_forward_declaration = True
+
+            except ValueError as e:
+                # Re-raise validation errors (e.g., cross-module cycles)
+                log.error(f"Recursion validation failed in package {parent_package.name}: {e}")
+                raise
+
         try:
-            parent_package.classes = topological_sort_classes(list(classes))
+            parent_package.classes = topological_sort_classes(list(classes), scc_map)
         except CircularDependencyError as e:
             log.error("Circular dependency detected in classes for package %s: %s", parent_package.name, e)
             # Depending on desired behavior, you might want to raise, return, or handle differently

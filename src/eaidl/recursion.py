@@ -61,42 +61,47 @@ def tarjan_scc(graph: Dict[int, List[int]]) -> List[Set[int]]:
     return sccs
 
 
-def find_struct_cycles(packages: List[ModelPackage]) -> Dict[int, Set[int]]:
+def find_type_cycles(packages: List[ModelPackage]) -> Dict[int, Set[int]]:
     """
-    Find all strongly connected components (cycles) in struct dependencies.
+    Find all strongly connected components (cycles) in struct and union dependencies.
 
     Only considers dependencies through sequence attributes (collections),
     as direct references are not allowed for recursive types in IDL.
+
+    This handles:
+    - Struct ↔ Struct cycles
+    - Union ↔ Union cycles
+    - Struct ↔ Union cycles
 
     Args:
         packages: List of model packages to analyze
 
     Returns:
-        Dict mapping each struct object_id in a cycle to its SCC
+        Dict mapping each struct/union object_id in a cycle to its SCC
         (set of object_ids in the same cycle, including itself)
     """
-    # Build dependency graph for structs
+    # Build dependency graph for structs and unions
     graph = {}  # object_id -> list of object_ids it depends on (via sequence)
-    all_structs = {}  # object_id -> ModelClass
+    all_types = {}  # object_id -> ModelClass
 
-    # First pass: collect all structs and initialize graph
+    # First pass: collect all structs and unions and initialize graph
     for pkg in flatten_packages(packages):
         for cls in pkg.classes:
-            if cls.is_struct:
-                all_structs[cls.object_id] = cls
+            if cls.is_struct or cls.is_union:
+                all_types[cls.object_id] = cls
                 graph[cls.object_id] = []
 
     # Second pass: build dependency edges
-    for cls_id, cls in all_structs.items():
+    for cls_id, cls in all_types.items():
         for attr in cls.attributes:
             # Only consider sequence/collection attributes (IDL requirement)
             if not attr.is_collection:
                 continue
 
-            # Find target struct by name and namespace
+            # Find target type by name and namespace
             target = find_class(packages, lambda c: c.name == attr.type and c.namespace == attr.namespace)
 
-            if target and target.is_struct and target.object_id in all_structs:
+            if target and (target.is_struct or target.is_union) and target.object_id in all_types:
                 graph[cls_id].append(target.object_id)
 
     # Run Tarjan's SCC algorithm
@@ -113,7 +118,8 @@ def find_struct_cycles(packages: List[ModelPackage]) -> Dict[int, Set[int]]:
         if is_cycle:
             for node_id in scc:
                 scc_map[node_id] = scc
-                log.debug(f"Struct {all_structs[node_id].full_name} is in SCC of size {len(scc)}")
+                type_kind = "struct" if all_types[node_id].is_struct else "union"
+                log.debug(f"{type_kind.capitalize()} {all_types[node_id].full_name} is in SCC of size {len(scc)}")
 
     return scc_map
 
@@ -132,11 +138,11 @@ def validate_cycles_within_modules(packages: List[ModelPackage], scc_map: Dict[i
     Raises:
         ValueError: If a cycle crosses module boundaries
     """
-    all_structs = {}
+    all_types = {}
     for pkg in flatten_packages(packages):
         for cls in pkg.classes:
-            if cls.is_struct:
-                all_structs[cls.object_id] = cls
+            if cls.is_struct or cls.is_union:
+                all_types[cls.object_id] = cls
 
     # Check each SCC
     processed_sccs = set()
@@ -147,7 +153,7 @@ def validate_cycles_within_modules(packages: List[ModelPackage], scc_map: Dict[i
         processed_sccs.add(scc_tuple)
 
         # Get all classes in this SCC
-        scc_classes = [all_structs[oid] for oid in scc]
+        scc_classes = [all_types[oid] for oid in scc]
 
         # Check if all classes share the same namespace (same module)
         first_namespace = scc_classes[0].namespace
@@ -161,16 +167,17 @@ def validate_cycles_within_modules(packages: List[ModelPackage], scc_map: Dict[i
                 )
 
 
-def detect_structs_needing_forward_declarations(
+def detect_types_needing_forward_declarations(
     packages: List[ModelPackage],
 ) -> Tuple[Set[int], Dict[int, Set[int]]]:
     """
-    Detect structs that need forward declarations due to circular dependencies.
+    Detect structs and unions that need forward declarations due to circular dependencies.
 
     This includes:
-    - Self-referential structs (A contains sequence<A>)
-    - Mutually recursive structs in the same module (A refs B, B refs A)
-    - Multiple self-referential structs in the same module
+    - Self-referential types (A contains sequence<A>)
+    - Mutually recursive types in the same module (A refs B, B refs A)
+    - Multiple self-referential types in the same module
+    - Struct ↔ Union circular dependencies
 
     Args:
         packages: List of model packages to analyze
@@ -183,24 +190,24 @@ def detect_structs_needing_forward_declarations(
     Raises:
         ValueError: If cross-module circular dependencies are detected
     """
-    scc_map = find_struct_cycles(packages)
+    scc_map = find_type_cycles(packages)
 
     # Validate all cycles are within modules
     validate_cycles_within_modules(packages, scc_map)
 
-    # All structs in any SCC need forward declarations
+    # All types in any SCC need forward declarations
     needs_forward_decl = set(scc_map.keys())
 
     if needs_forward_decl:
-        all_structs = {}
+        all_types = {}
         for pkg in flatten_packages(packages):
             for cls in pkg.classes:
-                if cls.is_struct:
-                    all_structs[cls.object_id] = cls
+                if cls.is_struct or cls.is_union:
+                    all_types[cls.object_id] = cls
 
         log.info(
-            f"Found {len(needs_forward_decl)} struct(s) requiring forward declarations: "
-            f"{', '.join([all_structs[oid].full_name for oid in sorted(needs_forward_decl)])}"
+            f"Found {len(needs_forward_decl)} type(s) requiring forward declarations: "
+            f"{', '.join([all_types[oid].full_name for oid in sorted(needs_forward_decl)])}"
         )
 
     return needs_forward_decl, scc_map
