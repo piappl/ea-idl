@@ -161,3 +161,27 @@ def linked_notes_spelling(config: Configuration, cls: ModelClass):
         if errors:
             ctx = f"{context(cls)} - linked note #{idx + 1}"
             raise ValueError(format_spelling_errors(errors, ctx))
+
+
+@validator
+def recursive_struct_uses_sequence(config: Configuration, cls: ModelClass):
+    """
+    Ensure recursive struct references use sequences (IDL requirement).
+
+    IDL does not support direct self-reference without sequence<>.
+    A struct can only reference itself through a sequence type.
+    """
+    if not config.allow_recursive_structs:
+        return  # Skip if recursion support is disabled
+
+    if not cls.is_struct:
+        return  # Only applies to structs
+
+    for attr in cls.attributes:
+        # Check if attribute type references the parent struct
+        if attr.type == cls.name and attr.namespace == cls.namespace:
+            if not attr.is_collection:
+                raise ValueError(
+                    f"Recursive attribute '{cls.full_name}.{attr.name}' must be a sequence. "
+                    f"IDL does not support direct self-reference without sequence<>. {context(cls)}"
+                )

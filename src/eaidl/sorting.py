@@ -1,4 +1,4 @@
-from typing import List, Dict, Callable
+from typing import List, Dict, Callable, Set
 from collections import deque
 import logging
 
@@ -13,7 +13,7 @@ class CircularDependencyError(Exception):
     pass
 
 
-def topological_sort_classes(classes: List[ModelClass]) -> List[ModelClass]:
+def topological_sort_classes(classes: List[ModelClass], scc_map: Dict[int, Set[int]] = None) -> List[ModelClass]:
     """
     Performs a deterministic topological sort on a list of ModelClass objects.
 
@@ -21,18 +21,30 @@ def topological_sort_classes(classes: List[ModelClass]) -> List[ModelClass]:
     attribute which is a list of object_ids it depends on.
 
     :param classes: A list of ModelClass-like objects.
+    :param scc_map: Optional dict mapping object_id to its SCC (strongly connected component).
+                    Dependencies within the same SCC are ignored to allow circular references.
     :return: A new list of ModelClass-like objects in topological order.
-    :raises CircularDependencyError: If a circular dependency is detected.
+    :raises CircularDependencyError: If a circular dependency is detected (outside of allowed SCCs).
     """
+    scc_map = scc_map or {}
     in_degree: Dict[int, int] = {cls.object_id: 0 for cls in classes}
     adj: Dict[int, List[int]] = {cls.object_id: [] for cls in classes}
     id_to_class: Dict[int, ModelClass] = {cls.object_id: cls for cls in classes}
 
     for cls in classes:
         for dep_id in cls.depends_on:
-            if dep_id in id_to_class:  # Only consider dependencies within the provided classes
-                adj[dep_id].append(cls.object_id)
-                in_degree[cls.object_id] += 1
+            if dep_id not in id_to_class:
+                continue  # Only consider dependencies within the provided classes
+
+            # Check if this dependency is within the same SCC (allowed cycle)
+            cls_scc = scc_map.get(cls.object_id, {cls.object_id})
+            if dep_id in cls_scc:
+                # Dependency within same SCC - skip to allow circular references
+                log.debug(f"Ignoring circular dependency: {cls.name} -> " f"{id_to_class[dep_id].name} (same SCC)")
+                continue
+
+            adj[dep_id].append(cls.object_id)
+            in_degree[cls.object_id] += 1
 
     # Initialize queue with all nodes having in-degree 0, sorted for determinism
     queue = deque(sorted([cls_id for cls_id, degree in in_degree.items() if degree == 0]))

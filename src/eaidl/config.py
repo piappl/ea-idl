@@ -186,3 +186,5 @@ class Configuration(BaseModel):
     output_linked_notes: bool = False
     #: Output notes that are not linked to any object in packages (always loaded for spell checking)
     output_unlinked_notes: bool = False
+    #: Enable recursive struct support (generates forward declarations for circular dependencies)
+    allow_recursive_structs: bool = True

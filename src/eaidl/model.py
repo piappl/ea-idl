@@ -192,6 +192,8 @@ class ModelClass(LocalBaseModel):
     is_typedef: bool = False
     is_struct: bool = False
     is_map: bool = False
+    #: True if this struct needs a forward declaration (due to circular dependency)
+    needs_forward_declaration: bool = False
 
     @property
     def full_name(self) -> str:

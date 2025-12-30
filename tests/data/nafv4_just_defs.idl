@@ -157,4 +157,12 @@ module core {
             core::data::FlexibleName values;
         };
     }; /* message */
+    module recursion {
+        struct Node;
+        struct Node {
+            core::common::types::Identifier id;
+            @optional
+            sequence<core::recursion::Node> children;
+        };
+    }; /* recursion */
 }; /* core */

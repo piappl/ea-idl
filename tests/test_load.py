@@ -33,12 +33,12 @@ def test_reflect():
     # This is just to check if someone messed with out test file.
     # If this fails, just check the file and fix numbers here.
     contents = {
-        "t_package": 9,  # 7 + p2 + p6 packages
-        "t_object": 44,  # 36 + 8 (ResourceArchitecture, Asset1, Asset2, InteractionFragment, 4 notes)
-        "t_attribute": 38,
-        "t_connector": 40,  # 36 + 4 (sequence messages in p2/p6)
-        "t_objectproperties": 81,  # 65 + 16 (properties for new objects)
-        "t_xref": 57,  # 49 + 8 (xrefs for new objects)
+        "t_package": 10,
+        "t_object": 48,
+        "t_attribute": 40,
+        "t_connector": 42,
+        "t_objectproperties": 85,
+        "t_xref": 63,
     }
 
     for key, value in contents.items():

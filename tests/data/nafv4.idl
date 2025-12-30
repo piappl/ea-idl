@@ -97,6 +97,9 @@ module core {
         struct Message;
         struct DataMessage;
     }; /* message */
+    module recursion {
+        struct Node;
+    }; /* recursion */
     module data {
         union IdentifierOrName switch (core::data::IdentifierOrNameTypeEnum) {
             case core::data::IdentifierOrNameTypeEnum_IDENTIFIER:
@@ -186,4 +189,11 @@ module core {
             core::data::FlexibleName values;
         };
     }; /* message */
+    module recursion {
+        struct Node {
+            core::common::types::Identifier id;
+            @optional
+            sequence<core::recursion::Node> children;
+        };
+    }; /* recursion */
 }; /* core */

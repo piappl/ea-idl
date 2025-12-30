@@ -12,6 +12,13 @@ module {{ module.name }} {
 {% for submodule in module.packages %}
 {{ gen_module_definition(submodule, loop) | trim | indent(4, true) }}
 {% endfor %}
+{# Forward declarations for recursive structs #}
+{% for cls in module.classes %}
+{% if cls.is_struct and cls.needs_forward_declaration %}
+    struct {{ cls.name }};
+{% endif %}
+{% endfor %}
+{# Full class definitions #}
 {% for cls in module.classes %}
 {% set class_definition_full = gen_class_definition_full(module, cls) %}
 {% if class_definition_full| trim %}
@@ -35,11 +42,18 @@ module {{package.name}} {
 {% endfor %}
     };
 {% endfor %}
-{% for child in package.packages recursive %}
+{% for child in package.packages %}
 {{ gen_module_definition(child, loop) | trim | indent(4, true) }}
 {% endfor %}
+{# Forward declarations for recursive structs at top level #}
 {% for cls in package.classes %}
-{% set class_definition_full = gen_class_definition_full(module, cls) %}
+{% if cls.is_struct and cls.needs_forward_declaration %}
+    struct {{ cls.name }};
+{% endif %}
+{% endfor %}
+{# Full class definitions #}
+{% for cls in package.classes %}
+{% set class_definition_full = gen_class_definition_full(package, cls) %}
 {% if class_definition_full | trim %}
 {{ class_definition_full | trim | indent(4, true) }}
 {% endif %}
