@@ -10,6 +10,7 @@ from eaidl.generate import generate
 from eaidl.diagram import PackageDiagramGenerator
 from eaidl.html_export import export_html
 from eaidl.transforms import flatten_abstract_classes
+from eaidl.json_schema_importer import JsonSchemaImporter
 
 log = logging.getLogger(__name__)
 
@@ -214,11 +215,27 @@ def docs(config, debug, output, no_diagrams):
     click.echo(f"  Open {output_path / 'index.html'} in your browser")
 
 
+@click.command()
+@click.option("--config", required=True, help="Configuration file with database connection.")
+@click.option("--schema", required=True, help="Path to JSON schema file.")
+@click.option("--package", default="imported_schema", help="Root package name for imported schema.")
+@click.option("--debug", is_flag=True, help="Enable debug logging.")
+@setup_command
+def import_schema(config_obj, schema, package, debug):
+    """Import JSON schema into EA database as IDL structures."""
+    importer = JsonSchemaImporter(config_obj, schema, package)
+    model_package = importer.parse_schema()
+    importer.import_to_database(model_package)
+    click.echo(f"✓ Imported {schema} as package '{package}'")
+    click.echo(f"  Created {len(model_package.classes)} classes")
+
+
 cli.add_command(run)
 cli.add_command(change)
 cli.add_command(diagram)
 cli.add_command(packages)
 cli.add_command(docs)
+cli.add_command(import_schema)
 
 if __name__ == "__main__":
     cli()

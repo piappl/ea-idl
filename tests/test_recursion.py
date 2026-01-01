@@ -666,3 +666,47 @@ def test_mutual_recursion_with_one_sequence_allowed():
     assert struct_a.object_id in scc_map
     assert struct_b.object_id in scc_map
     assert scc_map[struct_a.object_id] == scc_map[struct_b.object_id]
+
+
+def test_typedef_references_union_needs_forward_declaration():
+    """Test that unions referenced by typedefs get forward declarations."""
+    # Create a union
+    item_union = ModelClass(
+        name="ArrayExpressionItem",
+        object_id=100,
+        stereotypes=["idlUnion"],
+        namespace=["cql2", "types"],
+        is_union=True,
+    )
+
+    # Create a typedef that references the union
+    typedef_class = ModelClass(
+        name="ArrayExpression",
+        object_id=200,
+        stereotypes=["idlTypedef"],
+        namespace=["cql2", "types"],
+        is_typedef=True,
+        parent_type="sequence<ArrayExpressionItem>",  # References the union
+    )
+
+    # Create package
+    package = ModelPackage(
+        name="types",
+        package_id=300,
+        object_id=300,
+        guid="test-guid",
+    )
+    package.classes = [typedef_class, item_union]
+    package.namespace = ["cql2", "types"]
+
+    # Detect forward declarations
+    needs_forward_decl, scc_map = detect_types_needing_forward_declarations([package])
+
+    # The union should need a forward declaration because it's referenced by a typedef
+    assert item_union.object_id in needs_forward_decl
+
+    # The typedef should NOT need a forward declaration (only structs/unions need them)
+    assert typedef_class.object_id not in needs_forward_decl
+
+    # The union should not be in scc_map (not in a circular dependency)
+    assert item_union.object_id not in scc_map

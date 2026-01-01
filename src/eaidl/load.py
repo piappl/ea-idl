@@ -368,7 +368,8 @@ class ModelParser:
 
         # Detect circular dependencies for recursion support
         scc_map: Dict[int, Set[int]] = {}
-        if self.config.allow_recursive_structs and classes:
+        classes_list = list(classes)  # Convert to list once
+        if self.config.allow_recursive_structs and classes_list:
             try:
                 # Create a temporary package with just these classes for cycle detection
                 temp_pkg = ModelPackage(
@@ -377,14 +378,14 @@ class ModelParser:
                     object_id=parent_package.object_id,
                     guid=parent_package.guid,
                 )
-                temp_pkg.classes = list(classes)
+                temp_pkg.classes = classes_list
                 temp_pkg.namespace = parent_package.namespace
 
                 # Detect cycles (this validates same-module requirement)
                 needs_forward_decl, scc_map = detect_types_needing_forward_declarations([temp_pkg])
 
                 # Mark classes that need forward declarations
-                for cls in classes:
+                for cls in classes_list:
                     if cls.object_id in needs_forward_decl:
                         cls.needs_forward_declaration = True
 
@@ -394,7 +395,7 @@ class ModelParser:
                 raise
 
         try:
-            parent_package.classes = topological_sort_classes(list(classes), scc_map)
+            parent_package.classes = topological_sort_classes(classes_list, scc_map)
         except CircularDependencyError as e:
             log.error("Circular dependency detected in classes for package %s: %s", parent_package.name, e)
             # Depending on desired behavior, you might want to raise, return, or handle differently

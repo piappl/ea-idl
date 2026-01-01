@@ -2,6 +2,7 @@
 
 from typing import Set, List, Dict, Tuple
 import logging
+import re
 
 from eaidl.model import ModelPackage
 from eaidl.utils import flatten_packages, find_class
@@ -220,6 +221,7 @@ def detect_types_needing_forward_declarations(
     - Mutually recursive types in the same module (A refs B, B refs A)
     - Multiple self-referential types in the same module
     - Struct ↔ Union circular dependencies
+    - Types referenced by typedefs (to ensure typedef can appear before the type definition)
 
     Args:
         packages: List of model packages to analyze
@@ -240,13 +242,40 @@ def detect_types_needing_forward_declarations(
     # All types in any SCC need forward declarations
     needs_forward_decl = set(scc_map.keys())
 
-    if needs_forward_decl:
-        all_types = {}
-        for pkg in flatten_packages(packages):
-            for cls in pkg.classes:
-                if cls.is_struct or cls.is_union:
-                    all_types[cls.object_id] = cls
+    # Build map of all types for lookup
+    all_types = {}
+    for pkg in flatten_packages(packages):
+        for cls in pkg.classes:
+            if cls.is_struct or cls.is_union:
+                all_types[cls.object_id] = cls
 
+    # Also mark types referenced by typedefs as needing forward declarations
+    # This ensures typedefs can appear before their referenced type definition
+    for pkg in flatten_packages(packages):
+        for cls in pkg.classes:
+            if cls.is_typedef and cls.parent_type:
+                # Extract the referenced type from parent_type (e.g., "sequence<ArrayExpressionItem>" -> "ArrayExpressionItem")
+                ref_type_name = None
+                match = re.search(r"sequence<(.+?)>", cls.parent_type)
+                if match:
+                    ref_type_name = match.group(1)
+                else:
+                    # Direct type reference (not a sequence)
+                    ref_type_name = cls.parent_type
+
+                if ref_type_name:
+                    # Find the referenced type by name and namespace
+                    target = find_class(packages, lambda c: c.name == ref_type_name and c.namespace == cls.namespace)
+                    if target and target.object_id in all_types:
+                        # Mark this type as needing forward declaration
+                        if target.object_id not in needs_forward_decl:
+                            needs_forward_decl.add(target.object_id)
+                            log.debug(
+                                f"{target.full_name} needs forward declaration "
+                                f"(referenced by typedef {cls.full_name})"
+                            )
+
+    if needs_forward_decl:
         log.info(
             f"Found {len(needs_forward_decl)} type(s) requiring forward declarations: "
             f"{', '.join([all_types[oid].full_name for oid in sorted(needs_forward_decl)])}"
