@@ -95,26 +95,33 @@ class Configuration(BaseModel):
     min_items: str = "ext::minItems"
     #: Name of maximum amount of items annotation
     max_items: str = "ext::maxItems"
-    #: List of supported primitive types. For those types we don't look for connection in attribute.
-    primitive_types: List[str] = [
-        "short",
-        "unsigned short",
-        "long",
-        "unsigned long",
-        "long long",
-        "unsigned long long",
-        "int",
-        "unsigned int",
-        "float",
-        "double",
-        "long double",
-        "char",
-        "wchar",
-        "boolean",
-        "octet",
-        "string",
-        "wstring",
-    ]
+    #: Mapping of EA primitive types to IDL types.
+    #: Keys are types as they appear in EA model, values are IDL types to output.
+    #: For those types we don't look for connection in attribute.
+    #: Common aliases like "int" map to their proper IDL equivalents.
+    primitive_types: Dict[str, str] = {
+        # IDL standard types (identity mapping)
+        "short": "short",
+        "unsigned short": "unsigned short",
+        "long": "long",
+        "unsigned long": "unsigned long",
+        "long long": "long long",
+        "unsigned long long": "unsigned long long",
+        "float": "float",
+        "double": "double",
+        "long double": "long double",
+        "char": "char",
+        "wchar": "wchar",
+        "boolean": "boolean",
+        "octet": "octet",
+        "string": "string",
+        # The ea can be stupid.
+        "String": "string",
+        "wstring": "wstring",
+        # Common aliases (mapped to IDL equivalents)
+        "int": "long",  # int is not valid IDL, map to long (32-bit)
+        "unsigned int": "unsigned long",  # unsigned int -> unsigned long
+    }
     #: If we want to output stereotype as annotation
     annotations_from_stereotypes: List[str] = ["interface"]
     annotations: Dict[str, AnnotationType] = {
@@ -142,6 +149,7 @@ class Configuration(BaseModel):
     #: List of validation runs fail generation
     validators_fail: List[str] = [
         "attribute.name_for_reserved_worlds",
+        "attribute.primitive_type_mapped",
         "struct.name_for_reserved_worlds",
         "struct.stereotypes",
         "struct.enum_prefix",
@@ -188,3 +196,22 @@ class Configuration(BaseModel):
     output_unlinked_notes: bool = False
     #: Enable recursive struct support (generates forward declarations for circular dependencies)
     allow_recursive_structs: bool = True
+
+    def get_idl_type(self, ea_type: str) -> str:
+        """Get the IDL type for a given EA type.
+
+        If the type is a primitive type (exists in primitive_types mapping),
+        returns the mapped IDL type. Otherwise, returns the type as-is.
+
+        :param ea_type: Type as it appears in EA model
+        :return: IDL type to output
+        """
+        return self.primitive_types.get(ea_type, ea_type)
+
+    def is_primitive_type(self, ea_type: str) -> bool:
+        """Check if a type is a primitive type.
+
+        :param ea_type: Type as it appears in EA model
+        :return: True if type is in primitive_types mapping
+        """
+        return ea_type in self.primitive_types

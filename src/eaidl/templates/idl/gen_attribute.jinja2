@@ -6,13 +6,13 @@
 {{ gen_annotations(attr.properties, attr ) -}}
 {% if attr.is_collection %}
 {% if attr.upper_bound_number %}
-sequence<{{"::".join(attr.namespace + [attr.type])}}, {{attr.upper_bound_number}}> {{attr.name}};
+sequence<{{"::".join(attr.namespace + [attr.type | idl_type])}}, {{attr.upper_bound_number}}> {{attr.name}};
 {% else %}
-sequence<{{"::".join(attr.namespace + [attr.type])}}> {{attr.name}};
+sequence<{{"::".join(attr.namespace + [attr.type | idl_type])}}> {{attr.name}};
 {% endif %}
 {% elif attr.is_map%}
-map<{{attr.map_key_type}}, {{attr.map_value_type}}> {{attr.name}};
+map<{{attr.map_key_type | idl_type}}, {{attr.map_value_type | idl_type}}> {{attr.name}};
 {% else %}
-{{"::".join(attr.namespace + [attr.type])}} {{attr.name}};
+{{"::".join(attr.namespace + [attr.type | idl_type])}} {{attr.name}};
 {% endif %}
 {% endmacro -%}

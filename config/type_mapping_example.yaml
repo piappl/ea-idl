@@ -1,0 +1,49 @@
+# Example configuration showing primitive type mapping to IDL types
+#
+# This configuration demonstrates how to map EA model types to proper IDL types.
+# The primitive_types field is a dictionary where:
+#   - Keys: Type names as they appear in Enterprise Architect
+#   - Values: IDL type names to output in generated IDL
+#
+# By default, the tool provides CORBA IDL-compliant mappings, but you can
+# customize them here if your EA model uses different type names.
+
+database_url: "sqlite+pysqlite:///tests/data/nafv4.qea"
+root_packages:
+  - "core"
+
+# Primitive type mappings
+primitive_types:
+  # Standard IDL types (identity mapping)
+  "short": "short"
+  "unsigned short": "unsigned short"
+  "long": "long"
+  "unsigned long": "unsigned long"
+  "long long": "long long"
+  "unsigned long long": "unsigned long long"
+  "float": "float"
+  "double": "double"
+  "long double": "long double"
+  "char": "char"
+  "wchar": "wchar"
+  "boolean": "boolean"
+  "octet": "octet"
+  "string": "string"
+  "wstring": "wstring"
+
+  # Common aliases (mapped to IDL equivalents)
+  "int": "long"              # int is not valid IDL, map to long (32-bit)
+  "unsigned int": "unsigned long"
+
+  # Custom mappings - add your own here
+  # Example: if your EA model uses "int32" or "uint32", map them:
+  # "int32": "long"
+  # "uint32": "unsigned long"
+  # "int64": "long long"
+  # "uint64": "unsigned long long"
+  # "text": "string"
+  # "bool": "boolean"
+
+# If a type appears in your model that is NOT in this mapping and has no
+# connector (relationship), the tool will FAIL with a clear error message
+# telling you to add it to the primitive_types mapping.

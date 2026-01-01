@@ -13,8 +13,8 @@
 {{ gen_annotations(cls.properties) -}}
 {%- endif %}
 {%- if is_fixed_array %}
-typedef {{cls.parent_type}} {{cls.name}}[{{max_items.value}}];
+typedef {{cls.parent_type | idl_type}} {{cls.name}}[{{max_items.value}}];
 {%- else %}
-typedef {{cls.parent_type}} {{cls.name}};
+typedef {{cls.parent_type | idl_type}} {{cls.name}};
 {%- endif %}
 {%- endmacro %}

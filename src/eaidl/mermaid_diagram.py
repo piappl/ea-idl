@@ -44,7 +44,7 @@ class MermaidClassDiagramGenerator:
             for attr in cls.attributes:
                 if attr.type and attr.type not in package_class_names:
                     # Skip primitive types
-                    if attr.type not in self.config.primitive_types:
+                    if not self.config.is_primitive_type(attr.type):
                         external_types.add(attr.type)
 
         return external_types

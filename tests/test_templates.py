@@ -81,14 +81,14 @@ enum ClassName {
 STRUCT_DECLARATION = "struct ClassName;"
 STRUCT = """struct ClassName {
     string one;
-    int two;
+    long two;
 };"""
 STRUCT_NOTES = """/**
     A struct.
 */
 struct ClassName {
     string one;
-    int two;
+    long two;
 };"""
 STRUCT_ATTR_NOTES = """/**
     A struct.
@@ -102,7 +102,7 @@ struct ClassName {
         An attribute 2.
         nice.
     */
-    int two;
+    long two;
 };"""
 UNION_DECLARATION = "union ClassName;"
 UNION = """union ClassName switch (int8) {

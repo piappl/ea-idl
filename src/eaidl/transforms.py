@@ -244,7 +244,7 @@ def _collect_used_classes(
         if attr.is_map and attr.map_key_type:
             # Map key might be a complex type
             key_type_name = attr.map_key_type.split("::")[-1]
-            if key_type_name not in config.primitive_types:
+            if not config.is_primitive_type(key_type_name):
                 key_cls = find_class(roots, lambda c: c.name == key_type_name)
                 if key_cls:
                     _collect_used_classes(roots, key_cls, used, config)
@@ -252,7 +252,7 @@ def _collect_used_classes(
         if attr.is_map and attr.map_value_type:
             # Map value might be a complex type
             value_type_name = attr.map_value_type.split("::")[-1]
-            if value_type_name not in config.primitive_types:
+            if not config.is_primitive_type(value_type_name):
                 value_cls = find_class(roots, lambda c: c.name == value_type_name)
                 if value_cls:
                     _collect_used_classes(roots, value_cls, used, config)

@@ -17,6 +17,25 @@ def name_for_reserved_worlds(config: Configuration, attribute: ModelAttribute, c
 
 
 @validator
+def primitive_type_mapped(config: Configuration, attribute: ModelAttribute, cls: ModelClass):
+    """Check that primitive types have a mapping to valid IDL types.
+
+    If an attribute has no connector and is not an enum, it must be a primitive type
+    that exists in the primitive_types mapping.
+    """
+    if (
+        attribute.connector is None
+        and config.stereotypes.idl_enum not in cls.stereotypes
+        and attribute.type is not None
+        and not config.is_primitive_type(attribute.type)
+    ):
+        raise ValueError(
+            f"Primitive type '{attribute.type}' is not mapped in configuration. "
+            f"Add it to primitive_types mapping {context(attribute, cls)}"
+        )
+
+
+@validator
 def connector_leads_to_type(config: Configuration, attribute: ModelAttribute, cls: ModelClass):
     """Check connection type.
 
@@ -27,7 +46,7 @@ def connector_leads_to_type(config: Configuration, attribute: ModelAttribute, cl
     if (
         attribute.connector is None
         and config.stereotypes.idl_enum not in cls.stereotypes
-        and attribute.type not in config.primitive_types
+        and not config.is_primitive_type(attribute.type)
     ):
         raise ValueError(f"No connector found for attribute {context(attribute, cls)}")
 

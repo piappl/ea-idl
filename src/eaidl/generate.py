@@ -30,6 +30,8 @@ def create_env(config: Optional[Configuration] = None) -> Environment:
     # Make config available as a global variable in all templates
     if config:
         env.globals["config"] = config
+        # Add filter for mapping EA types to IDL types
+        env.filters["idl_type"] = config.get_idl_type
     return env
 
 
