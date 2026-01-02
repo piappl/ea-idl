@@ -728,6 +728,10 @@ class ModelParser:
 
         This ensures typedefs are topologically sorted after the types they reference.
 
+        IMPORTANT: sequence<T> and map<K,V> do NOT create hard dependencies because
+        they can be declared before T/V are fully defined in IDL. We only track
+        dependencies for direct type references (typedef MyType OtherType).
+
         :param classes: List of ModelClass objects in the same package
         """
         # Build a mapping of class names to object_ids for fast lookup
@@ -737,25 +741,19 @@ class ModelParser:
             if not cls.is_typedef or not cls.parent_type:
                 continue
 
-            # Extract the referenced type name from parent_type
-            # Handle cases like:
-            # - "sequence<Node>" -> "Node"
-            # - "Node" -> "Node"
-            # - "map<string, Node>" -> "Node" (extract the value type)
-            ref_type_name = None
+            # Check if this is a sequence or map typedef
+            # These do NOT create ordering dependencies because sequence<T> and map<K,V>
+            # can be declared before T/V are fully defined
+            is_sequence = "sequence<" in cls.parent_type
+            is_map = "map<" in cls.parent_type
 
-            # Try to extract from sequence<...>
-            match = re.search(r"sequence<(.+?)>", cls.parent_type)
-            if match:
-                ref_type_name = match.group(1).strip()
-            else:
-                # Try to extract from map<key, value>
-                match = re.search(r"map<[^,]+,\s*(.+?)>", cls.parent_type)
-                if match:
-                    ref_type_name = match.group(1).strip()
-                else:
-                    # Direct type reference (not a template)
-                    ref_type_name = cls.parent_type.strip()
+            if is_sequence or is_map:
+                # Skip - sequences and maps don't create hard dependencies
+                log.debug(f"Skipping typedef dependency for {cls.name} (sequence/map type: {cls.parent_type})")
+                continue
+
+            # Only process direct type references (typedef MyType OtherType)
+            ref_type_name = cls.parent_type.strip()
 
             if ref_type_name and not self.config.is_primitive_type(ref_type_name):
                 # Look up the referenced type in the same classes list
@@ -765,7 +763,7 @@ class ModelParser:
                     cls.depends_on.append(ref_class.object_id)
                     log.debug(
                         f"Added typedef dependency: {cls.name} depends on {ref_class.name} "
-                        f"(from parent_type: {cls.parent_type})"
+                        f"(direct type reference: {cls.parent_type})"
                     )
 
     def get_namespace(self, bottom_package_id: int) -> List[str]:

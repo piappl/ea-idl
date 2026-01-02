@@ -316,12 +316,12 @@ class TestTypedefValidators:
     """Test validators for typedef classes."""
 
     def test_typedef_without_association_fails(self):
-        """Test validation fails for typedef without Association connector."""
+        """Test validation fails for typedef without Association connector (direct reference)."""
         config = Configuration(validators_fail=["struct.typedef_has_association"])
         cls = m_class(
-            name="NodeList",
+            name="MyNode",
             is_typedef=True,
-            parent_type="sequence<Node>",
+            parent_type="Node",  # Direct reference, not sequence
             depends_on=[],  # No Association connector
         )
 
@@ -329,12 +329,12 @@ class TestTypedefValidators:
             v.struct.typedef_has_association(config, cls=cls)
 
     def test_typedef_with_association_passes(self):
-        """Test validation passes for typedef with Association connector."""
+        """Test validation passes for typedef with Association connector (direct reference)."""
         config = Configuration(validators_fail=["struct.typedef_has_association"])
         cls = m_class(
-            name="NodeList",
+            name="MyNode",
             is_typedef=True,
-            parent_type="sequence<Node>",
+            parent_type="Node",  # Direct reference
             depends_on=[123],  # Association connector present
         )
 
@@ -361,24 +361,37 @@ class TestTypedefValidators:
             name="StringList",
             is_typedef=True,
             parent_type="sequence<string>",
-            depends_on=[],  # No Association needed for primitives
+            depends_on=[],  # No Association needed for sequence types
         )
 
-        # Should not raise - primitive types don't need Association
+        # Should not raise - sequence types don't need Association
         v.struct.typedef_has_association(config, cls=cls)
 
-    def test_typedef_map_without_association_fails(self):
-        """Test validation fails for typedef to map without Association."""
+    def test_typedef_sequence_of_custom_type_passes(self):
+        """Test validation passes for typedef to sequence of custom type (no Association needed)."""
+        config = Configuration(validators_fail=["struct.typedef_has_association"])
+        cls = m_class(
+            name="NodeList",
+            is_typedef=True,
+            parent_type="sequence<Node>",
+            depends_on=[],  # No Association needed for sequence types
+        )
+
+        # Should not raise - sequence<T> doesn't require Association even for custom types
+        v.struct.typedef_has_association(config, cls=cls)
+
+    def test_typedef_map_without_association_passes(self):
+        """Test validation passes for typedef to map (no Association needed)."""
         config = Configuration(validators_fail=["struct.typedef_has_association"])
         cls = m_class(
             name="NodeMap",
             is_typedef=True,
             parent_type="map<string, Node>",
-            depends_on=[],  # No Association connector
+            depends_on=[],  # No Association needed for map types
         )
 
-        with pytest.raises(ValueError, match="has no Association connector"):
-            v.struct.typedef_has_association(config, cls=cls)
+        # Should not raise - map<K,V> doesn't require Association
+        v.struct.typedef_has_association(config, cls=cls)
 
     def test_typedef_direct_reference_without_association_fails(self):
         """Test validation fails for typedef with direct type reference."""

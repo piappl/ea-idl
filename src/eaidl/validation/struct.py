@@ -3,7 +3,6 @@ from eaidl.model import ModelClass
 from eaidl.utils import is_camel_case
 from .base import validator, RESERVED_NAMES
 from .spellcheck import check_spelling, format_spelling_errors
-import re
 
 
 def context(cls: ModelClass) -> str:
@@ -198,8 +197,11 @@ def typedef_has_association(config: Configuration, cls: ModelClass) -> None:
     Best practice in Enterprise Architect is to model typedef relationships using
     Association connectors, not just the genlinks field. This validator checks that:
     1. The typedef has a parent_type defined (from genlinks)
-    2. If parent_type references a non-primitive type, an Association connector exists
+    2. If parent_type is a DIRECT reference to a non-primitive type, an Association exists
     3. The Association is indicated by a non-empty depends_on list
+
+    Note: sequence<T> and map<K,V> do NOT require Association connectors because they
+    don't create hard ordering dependencies in IDL.
 
     This encourages proper EA modeling and makes dependencies explicit in the model.
     """
@@ -210,31 +212,26 @@ def typedef_has_association(config: Configuration, cls: ModelClass) -> None:
         # Typedef without parent_type - this is a modeling error caught elsewhere
         return
 
-    # Extract the referenced type name from parent_type
-    # Handle cases like "sequence<Node>", "map<string, Node>", or "Node"
-    ref_type_name = None
+    # Check if this is a sequence or map typedef
+    # These do NOT require Association connectors
+    is_sequence = "sequence<" in cls.parent_type
+    is_map = "map<" in cls.parent_type
 
-    # Try to extract from sequence<...>
-    match = re.search(r"sequence<(.+?)>", cls.parent_type)
-    if match:
-        ref_type_name = match.group(1).strip()
-    else:
-        # Try to extract from map<key, value>
-        match = re.search(r"map<[^,]+,\s*(.+?)>", cls.parent_type)
-        if match:
-            ref_type_name = match.group(1).strip()
-        else:
-            # Direct type reference (not a template)
-            ref_type_name = cls.parent_type.strip()
+    if is_sequence or is_map:
+        # sequence<T> and map<K,V> don't require Association connectors
+        return
+
+    # Only validate direct type references (typedef MyType OtherType)
+    ref_type_name = cls.parent_type.strip()
 
     # Check if the referenced type is a primitive
     if ref_type_name and config.is_primitive_type(ref_type_name):
         # Primitive types don't need Association connectors
         return
 
-    # If we're referencing a non-primitive type, we should have a dependency
+    # If we're referencing a non-primitive type directly, we should have a dependency
     if ref_type_name and not cls.depends_on:
         raise ValueError(
-            f"Typedef '{cls.full_name}' references type '{ref_type_name}' but has no Association connector. "
-            f"Add an Association from the typedef to the referenced type in Enterprise Architect. {context(cls)}"
+            f"Typedef '{cls.full_name}' references type '{ref_type_name}' directly but has no Association connector. "
+            f"Add an Association from the typedef to '{ref_type_name}' in Enterprise Architect. {context(cls)}"
         )
