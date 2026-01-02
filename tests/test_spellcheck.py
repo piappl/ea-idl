@@ -38,6 +38,15 @@ def test_split_identifier_mixed():
     assert split_identifier("test-hyphen") == ["test", "hyphen"]
 
 
+def test_split_identifier_with_numbers():
+    """Test splitting identifiers with numbers."""
+    assert split_identifier("CQL2Expression") == ["CQL", "2", "Expression"]
+    assert split_identifier("HTTP2Server") == ["HTTP", "2", "Server"]
+    assert split_identifier("Base64Encoder") == ["Base", "64", "Encoder"]
+    assert split_identifier("UTF8String") == ["UTF", "8", "String"]
+    assert split_identifier("MD5Hash") == ["MD", "5", "Hash"]
+
+
 def test_extract_words_basic():
     """Test basic word extraction."""
     config_spell = ConfigurationSpellcheck()
@@ -427,3 +436,25 @@ def test_check_spelling_contractions():
     error_words = [e["word"] for e in errors]
     assert "doesn't" not in error_words
     assert "can't" not in error_words
+
+
+def test_extract_words_with_numbers_in_identifiers():
+    """Test that identifiers with numbers are split correctly."""
+    text = "Using CQL2Expression and HTTP2Server"
+    words = extract_words(text, min_word_length=3)
+    # Should split and extract meaningful parts
+    assert "cql" in words or "expression" in words  # CQL2Expression -> CQL, Expression
+    assert "http" in words or "server" in words  # HTTP2Server -> HTTP, Server
+    # Should NOT include the numbers themselves
+    assert "2" not in words
+
+
+def test_check_spelling_technical_identifiers_with_numbers():
+    """Test that technical identifiers with numbers don't cause false positives."""
+    text = "This uses CQL2Expression for queries"
+    errors = check_spelling(text)
+    error_words = [e["word"] for e in errors]
+    # Should NOT flag "cql2expression" as a whole
+    assert "cql2expression" not in error_words
+    # Individual parts like "cql" might be flagged, but that's expected
+    # (can be added to custom_words if needed)

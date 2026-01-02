@@ -139,6 +139,8 @@ def split_identifier(word: str) -> List[str]:
         message_type -> ["message", "type"]
         HTTPServer -> ["HTTP", "Server"]
         snake_case_name -> ["snake", "case", "name"]
+        CQL2Expression -> ["CQL", "2", "Expression"]
+        UTF8String -> ["UTF", "8", "String"]
     """
     # First split by underscore/hyphen
     parts = re.split(r"[_-]", word)
@@ -149,9 +151,13 @@ def split_identifier(word: str) -> List[str]:
         if not part:
             continue
 
+        # Insert space before/after numbers: CQL2Expression -> CQL 2 Expression
+        spaced = re.sub(r"([a-zA-Z])(\d+)", r"\1 \2", part)
+        spaced = re.sub(r"(\d+)([a-zA-Z])", r"\1 \2", spaced)
+
         # Insert space before uppercase letters (except first)
         # MessageType -> Message Type
-        spaced = re.sub(r"([a-z])([A-Z])", r"\1 \2", part)
+        spaced = re.sub(r"([a-z])([A-Z])", r"\1 \2", spaced)
 
         # Handle consecutive caps: HTTPServer -> HTTP Server
         spaced = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", spaced)
@@ -210,6 +216,9 @@ def extract_words(text: str, min_word_length: int = 3, ignore_patterns: List[str
         # Handle camelCase/PascalCase - split into parts
         parts = split_identifier(word)
         for part in parts:
+            # Skip pure numbers
+            if part.isdigit():
+                continue
             if len(part) >= min_word_length and not part.isupper():
                 filtered.append(part.lower())
 
