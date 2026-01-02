@@ -171,6 +171,7 @@ class Configuration(BaseModel):
         # "attribute.notes",
         "struct.name_camel_convention",
         "struct.notes",
+        "struct.typedef_has_association",
         "package.stereotypes",
         "package.name_snake_convention",
         "package.notes",

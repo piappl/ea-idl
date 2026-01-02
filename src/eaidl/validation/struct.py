@@ -3,6 +3,7 @@ from eaidl.model import ModelClass
 from eaidl.utils import is_camel_case
 from .base import validator, RESERVED_NAMES
 from .spellcheck import check_spelling, format_spelling_errors
+import re
 
 
 def context(cls: ModelClass) -> str:
@@ -187,3 +188,53 @@ def recursive_type_uses_sequence(config: Configuration, cls: ModelClass):
                     f"Self-referencing attribute '{cls.full_name}.{attr.name}' must be a sequence. "
                     f"IDL does not support direct self-reference in structs without sequence<>. {context(cls)}"
                 )
+
+
+@validator
+def typedef_has_association(config: Configuration, cls: ModelClass) -> None:
+    """
+    Validate that typedefs have Association connectors to their referenced types.
+
+    Best practice in Enterprise Architect is to model typedef relationships using
+    Association connectors, not just the genlinks field. This validator checks that:
+    1. The typedef has a parent_type defined (from genlinks)
+    2. If parent_type references a non-primitive type, an Association connector exists
+    3. The Association is indicated by a non-empty depends_on list
+
+    This encourages proper EA modeling and makes dependencies explicit in the model.
+    """
+    if not cls.is_typedef:
+        return  # Only applies to typedefs
+
+    if not cls.parent_type:
+        # Typedef without parent_type - this is a modeling error caught elsewhere
+        return
+
+    # Extract the referenced type name from parent_type
+    # Handle cases like "sequence<Node>", "map<string, Node>", or "Node"
+    ref_type_name = None
+
+    # Try to extract from sequence<...>
+    match = re.search(r"sequence<(.+?)>", cls.parent_type)
+    if match:
+        ref_type_name = match.group(1).strip()
+    else:
+        # Try to extract from map<key, value>
+        match = re.search(r"map<[^,]+,\s*(.+?)>", cls.parent_type)
+        if match:
+            ref_type_name = match.group(1).strip()
+        else:
+            # Direct type reference (not a template)
+            ref_type_name = cls.parent_type.strip()
+
+    # Check if the referenced type is a primitive
+    if ref_type_name and config.is_primitive_type(ref_type_name):
+        # Primitive types don't need Association connectors
+        return
+
+    # If we're referencing a non-primitive type, we should have a dependency
+    if ref_type_name and not cls.depends_on:
+        raise ValueError(
+            f"Typedef '{cls.full_name}' references type '{ref_type_name}' but has no Association connector. "
+            f"Add an Association from the typedef to the referenced type in Enterprise Architect. {context(cls)}"
+        )

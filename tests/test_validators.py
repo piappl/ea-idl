@@ -310,3 +310,124 @@ class TestAttributeValidators:
 
         with pytest.raises(ValueError, match="no description"):
             v.attribute.notes(config, attribute=attr, cls=cls)
+
+
+class TestTypedefValidators:
+    """Test validators for typedef classes."""
+
+    def test_typedef_without_association_fails(self):
+        """Test validation fails for typedef without Association connector."""
+        config = Configuration(validators_fail=["struct.typedef_has_association"])
+        cls = m_class(
+            name="NodeList",
+            is_typedef=True,
+            parent_type="sequence<Node>",
+            depends_on=[],  # No Association connector
+        )
+
+        with pytest.raises(ValueError, match="has no Association connector"):
+            v.struct.typedef_has_association(config, cls=cls)
+
+    def test_typedef_with_association_passes(self):
+        """Test validation passes for typedef with Association connector."""
+        config = Configuration(validators_fail=["struct.typedef_has_association"])
+        cls = m_class(
+            name="NodeList",
+            is_typedef=True,
+            parent_type="sequence<Node>",
+            depends_on=[123],  # Association connector present
+        )
+
+        # Should not raise
+        v.struct.typedef_has_association(config, cls=cls)
+
+    def test_typedef_primitive_type_passes(self):
+        """Test validation passes for typedef to primitive type."""
+        config = Configuration(validators_fail=["struct.typedef_has_association"])
+        cls = m_class(
+            name="MyString",
+            is_typedef=True,
+            parent_type="string",
+            depends_on=[],  # No Association needed for primitives
+        )
+
+        # Should not raise - primitive types don't need Association
+        v.struct.typedef_has_association(config, cls=cls)
+
+    def test_typedef_sequence_of_primitive_passes(self):
+        """Test validation passes for typedef to sequence of primitive."""
+        config = Configuration(validators_fail=["struct.typedef_has_association"])
+        cls = m_class(
+            name="StringList",
+            is_typedef=True,
+            parent_type="sequence<string>",
+            depends_on=[],  # No Association needed for primitives
+        )
+
+        # Should not raise - primitive types don't need Association
+        v.struct.typedef_has_association(config, cls=cls)
+
+    def test_typedef_map_without_association_fails(self):
+        """Test validation fails for typedef to map without Association."""
+        config = Configuration(validators_fail=["struct.typedef_has_association"])
+        cls = m_class(
+            name="NodeMap",
+            is_typedef=True,
+            parent_type="map<string, Node>",
+            depends_on=[],  # No Association connector
+        )
+
+        with pytest.raises(ValueError, match="has no Association connector"):
+            v.struct.typedef_has_association(config, cls=cls)
+
+    def test_typedef_direct_reference_without_association_fails(self):
+        """Test validation fails for typedef with direct type reference."""
+        config = Configuration(validators_fail=["struct.typedef_has_association"])
+        cls = m_class(
+            name="MyNode",
+            is_typedef=True,
+            parent_type="Node",
+            depends_on=[],  # No Association connector
+        )
+
+        with pytest.raises(ValueError, match="has no Association connector"):
+            v.struct.typedef_has_association(config, cls=cls)
+
+    def test_typedef_validator_disabled_passes(self):
+        """Test that validator doesn't run when disabled."""
+        config = Configuration(validators_fail=[])  # Validator not enabled
+        cls = m_class(
+            name="NodeList",
+            is_typedef=True,
+            parent_type="sequence<Node>",
+            depends_on=[],  # No Association, but validator disabled
+        )
+
+        # Should not raise when validator is disabled
+        v.struct.typedef_has_association(config, cls=cls)
+
+    def test_typedef_without_parent_type_passes(self):
+        """Test that typedef without parent_type is skipped."""
+        config = Configuration(validators_fail=["struct.typedef_has_association"])
+        cls = m_class(
+            name="BrokenTypedef",
+            is_typedef=True,
+            parent_type=None,  # Missing parent_type
+            depends_on=[],
+        )
+
+        # Should not raise - this is a different modeling error
+        v.struct.typedef_has_association(config, cls=cls)
+
+    def test_non_typedef_class_skipped(self):
+        """Test that non-typedef classes are skipped."""
+        config = Configuration(validators_fail=["struct.typedef_has_association"])
+        cls = m_class(
+            name="RegularStruct",
+            is_typedef=False,
+            is_struct=True,
+            depends_on=[],
+        )
+
+        # Should not raise - validator only applies to typedefs
+        v.struct.typedef_has_association(config, cls=cls)

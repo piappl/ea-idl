@@ -369,6 +369,11 @@ class ModelParser:
         # Detect circular dependencies for recursion support
         scc_map: Dict[int, Set[int]] = {}
         classes_list = list(classes)  # Convert to list once
+
+        # Resolve typedef dependencies before topological sort
+        # This ensures typedefs appear after the types they reference
+        self.resolve_typedef_dependencies(classes_list)
+
         if self.config.allow_recursive_structs and classes_list:
             try:
                 # Create a temporary package with just these classes for cycle detection
@@ -712,6 +717,57 @@ class ModelParser:
 
         return list(set(ret))
 
+    def resolve_typedef_dependencies(self, classes: List[ModelClass]) -> None:
+        """
+        Resolve dependencies for typedefs by extracting referenced types from parent_type.
+
+        For each typedef in the classes list, this method:
+        1. Extracts the referenced type name from parent_type (e.g., "Node" from "sequence<Node>")
+        2. Looks up the referenced type in the same classes list
+        3. Adds the object_id to the typedef's depends_on list
+
+        This ensures typedefs are topologically sorted after the types they reference.
+
+        :param classes: List of ModelClass objects in the same package
+        """
+        # Build a mapping of class names to object_ids for fast lookup
+        name_to_class = {cls.name: cls for cls in classes}
+
+        for cls in classes:
+            if not cls.is_typedef or not cls.parent_type:
+                continue
+
+            # Extract the referenced type name from parent_type
+            # Handle cases like:
+            # - "sequence<Node>" -> "Node"
+            # - "Node" -> "Node"
+            # - "map<string, Node>" -> "Node" (extract the value type)
+            ref_type_name = None
+
+            # Try to extract from sequence<...>
+            match = re.search(r"sequence<(.+?)>", cls.parent_type)
+            if match:
+                ref_type_name = match.group(1).strip()
+            else:
+                # Try to extract from map<key, value>
+                match = re.search(r"map<[^,]+,\s*(.+?)>", cls.parent_type)
+                if match:
+                    ref_type_name = match.group(1).strip()
+                else:
+                    # Direct type reference (not a template)
+                    ref_type_name = cls.parent_type.strip()
+
+            if ref_type_name and not self.config.is_primitive_type(ref_type_name):
+                # Look up the referenced type in the same classes list
+                # Only add dependency if it's not a primitive type
+                ref_class = name_to_class.get(ref_type_name)
+                if ref_class and ref_class.object_id not in cls.depends_on:
+                    cls.depends_on.append(ref_class.object_id)
+                    log.debug(
+                        f"Added typedef dependency: {cls.name} depends on {ref_class.name} "
+                        f"(from parent_type: {cls.parent_type})"
+                    )
+
     def get_namespace(self, bottom_package_id: int) -> List[str]:
         """Get namespace given package identifier.
 
@@ -978,6 +1034,25 @@ class ModelParser:
         )
         for t_attribute in t_attributes:
             model_class.attributes.append(self.attribute_parse(parent_package, model_class, t_attribute))
+
+        if self.config.stereotypes.idl_typedef in model_class.stereotypes:
+            # Check if we have an Association connector for the typedef
+            # This is the preferred way to define typedef dependencies in EA
+            try:
+                connections = self.get_object_connections(model_class.object_id, mode="source")
+            except pydantic.ValidationError as e:
+                log.error("Unable to get typedef connections %s %s", model_class.namespace, model_class.name)
+                log.exception(e)
+            for connection in connections:
+                if connection.connector_type == "Association":
+                    # Typedef association points from typedef to the referenced type
+                    ref_type_id = connection.end_object_id
+                    if ref_type_id not in model_class.depends_on:
+                        model_class.depends_on.append(ref_type_id)
+                        log.debug(
+                            f"Added typedef dependency from Association connector: "
+                            f"{model_class.name} -> object_id {ref_type_id}"
+                        )
 
         if self.config.stereotypes.idl_union in model_class.stereotypes:
             # Check if we have enumeration for that union
