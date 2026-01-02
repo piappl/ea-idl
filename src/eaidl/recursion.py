@@ -94,27 +94,47 @@ def find_type_cycles(packages: List[ModelPackage], check_non_collection_cycles: 
     sequence_deps_graph = {}  # Only dependencies through sequences
     all_types = {}  # object_id -> ModelClass
 
-    # First pass: collect all structs and unions and initialize graphs
+    # First pass: collect all structs, unions, and typedefs and initialize graphs
     for pkg in flatten_packages(packages):
         for cls in pkg.classes:
-            if cls.is_struct or cls.is_union:
+            if cls.is_struct or cls.is_union or cls.is_typedef:
                 all_types[cls.object_id] = cls
                 all_deps_graph[cls.object_id] = []
                 sequence_deps_graph[cls.object_id] = []
 
     # Second pass: build dependency edges
     for cls_id, cls in all_types.items():
-        for attr in cls.attributes:
-            # Find target type by name and namespace
-            target = find_class(packages, lambda c: c.name == attr.type and c.namespace == attr.namespace)
+        if cls.is_typedef:
+            # For typedefs, use depends_on instead of attributes
+            # Typedefs using sequence<> or map<> are treated as collection dependencies
+            is_sequence = cls.parent_type and ("sequence<" in cls.parent_type or "map<" in cls.parent_type)
 
-            if target and (target.is_struct or target.is_union) and target.object_id in all_types:
-                # Track in all_deps_graph
-                all_deps_graph[cls_id].append((target.object_id, attr.name, attr.is_collection))
+            for dep_id in cls.depends_on:
+                if dep_id in all_types:
+                    target = all_types[dep_id]
+                    # Track in all_deps_graph
+                    all_deps_graph[cls_id].append((target.object_id, "typedef", is_sequence))
 
-                # For sequence_deps_graph: only track sequences (for structs) or all members (for unions)
-                if cls.is_union or attr.is_collection:
-                    sequence_deps_graph[cls_id].append(target.object_id)
+                    # Typedef with sequence<>/map<> is treated as a sequence dependency
+                    if is_sequence:
+                        sequence_deps_graph[cls_id].append(target.object_id)
+        else:
+            # For structs/unions, use attributes
+            for attr in cls.attributes:
+                # Find target type by name and namespace
+                target = find_class(packages, lambda c: c.name == attr.type and c.namespace == attr.namespace)
+
+                if (
+                    target
+                    and (target.is_struct or target.is_union or target.is_typedef)
+                    and target.object_id in all_types
+                ):
+                    # Track in all_deps_graph
+                    all_deps_graph[cls_id].append((target.object_id, attr.name, attr.is_collection))
+
+                    # For sequence_deps_graph: only track sequences (for structs) or all members (for unions)
+                    if cls.is_union or attr.is_collection:
+                        sequence_deps_graph[cls_id].append(target.object_id)
 
     # Find ALL cycles using the full dependency graph
     # Convert all_deps_graph to simple format for Tarjan
@@ -149,8 +169,9 @@ def find_type_cycles(packages: List[ModelPackage], check_non_collection_cycles: 
             # Valid cycle with at least one sequence - mark all types for forward declaration
             for node_id in scc:
                 scc_map[node_id] = scc
-                type_kind = "struct" if all_types[node_id].is_struct else "union"
-                log.debug(f"{type_kind.capitalize()} {all_types[node_id].full_name} is in SCC of size {len(scc)}")
+                cls = all_types[node_id]
+                type_kind = "typedef" if cls.is_typedef else ("struct" if cls.is_struct else "union")
+                log.debug(f"{type_kind.capitalize()} {cls.full_name} is in SCC of size {len(scc)}")
         elif check_non_collection_cycles:
             # Cycle with NO sequences - this is an error if checking is enabled
             cycle_types = [all_types[cls_id].full_name for cls_id in scc]
@@ -184,7 +205,7 @@ def validate_cycles_within_modules(packages: List[ModelPackage], scc_map: Dict[i
     all_types = {}
     for pkg in flatten_packages(packages):
         for cls in pkg.classes:
-            if cls.is_struct or cls.is_union:
+            if cls.is_struct or cls.is_union or cls.is_typedef:
                 all_types[cls.object_id] = cls
 
     # Check each SCC

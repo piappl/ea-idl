@@ -724,14 +724,11 @@ class ModelParser:
         For each typedef in the classes list, this method:
         1. Extracts the referenced type name from parent_type (e.g., "Node" from "sequence<Node>")
         2. Looks up the referenced type in the same classes list
-        3. Adds the object_id to the typedef's depends_on list IF appropriate
+        3. Adds the object_id to the typedef's depends_on list
 
-        Dependency tracking rules:
-        - Direct references (typedef A B): Always track
-        - sequence<Typedef> or map<K,Typedef>: Track dependency on other typedefs (for ordering)
-        - sequence<Struct/Union> or map<K,Struct/Union>: Skip (forward declarations handle it)
-
-        This ensures proper ordering while avoiding false circular dependencies.
+        ALL dependencies are tracked (including sequence<T> -> T) for proper ordering.
+        Circular dependencies involving sequence<> are allowed and handled by SCC detection
+        when allow_recursive_structs is enabled.
 
         :param classes: List of ModelClass objects in the same package
         """
@@ -744,22 +741,19 @@ class ModelParser:
 
             # Extract referenced type name from parent_type
             ref_type_name = None
-            is_sequence = "sequence<" in cls.parent_type
-            is_map = "map<" in cls.parent_type
 
-            if is_sequence:
-                # Extract from sequence<...>
-                match = re.search(r"sequence<(.+?)>", cls.parent_type)
-                if match:
-                    ref_type_name = match.group(1).strip()
-            elif is_map:
-                # Extract from map<key, value> - get the value type
+            # Try to extract from sequence<...>
+            match = re.search(r"sequence<(.+?)>", cls.parent_type)
+            if match:
+                ref_type_name = match.group(1).strip()
+            else:
+                # Try to extract from map<key, value> - get the value type
                 match = re.search(r"map<[^,]+,\s*(.+?)>", cls.parent_type)
                 if match:
                     ref_type_name = match.group(1).strip()
-            else:
-                # Direct type reference (typedef MyType OtherType)
-                ref_type_name = cls.parent_type.strip()
+                else:
+                    # Direct type reference (typedef MyType OtherType)
+                    ref_type_name = cls.parent_type.strip()
 
             if not ref_type_name or self.config.is_primitive_type(ref_type_name):
                 # Skip primitives
@@ -771,32 +765,14 @@ class ModelParser:
                 # Referenced type not in same package - skip
                 continue
 
-            # Decision: Should we add this dependency?
-            should_add_dependency = False
-
-            if is_sequence or is_map:
-                # For sequence/map: Only add dependency if referencing another TYPEDEF
-                # This gives better ordering (typedef A before typedef B if B uses A)
-                # but avoids cycles with structs/unions (which get forward declarations)
-                if ref_class.is_typedef:
-                    should_add_dependency = True
-                    log.debug(
-                        f"Adding typedef-to-typedef dependency: {cls.name} -> {ref_class.name} "
-                        f"(via {cls.parent_type})"
-                    )
-                else:
-                    # Referencing struct/union/enum in sequence/map - skip for ordering
-                    log.debug(
-                        f"Skipping sequence/map typedef dependency: {cls.name} -X-> {ref_class.name} "
-                        f"(struct/union/enum can be forward-declared)"
-                    )
-            else:
-                # Direct reference - always add dependency
-                should_add_dependency = True
-                log.debug(f"Adding direct typedef dependency: {cls.name} -> {ref_class.name}")
-
-            if should_add_dependency and ref_class.object_id not in cls.depends_on:
+            # Add dependency for ordering
+            # Circular dependencies with sequence<> are handled by SCC detection
+            if ref_class.object_id not in cls.depends_on:
                 cls.depends_on.append(ref_class.object_id)
+                log.debug(
+                    f"Added typedef dependency: {cls.name} -> {ref_class.name} "
+                    f"(from parent_type: {cls.parent_type})"
+                )
 
     def get_namespace(self, bottom_package_id: int) -> List[str]:
         """Get namespace given package identifier.
@@ -1068,50 +1044,25 @@ class ModelParser:
         if self.config.stereotypes.idl_typedef in model_class.stereotypes:
             # Check if we have an Association connector for the typedef
             # This is the preferred way to define typedef dependencies in EA
+            # ALL dependencies are tracked for proper ordering; circular dependencies
+            # with sequence<> are handled by SCC detection
             try:
                 connections = self.get_object_connections(model_class.object_id, mode="source")
             except pydantic.ValidationError as e:
                 log.error("Unable to get typedef connections %s %s", model_class.namespace, model_class.name)
                 log.exception(e)
             else:
-                is_sequence = model_class.parent_type and "sequence<" in model_class.parent_type
-                is_map = model_class.parent_type and "map<" in model_class.parent_type
-
                 for connection in connections:
                     if connection.connector_type == "Association":
                         # Typedef association points from typedef to the referenced type
                         ref_type_id = connection.end_object_id
-
-                        # Determine if we should add this dependency based on typedef type
-                        should_add = False
-
-                        if is_sequence or is_map:
-                            # For sequence/map: Only add if referencing another typedef (for ordering)
-                            # Check the referenced object to see if it's a typedef
-                            ref_obj = self.get_object(ref_type_id)
-                            ref_stereotypes = self.get_stereotypes(ref_obj.attr_ea_guid)
-                            if self.config.stereotypes.idl_typedef in ref_stereotypes:
-                                should_add = True
-                                log.debug(
-                                    f"Added typedef-to-typedef dependency from Association: "
-                                    f"{model_class.name} -> object_id {ref_type_id} "
-                                    f"(sequence/map of typedef: {model_class.parent_type})"
-                                )
-                            else:
-                                log.debug(
-                                    f"Skipping sequence/map typedef Association to non-typedef: "
-                                    f"{model_class.name} -X-> object_id {ref_type_id}"
-                                )
-                        else:
-                            # Direct typedef - always add
-                            should_add = True
-                            log.debug(
-                                f"Added direct typedef dependency from Association: "
-                                f"{model_class.name} -> object_id {ref_type_id}"
-                            )
-
-                        if should_add and ref_type_id not in model_class.depends_on:
+                        if ref_type_id not in model_class.depends_on:
                             model_class.depends_on.append(ref_type_id)
+                            log.debug(
+                                f"Added typedef dependency from Association connector: "
+                                f"{model_class.name} -> object_id {ref_type_id} "
+                                f"(parent_type: {model_class.parent_type})"
+                            )
 
         if self.config.stereotypes.idl_union in model_class.stereotypes:
             # Check if we have enumeration for that union
