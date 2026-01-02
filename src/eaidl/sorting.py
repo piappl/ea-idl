@@ -72,6 +72,36 @@ def topological_sort_classes(classes: List[ModelClass], scc_map: Dict[int, Set[i
     adj: Dict[int, List[int]] = {cls.object_id: [] for cls in classes}
     id_to_class: Dict[int, ModelClass] = {cls.object_id: cls for cls in classes}
 
+    def is_soft_dependency(src: ModelClass, target_id: int) -> bool:
+        """
+        Check if a dependency from src to target_id is 'soft' (allowed to be circular).
+        A dependency is soft if it's a member of a union or a collection member in a struct.
+        Typedefs are ALWAYS hard dependencies because the base type must be declared
+        at the point of typedef definition.
+        """
+        target = id_to_class.get(target_id)
+        if not target:
+            return False
+
+        # Union members are soft because unions can be forward declared
+        # and their full definition (which uses the member) happens in Pass 2.
+        if src.is_union:
+            return True
+
+        # Typedefs are HARD. To define 'typedef sequence<S> T', S must be at least declared.
+        if src.is_typedef:
+            return False
+
+        # Struct members: soft if ALL attributes of that type are collections
+        target_name = target.name
+        found_any = False
+        for attr in src.attributes:
+            if attr.type == target_name:
+                found_any = True
+                if not attr.is_collection:
+                    return False  # Found a hard (direct) dependency
+        return found_any
+
     for cls in classes:
         for dep_id in cls.depends_on:
             if dep_id not in id_to_class:
@@ -79,31 +109,34 @@ def topological_sort_classes(classes: List[ModelClass], scc_map: Dict[int, Set[i
 
             # Check if this dependency is within the same SCC (allowed cycle)
             cls_scc = scc_map.get(cls.object_id, {cls.object_id})
-            if dep_id in cls_scc:
-                # Dependency within same SCC - skip to allow circular references
-                log.debug(f"Ignoring circular dependency: {cls.name} -> " f"{id_to_class[dep_id].name} (same SCC)")
+            if dep_id in cls_scc and is_soft_dependency(cls, dep_id):
+                # Dependency within same SCC and is SOFT - skip to break the cycle
+                log.debug(f"Ignoring soft circular dependency: {cls.name} -> " f"{id_to_class[dep_id].name}")
                 continue
 
             adj[dep_id].append(cls.object_id)
             in_degree[cls.object_id] += 1
 
     # Initialize queue with all nodes having in-degree 0, sorted for determinism
-    queue = deque(sorted([cls_id for cls_id, degree in in_degree.items() if degree == 0]))
+    queue = deque(
+        sorted(
+            [cls_id for cls_id, degree in in_degree.items() if degree == 0],
+            key=lambda x: (id_to_class[x].object_id, id_to_class[x].name or ""),
+        )
+    )
     sorted_classes: List[ModelClass] = []
 
     while queue:
         u_id = queue.popleft()
         sorted_classes.append(id_to_class[u_id])
 
-        for v_id in sorted(adj[u_id]):  # Sort for determinism
+        # Sort successors for determinism
+        for v_id in sorted(adj[u_id], key=lambda x: (id_to_class[x].object_id, id_to_class[x].name or "")):
             in_degree[v_id] -= 1
             if in_degree[v_id] == 0:
                 queue.append(v_id)
-        # Re-sort the queue to maintain determinism if new items are added
-        # This is important if multiple nodes become ready at the same time
-        # and their relative order matters for determinism.
-        # A simple way is to convert to list, sort, and convert back to deque.
-        temp_list = sorted(list(queue))
+        # Re-sort the queue to maintain determinism
+        temp_list = sorted(list(queue), key=lambda x: (id_to_class[x].object_id, id_to_class[x].name or ""))
         queue = deque(temp_list)
 
     if len(sorted_classes) != len(classes):

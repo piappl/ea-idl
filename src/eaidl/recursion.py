@@ -122,7 +122,12 @@ def find_type_cycles(packages: List[ModelPackage], check_non_collection_cycles: 
             # For structs/unions, use attributes
             for attr in cls.attributes:
                 # Find target type by name and namespace
-                target = find_class(packages, lambda c: c.name == attr.type and c.namespace == attr.namespace)
+                # If attr.namespace is not set (typical for regular attributes),
+                # we look for a match in the same package tree.
+                target = find_class(
+                    packages,
+                    lambda c: c.name == attr.type and (not attr.namespace or c.namespace == attr.namespace),
+                )
 
                 if (
                     target
@@ -263,12 +268,12 @@ def detect_types_needing_forward_declarations(
     # All types in any SCC need forward declarations
     needs_forward_decl = set(scc_map.keys())
 
-    # Build map of all types for lookup
-    all_types = {}
-    for pkg in flatten_packages(packages):
-        for cls in pkg.classes:
-            if cls.is_struct or cls.is_union:
-                all_types[cls.object_id] = cls
+    # Build map of all types for lookup (needed for logging and marking)
+    all_types = {cls.object_id: cls for pkg in flatten_packages(packages) for cls in pkg.classes}
+
+    # All types in any SCC need forward declarations (or are part of a cycle
+    # that requires forward declarations of associated structs/unions)
+    needs_forward_decl = set(scc_map.keys())
 
     # Also mark types referenced by typedefs as needing forward declarations
     # This ensures typedefs can appear before their referenced type definition
@@ -287,7 +292,7 @@ def detect_types_needing_forward_declarations(
                 if ref_type_name:
                     # Find the referenced type by name and namespace
                     target = find_class(packages, lambda c: c.name == ref_type_name and c.namespace == cls.namespace)
-                    if target and target.object_id in all_types:
+                    if target:
                         # Mark this type as needing forward declaration
                         if target.object_id not in needs_forward_decl:
                             needs_forward_decl.add(target.object_id)
@@ -297,9 +302,11 @@ def detect_types_needing_forward_declarations(
                             )
 
     if needs_forward_decl:
-        log.info(
-            f"Found {len(needs_forward_decl)} type(s) requiring forward declarations: "
-            f"{', '.join([all_types[oid].full_name for oid in sorted(needs_forward_decl)])}"
-        )
+        # Only log types that are in all_types (some might be from other packages/trees)
+        types_to_log = [all_types[oid].full_name for oid in sorted(needs_forward_decl) if oid in all_types]
+        if types_to_log:
+            log.info(
+                f"Found {len(needs_forward_decl)} type(s) requiring forward declarations: " f"{', '.join(types_to_log)}"
+            )
 
     return needs_forward_decl, scc_map

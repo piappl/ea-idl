@@ -37,6 +37,9 @@ module core {
         }; /* types */
     }; /* common */
     module data {
+        union IdentifierOrName;
+        struct Store;
+        struct FlexibleName;
         enum MeasurementTypeEnum {
             @value(1) MeasurementTypeEnum_TEMPERATURE_MEASUREMENT,
             @value(0) MeasurementTypeEnum_PRIMITIVE
@@ -50,9 +53,6 @@ module core {
             @value(3) IdentifierOrNameTypeEnum_NAME,
             @value(1) IdentifierOrNameTypeEnum_IDENTIFIER
         };
-        union IdentifierOrName;
-        struct Store;
-        struct FlexibleName;
         enum FlexibleNameValues {
             @value(1) FlexibleNameValues_ONE_VALUE,
             @value(5) FlexibleNameValues_OTHER_VALUE
@@ -78,6 +78,9 @@ module core {
     */
 
     module message {
+        struct MessageHeader;
+        struct Message;
+        struct DataMessage;
         enum MessageTypeEnum {
             @value(0) MessageTypeEnum_MEASUREMENT,
             @value(1) MessageTypeEnum_EMPTY
@@ -90,12 +93,9 @@ module core {
             Note about nationality.
         */
         typedef string Nationality[3];
-        struct MessageHeader;
         @ext::pattern("([0-9]{4}-[0-9]{2}-[0-9]{2})T([0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?)(Z|[\+-][0-9]{2}:[0-9]{2})")
         typedef string GUID;
         typedef octet GUIDBytes[16];
-        struct Message;
-        struct DataMessage;
     }; /* message */
     module recursion {
         struct Node;

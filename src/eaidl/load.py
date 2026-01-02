@@ -370,8 +370,9 @@ class ModelParser:
         scc_map: Dict[int, Set[int]] = {}
         classes_list = list(classes)  # Convert to list once
 
-        # Resolve typedef dependencies before topological sort
-        # This ensures typedefs appear after the types they reference
+        # Resolve dependencies before topological sort
+        # This ensures typedefs and classes appear after the types they reference
+        self.resolve_attribute_dependencies(classes_list)
         self.resolve_typedef_dependencies(classes_list)
 
         if self.config.allow_recursive_structs and classes_list:
@@ -717,22 +718,37 @@ class ModelParser:
 
         return list(set(ret))
 
+    def resolve_attribute_dependencies(self, classes: List[ModelClass]) -> None:
+        """
+        Resolve dependencies for all classes by looking at their attributes.
+        This ensures structs and unions correctly depend on the types of their members.
+        """
+        name_to_class = {cls.name: cls for cls in classes}
+
+        for cls in classes:
+            if cls.is_typedef:
+                continue
+
+            for attr in cls.attributes:
+                if not attr.type or self.config.is_primitive_type(attr.type):
+                    continue
+
+                # If the attribute has an explicit namespace (e.g. from a connector),
+                # it must match the current package's namespace to be considered a local dependency.
+                if attr.namespace and attr.namespace != cls.namespace:
+                    continue
+
+                # Look up the referenced type in the same package
+                # (Cross-package dependencies are handled by topological_sort_packages)
+                ref_class = name_to_class.get(attr.type)
+                if ref_class and ref_class.object_id not in cls.depends_on:
+                    cls.depends_on.append(ref_class.object_id)
+                    log.debug(f"Added attribute dependency: {cls.name} -> {ref_class.name} (attribute: {attr.name})")
+
     def resolve_typedef_dependencies(self, classes: List[ModelClass]) -> None:
         """
         Resolve dependencies for typedefs by extracting referenced types from parent_type.
-
-        For each typedef in the classes list, this method:
-        1. Extracts the referenced type name from parent_type (e.g., "Node" from "sequence<Node>")
-        2. Looks up the referenced type in the same classes list
-        3. Adds the object_id to the typedef's depends_on list
-
-        ALL dependencies are tracked (including sequence<T> -> T) for proper ordering.
-        Circular dependencies involving sequence<> are allowed and handled by SCC detection
-        when allow_recursive_structs is enabled.
-
-        :param classes: List of ModelClass objects in the same package
         """
-        # Build a mapping of class names to classes for fast lookup
         name_to_class = {cls.name: cls for cls in classes}
 
         for cls in classes:
@@ -759,14 +775,13 @@ class ModelParser:
                 # Skip primitives
                 continue
 
-            # Look up the referenced type
+            # Look up the referenced type in the same package
             ref_class = name_to_class.get(ref_type_name)
             if not ref_class:
                 # Referenced type not in same package - skip
                 continue
 
             # Add dependency for ordering
-            # Circular dependencies with sequence<> are handled by SCC detection
             if ref_class.object_id not in cls.depends_on:
                 cls.depends_on.append(ref_class.object_id)
                 log.debug(
@@ -918,6 +933,9 @@ class ModelParser:
             attribute.namespace = self.get_namespace(destination.attr_package_id)
             if destination.attr_name == attribute.type:
                 attribute.connector = connection
+                # Update is_collection if the connection specifies it via cardinality
+                if connection.destination.cardinality in ["*", "0..*", "1..*"]:
+                    attribute.is_collection = True
                 break
 
         # There is some validation

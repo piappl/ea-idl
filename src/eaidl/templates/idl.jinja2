@@ -11,7 +11,16 @@ module {{ module.name }} {
 {% for submodule in module.packages %}
 {{ gen_module_declaration(submodule, loop)| trim | indent(4, true) }}
 {% endfor %}
-{% for cls in module.classes %}
+{# Declaration phase: forward declarations must appear before full typedef/enum definitions #}
+{# Pass 1: Output forward declarations (struct/union) in dependency order #}
+{% for cls in module.classes if cls.is_struct or cls.is_union %}
+{% set class_declaration = gen_class_declaration(module, cls) %}
+{% if class_declaration | trim %}
+{{ class_declaration | trim | indent(4, true) }}
+{% endif %}
+{% endfor %}
+{# Pass 2: Output full definitions (enum/typedef) in dependency order #}
+{% for cls in module.classes if cls.is_enum or cls.is_typedef %}
 {% set class_declaration = gen_class_declaration(module, cls) %}
 {% if class_declaration | trim %}
 {{ class_declaration | trim | indent(4, true) }}

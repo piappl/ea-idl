@@ -12,7 +12,7 @@ module {{ module.name }} {
 {% for submodule in module.packages %}
 {{ gen_module_definition(submodule, loop) | trim | indent(4, true) }}
 {% endfor %}
-{# Forward declarations for recursive structs and unions #}
+{# Phase 1: Forward declarations for recursive structs and unions #}
 {% for cls in module.classes %}
 {% if cls.is_struct and cls.needs_forward_declaration %}
     struct {{ cls.name }};
@@ -20,11 +20,22 @@ module {{ module.name }} {
     union {{ cls.name }};
 {% endif %}
 {% endfor %}
-{# Full class definitions #}
+{# Phase 2: Typedefs and enums (after forward decls, before full definitions) #}
 {% for cls in module.classes %}
+{% if cls.is_typedef or cls.is_enum %}
 {% set class_definition_full = gen_class_definition_full(module, cls) %}
 {% if class_definition_full| trim %}
 {{ class_definition_full | trim | indent(4, true) }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{# Phase 3: Full struct/union definitions #}
+{% for cls in module.classes %}
+{% if cls.is_struct or cls.is_union %}
+{% set class_definition_full = gen_class_definition_full(module, cls) %}
+{% if class_definition_full| trim %}
+{{ class_definition_full | trim | indent(4, true) }}
+{% endif %}
 {% endif %}
 {% endfor %}
 }; /* {{module.name}} */
@@ -47,7 +58,7 @@ module {{package.name}} {
 {% for child in package.packages %}
 {{ gen_module_definition(child, loop) | trim | indent(4, true) }}
 {% endfor %}
-{# Forward declarations for recursive structs and unions at top level #}
+{# Phase 1: Forward declarations for recursive structs and unions at top level #}
 {% for cls in package.classes %}
 {% if cls.is_struct and cls.needs_forward_declaration %}
     struct {{ cls.name }};
@@ -55,11 +66,22 @@ module {{package.name}} {
     union {{ cls.name }};
 {% endif %}
 {% endfor %}
-{# Full class definitions #}
+{# Phase 2: Typedefs and enums (after forward decls, before full definitions) #}
 {% for cls in package.classes %}
+{% if cls.is_typedef or cls.is_enum %}
 {% set class_definition_full = gen_class_definition_full(package, cls) %}
 {% if class_definition_full | trim %}
 {{ class_definition_full | trim | indent(4, true) }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{# Phase 3: Full struct/union definitions #}
+{% for cls in package.classes %}
+{% if cls.is_struct or cls.is_union %}
+{% set class_definition_full = gen_class_definition_full(package, cls) %}
+{% if class_definition_full | trim %}
+{{ class_definition_full | trim | indent(4, true) }}
+{% endif %}
 {% endif %}
 {% endfor %}
 }; /* {{package.name}} */
