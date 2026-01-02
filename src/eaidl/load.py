@@ -1036,21 +1036,35 @@ class ModelParser:
         if self.config.stereotypes.idl_typedef in model_class.stereotypes:
             # Check if we have an Association connector for the typedef
             # This is the preferred way to define typedef dependencies in EA
-            try:
-                connections = self.get_object_connections(model_class.object_id, mode="source")
-            except pydantic.ValidationError as e:
-                log.error("Unable to get typedef connections %s %s", model_class.namespace, model_class.name)
-                log.exception(e)
-            for connection in connections:
-                if connection.connector_type == "Association":
-                    # Typedef association points from typedef to the referenced type
-                    ref_type_id = connection.end_object_id
-                    if ref_type_id not in model_class.depends_on:
-                        model_class.depends_on.append(ref_type_id)
-                        log.debug(
-                            f"Added typedef dependency from Association connector: "
-                            f"{model_class.name} -> object_id {ref_type_id}"
-                        )
+            # IMPORTANT: Only add dependencies for direct type references, not sequence<T> or map<K,V>
+            # because those can be forward-declared and don't create ordering constraints
+            is_sequence = model_class.parent_type and "sequence<" in model_class.parent_type
+            is_map = model_class.parent_type and "map<" in model_class.parent_type
+
+            if not is_sequence and not is_map:
+                # Only process Association connectors for direct typedef references
+                try:
+                    connections = self.get_object_connections(model_class.object_id, mode="source")
+                except pydantic.ValidationError as e:
+                    log.error("Unable to get typedef connections %s %s", model_class.namespace, model_class.name)
+                    log.exception(e)
+                else:
+                    for connection in connections:
+                        if connection.connector_type == "Association":
+                            # Typedef association points from typedef to the referenced type
+                            ref_type_id = connection.end_object_id
+                            if ref_type_id not in model_class.depends_on:
+                                model_class.depends_on.append(ref_type_id)
+                                log.debug(
+                                    f"Added typedef dependency from Association connector: "
+                                    f"{model_class.name} -> object_id {ref_type_id} "
+                                    f"(direct reference: {model_class.parent_type})"
+                                )
+            else:
+                log.debug(
+                    f"Skipping Association connector processing for {model_class.name} "
+                    f"(sequence/map type: {model_class.parent_type})"
+                )
 
         if self.config.stereotypes.idl_union in model_class.stereotypes:
             # Check if we have enumeration for that union
