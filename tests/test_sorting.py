@@ -93,7 +93,13 @@ class TestTopologicalSortClasses:
         classes = [c1, c2]
         with pytest.raises(CircularDependencyError) as excinfo:
             topological_sort_classes(classes)
-        assert "Circular dependency detected in classes: ['ClassA', 'ClassB']" in str(excinfo.value)
+        error_msg = str(excinfo.value)
+        # Check that both classes are mentioned in the error
+        assert "Circular dependency detected in classes:" in error_msg
+        assert "ClassA" in error_msg
+        assert "ClassB" in error_msg
+        # Check for the improved formatting
+        assert "Example cycle path:" in error_msg or "All classes in cycle" in error_msg
 
     def test_circular_dependency_with_other_classes(self):
         c1 = create_dummy_class(1, "ClassA", depends_on=[2])
@@ -103,13 +109,17 @@ class TestTopologicalSortClasses:
         classes = [c1, c2, c3, c4]
         with pytest.raises(CircularDependencyError) as excinfo:
             topological_sort_classes(classes)
+        error_msg = str(excinfo.value)
         # The exact message might vary based on which nodes are left in the cycle,
         # but it should indicate a circular dependency and include all involved classes.
         # In this specific case, C3 depends on C1, which is part of the C1-C2 cycle,
         # so C3 also becomes part of the detected cycle.
-        assert "Circular dependency detected in classes: ['ClassA', 'ClassB', 'ClassC']" in str(excinfo.value)
-        # The exact message might vary based on which nodes are left in the cycle,
-        # but it should indicate a circular dependency.
+        assert "Circular dependency detected in classes:" in error_msg
+        assert "ClassA" in error_msg
+        assert "ClassB" in error_msg
+        assert "ClassC" in error_msg
+        # ClassD should be sorted successfully
+        assert "ClassD" not in error_msg or "All classes in cycle (3)" in error_msg
 
     def test_dependencies_outside_list_are_ignored(self):
         c1 = create_dummy_class(1, "ClassA", depends_on=[99])  # 99 is not in the list

@@ -1,4 +1,4 @@
-from typing import List, Dict, Callable, Set
+from typing import List, Dict, Callable, Set, Optional
 from collections import deque
 import logging
 
@@ -11,6 +11,47 @@ class CircularDependencyError(Exception):
     """Exception raised for circular dependencies in topological sort."""
 
     pass
+
+
+def find_cycle_path(
+    start_id: int, id_to_class: Dict[int, ModelClass], remaining_ids: Set[int], max_depth: int = 20
+) -> Optional[List[str]]:
+    """
+    Find a cycle path starting from start_id using DFS.
+
+    Returns a list of class names forming a cycle, or None if no cycle found.
+    """
+    visited = set()
+    path = []
+
+    def dfs(current_id: int, depth: int) -> bool:
+        if depth > max_depth:
+            return False
+
+        if current_id in path:
+            # Found a cycle! Return the cycle portion
+            return True
+
+        if current_id in visited:
+            return False
+
+        visited.add(current_id)
+        path.append(current_id)
+
+        current_cls = id_to_class.get(current_id)
+        if current_cls:
+            for dep_id in current_cls.depends_on:
+                if dep_id in remaining_ids and dep_id in id_to_class:
+                    if dfs(dep_id, depth + 1):
+                        return True
+
+        path.pop()
+        return False
+
+    if dfs(start_id, 0):
+        # Convert IDs to names
+        return [id_to_class[cls_id].name for cls_id in path]
+    return None
 
 
 def topological_sort_classes(classes: List[ModelClass], scc_map: Dict[int, Set[int]] = None) -> List[ModelClass]:
@@ -66,8 +107,61 @@ def topological_sort_classes(classes: List[ModelClass], scc_map: Dict[int, Set[i
         queue = deque(temp_list)
 
     if len(sorted_classes) != len(classes):
-        remaining_nodes = [id_to_class[cls_id].name for cls_id, degree in in_degree.items() if degree > 0]
-        raise CircularDependencyError(f"Circular dependency detected in classes: {remaining_nodes}")
+        # Build detailed error message with dependency information
+        remaining_ids = [cls_id for cls_id, degree in in_degree.items() if degree > 0]
+        remaining_nodes = [id_to_class[cls_id] for cls_id in remaining_ids]
+        remaining_id_set = set(remaining_ids)
+
+        # Try to find an example cycle path
+        cycle_path = None
+        for cls_id in remaining_ids[:5]:  # Check first 5 for performance
+            cycle_path = find_cycle_path(cls_id, id_to_class, remaining_id_set)
+            if cycle_path:
+                break
+
+        # Build dependency graph for remaining nodes
+        error_msg = ["Circular dependency detected in classes:", ""]
+
+        if cycle_path:
+            error_msg.append("Example cycle path:")
+            for i, name in enumerate(cycle_path):
+                cls = next((c for c in remaining_nodes if c.name == name), None)
+                if cls:
+                    typedef_marker = " [typedef]" if cls.is_typedef else ""
+                    struct_marker = " [struct]" if cls.is_struct else ""
+                    union_marker = " [union]" if cls.is_union else ""
+                    type_marker = typedef_marker or struct_marker or union_marker
+                    error_msg.append(f"  {i+1}. {name}{type_marker}")
+            error_msg.append(f"  {len(cycle_path)+1}. {cycle_path[0]} (back to start)")
+            error_msg.append("")
+
+        error_msg.append(f"All classes in cycle ({len(remaining_nodes)}):")
+
+        for cls in remaining_nodes:
+            # Show class info
+            typedef_marker = " [typedef]" if cls.is_typedef else ""
+            struct_marker = " [struct]" if cls.is_struct else ""
+            union_marker = " [union]" if cls.is_union else ""
+            enum_marker = " [enum]" if cls.is_enum else ""
+            type_marker = typedef_marker or struct_marker or union_marker or enum_marker
+
+            # Show dependencies
+            deps_in_cycle = [
+                id_to_class[dep_id].name
+                for dep_id in cls.depends_on
+                if dep_id in id_to_class and dep_id in remaining_id_set
+            ]
+
+            if deps_in_cycle:
+                error_msg.append(f"  - {cls.name}{type_marker} -> {', '.join(deps_in_cycle)}")
+            else:
+                error_msg.append(f"  - {cls.name}{type_marker} (no deps in cycle)")
+
+        error_msg.append("")
+        error_msg.append("Hint: Check for circular references between these types.")
+        error_msg.append("      If using recursive types, ensure they use sequence<> or are in the same SCC.")
+
+        raise CircularDependencyError("\n".join(error_msg))
 
     return sorted_classes
 
