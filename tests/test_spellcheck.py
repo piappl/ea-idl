@@ -391,3 +391,39 @@ def test_identifier_with_numbers_ignored():
     # "3d" and "4x" should be ignored (number+letters pattern)
     # But "test", "variable", "name" should be present
     assert "test" in words or "variable" in words or "name" in words
+
+
+def test_extract_words_with_contractions():
+    """Test that contractions like doesn't, can't are preserved."""
+    text = "doesn't can't won't shouldn't"
+    words = extract_words(text, min_word_length=3)
+    # Contractions should be kept whole
+    assert "doesn't" in words
+    assert "can't" in words
+    assert "won't" in words
+    assert "shouldn't" in words
+    # Should NOT split into "doesn", "can", "won", etc.
+    assert "doesn" not in words
+    assert "won" not in words
+
+
+def test_extract_words_with_possessives():
+    """Test that possessives like Allen's, Allens's are preserved."""
+    text = "Allen's book and Allens's property"
+    words = extract_words(text, min_word_length=3)
+    # Possessives should be kept whole
+    assert "allen's" in words
+    assert "allens's" in words
+    # Regular words should still work
+    assert "book" in words
+    assert "property" in words
+
+
+def test_check_spelling_contractions():
+    """Test that common contractions are not flagged as spelling errors."""
+    text = "It doesn't work and can't be fixed"
+    errors = check_spelling(text)
+    # Contractions are valid English words
+    error_words = [e["word"] for e in errors]
+    assert "doesn't" not in error_words
+    assert "can't" not in error_words

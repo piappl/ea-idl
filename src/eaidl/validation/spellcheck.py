@@ -178,8 +178,9 @@ def extract_words(text: str, min_word_length: int = 3, ignore_patterns: List[str
     for pattern in ignore_patterns:
         text = re.sub(pattern, " ", text)
 
-    # Split into words (alphanumeric + underscore/hyphen)
-    words = re.findall(r"[a-zA-Z][a-zA-Z0-9_-]*", text)
+    # Split into words (alphanumeric + underscore/hyphen/apostrophe)
+    # Apostrophes are included to preserve contractions (don't, can't) and possessives (Allen's)
+    words = re.findall(r"[a-zA-Z][a-zA-Z0-9_'-]*", text)
 
     # Filter and process words
     filtered = []
@@ -198,6 +199,12 @@ def extract_words(text: str, min_word_length: int = 3, ignore_patterns: List[str
 
         # Skip if looks like number with letters (e.g., "3d", "4x")
         if re.match(r"^\d+[a-z]+$", word.lower()):
+            continue
+
+        # If word contains apostrophe, it's a natural language word (contraction/possessive)
+        # Don't split it - add as-is
+        if "'" in word:
+            filtered.append(word.lower())
             continue
 
         # Handle camelCase/PascalCase - split into parts
