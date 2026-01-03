@@ -41,9 +41,17 @@ pre-commit install
 pytest
 ```
 
-## run
+## Quick Start
 
-### with installed
+### Running Tests
+
+```bash
+uv run pytest                          # All tests
+uv run pytest tests/test_diagram.py -v  # Specific test file
+uv run pytest --cov=src/eaidl           # With coverage
+```
+
+### Running the Tool
 
 There are sample configuration files provided in [config](./config/).
 

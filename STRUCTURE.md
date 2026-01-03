@@ -18,22 +18,41 @@ EA Database (.qea)
 ## Directory Structure
 ```
 src/eaidl/
-├── cli.py              - Command-line interface (run, change, diagram, packages)
-├── load.py             - Database loading & parsing (ModelParser class)
-├── model.py            - Pydantic data models (ModelClass, ModelPackage, etc.)
-├── generate.py         - IDL generation orchestration
-├── config.py           - Configuration schema (YAML/JSON)
-├── transforms.py       - Model transformations & filtering
-├── sorting.py          - Topological sorting (dependency resolution)
-├── utils.py            - Utility functions
-├── validation/         - Validation framework
-│   ├── base.py        - Validator decorator & reserved names
-│   ├── struct.py      - Class-level validations
-│   ├── attribute.py   - Attribute-level validations
-│   └── package.py     - Package-level validations
-└── templates/          - Jinja2 templates for IDL output
-    ├── idl.jinja2     - Main template
-    └── idl/           - Sub-templates (struct, enum, union, etc.)
+├── cli.py                      - Command-line interface (run, change, diagram, packages, docs)
+├── load.py                     - Database loading & parsing (ModelParser class)
+├── model.py                    - Pydantic data models (ModelClass, ModelPackage, etc.)
+├── generate.py                 - IDL generation orchestration
+├── config.py                   - Configuration schema (YAML/JSON)
+├── transforms.py               - Model transformations & filtering
+├── sorting.py                  - Topological sorting (dependency resolution)
+├── recursion.py                - Cycle detection and forward declarations
+├── utils.py                    - Utility functions
+├── diagram.py                  - PlantUML diagram generation
+├── html_export.py              - HTML documentation generator
+├── html_utils.py               - HTML formatting utilities
+├── mermaid_diagram.py          - Mermaid class diagram generator
+├── mermaid_utils.py            - Mermaid syntax utilities
+├── link_utils.py               - Link resolution for HTML cross-references
+├── ea_diagram_converter.py     - EA diagram to Mermaid converter
+├── json_schema_importer.py     - JSON Schema to EA model importer
+├── change.py                   - Database modification utilities
+├── validation/                 - Validation framework
+│   ├── base.py                - Validator decorator & reserved names
+│   ├── struct.py              - Class-level validations
+│   ├── attribute.py           - Attribute-level validations
+│   ├── package.py             - Package-level validations
+│   └── spellcheck.py          - Spellchecking for notes and identifiers
+└── templates/                  - Jinja2 templates
+    ├── idl/                   - IDL output templates
+    │   ├── idl.jinja2        - Main template
+    │   └── gen_*.jinja2      - Sub-templates (struct, enum, union, etc.)
+    └── html/                  - HTML documentation templates
+        ├── base.jinja2       - Base layout with navigation
+        ├── index.jinja2      - Landing page
+        ├── package.jinja2    - Package detail page
+        ├── class.jinja2      - Class detail page
+        ├── diagram.jinja2    - Interactive diagram page
+        └── assets/           - CSS/JS (Bootstrap, Mermaid, Fuse.js)
 ```
 
 ## Core Components
@@ -174,11 +193,60 @@ Key settings:
 2. **eaidl change**: Modify EA database
 3. **eaidl diagram**: Generate PlantUML diagrams
 4. **eaidl packages**: List packages (text/JSON/CSV)
+5. **eaidl docs**: Generate HTML documentation
 
-## Key Files to Know
+## HTML Documentation Export
+
+### Architecture
+Static site generator creating multi-page HTML with Bootstrap 5 UI, Mermaid.js diagrams, and Fuse.js search.
+
+### Key Modules
+
+**html_export.py** - Main orchestration
+- `export_html()` - Entry point
+- `generate_index_page()` - Landing page with statistics
+- `generate_package_pages()` - Package pages with class tables
+- `generate_class_pages()` - Class detail pages
+- `generate_search_index()` - JSON search index
+
+**mermaid_diagram.py** - Auto-generated class diagrams
+- `MermaidClassDiagramGenerator` - Generates diagram syntax
+- Shows classes, attributes, relationships
+- Adds click handlers for navigation
+
+**ea_diagram_converter.py** - EA-authored diagrams
+- Converts diagrams from `t_diagram`, `t_diagramobjects`, `t_diagramlinks`
+- Supports class and sequence diagrams
+- Preserves diagram author's intent (shows only objects on diagram)
+
+**link_utils.py** - Cross-reference resolution
+- `get_relative_path()` - Calculate relative paths between namespaces
+- `generate_class_link()` - Generate class page links
+- `resolve_type_reference()` - Resolve type to clickable link
+
+### Templates
+
+Location: `templates/html/`
+
+- **base.jinja2** - Layout, navigation, search modal, common macros
+- **index.jinja2** - Landing page
+- **package.jinja2** - Package detail + class table
+- **class.jinja2** - Class detail + attributes + relationships
+- **diagram.jinja2** - Interactive diagram with Bootstrap tabs
+
+Assets (Bootstrap 5, Mermaid 11, Fuse.js 7) in `templates/html/assets/`. Update via `scripts/download_assets.py`.
+
+### Usage
+
+```bash
+eaidl docs --config config.yaml --output ./docs
+```
+
+See README.md for details.
+
+## Key Files
 - `src/eaidl/load.py` - Database reading and model construction
 - `src/eaidl/model.py` - Data model definitions
 - `src/eaidl/transforms.py` - Model manipulation and filtering
-- `src/eaidl/templates/idl/gen_struct.jinja2` - Struct output template
-- `src/eaidl/validation/attribute.py` - Attribute-level validation
+- `src/eaidl/validation/` - Validation framework
 - `tests/data/nafv4.qea` - Test database file

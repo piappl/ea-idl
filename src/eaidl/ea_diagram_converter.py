@@ -167,20 +167,16 @@ class EADiagramToMermaidConverter:
         participant_ids = [obj.object_id for obj in self.diagram.objects]
         sequence_connectors = self._load_sequence_connectors(participant_ids)
 
-        # Separate messages into those inside fragments and those outside
-        # Simple heuristic: if there are fragments, put the last N messages inside them
-        # TODO: Improve this by analyzing EA's fragment position/sequence data
-        messages_before_fragment = []
-        messages_in_fragment = []
-
-        if self.diagram.fragments and sequence_connectors:
-            # Put last message(s) inside the fragment (simple heuristic)
-            # Ideally we'd analyze position data or explicit relationships
-            num_in_fragment = len(self.diagram.fragments)  # One message per fragment for now
-            messages_before_fragment = sequence_connectors[:-num_in_fragment]
-            messages_in_fragment = sequence_connectors[-num_in_fragment:]
-        else:
-            messages_before_fragment = sequence_connectors
+        # Determine which messages belong inside fragments
+        # NOTE: EA doesn't provide direct fragment-message linkage in the database.
+        # Proper solution would require:
+        # 1. Parse fragment position data (RectTop/RectBottom from t_diagramobjects)
+        # 2. Parse message geometry from t_diagramlinks (if available)
+        # 3. Perform spatial analysis to determine containment
+        # Current heuristic: place last N messages in fragments based on SeqNo
+        messages_before_fragment, messages_in_fragment = self._partition_messages_by_fragments(
+            sequence_connectors, self.diagram.fragments
+        )
 
         # Add messages before fragments
         for conn in messages_before_fragment:
@@ -225,6 +221,21 @@ class EADiagramToMermaidConverter:
                     closest = (self._sanitize_name(cls.name), diag_obj.rect_left)
 
         return closest
+
+    def _partition_messages_by_fragments(
+        self, connectors: List[ModelConnection], fragments: List
+    ) -> tuple[List[ModelConnection], List[ModelConnection]]:
+        """Partition messages into those before and inside fragments.
+
+        Uses simple heuristic: last N messages go inside N fragments.
+        See NOTE in _convert_sequence_diagram for limitations.
+        """
+        if not fragments or not connectors:
+            return connectors, []
+
+        # Simple heuristic: put last message(s) inside the fragment
+        num_in_fragment = len(fragments)
+        return connectors[:-num_in_fragment], connectors[-num_in_fragment:]
 
     def _sort_connectors_by_seqno(self, connectors: List[ModelConnection]) -> List[ModelConnection]:
         """Sort connectors by SeqNo field from database."""

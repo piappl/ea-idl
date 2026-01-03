@@ -838,6 +838,10 @@ class ModelParser:
         parent_class: ModelClass,
         t_attribute,
     ) -> ModelAttribute:
+        """Parse EA attribute into ModelAttribute.
+
+        Orchestrates parsing of attribute metadata, multiplicity, defaults, and associations.
+        """
         attribute = ModelAttribute(
             name=t_attribute.attr_name,
             alias=t_attribute.attr_name,
@@ -846,101 +850,93 @@ class ModelParser:
             attribute_id=t_attribute.attr_object_id,
             parent=parent_class,
         )
-        # Note that we cannot fill namespace here - this is namespace for class that
-        # has this attribute, we need to fill with namespace for type of this attribute
-        if self.config.prefix_attributes_reserved is not None:
-            if attribute.name in RESERVED_NAMES:
-                attribute.name = self.config.prefix_attributes_reserved + attribute.name
+
+        # Handle reserved names
+        if self.config.prefix_attributes_reserved and attribute.name in RESERVED_NAMES:
+            attribute.name = self.config.prefix_attributes_reserved + attribute.name
 
         attribute.namespace = []
         attribute.stereotypes = self.get_stereotypes(attribute.guid)
         attribute.is_optional = "optional" in attribute.stereotypes
-        # if t_attribute.attr_lowerbound == "0":
-        #     attribute.is_optional = True
-        # else:
-        #     attribute.is_optional = False
-
-        attribute.lower_bound = t_attribute.attr_lowerbound
-        attribute.upper_bound = t_attribute.attr_upperbound
-        attribute.is_collection = to_bool(t_attribute.attr_iscollection)
-        if attribute.is_collection:
-            if attribute.lower_bound is not None and attribute.lower_bound != "*":
-                attribute.lower_bound_number = int(attribute.lower_bound)
-                if attribute.lower_bound_number != 0:
-                    # When == 0 it will just be @optional
-                    attribute.properties[self.config.min_items] = ModelAnnotation(
-                        value=attribute.lower_bound_number, value_type="int"
-                    )
-            if attribute.upper_bound is not None and attribute.upper_bound != "*":
-                attribute.upper_bound_number = int(attribute.upper_bound)
-                attribute.properties[self.config.max_items] = ModelAnnotation(
-                    value=attribute.upper_bound_number, value_type="int"
-                )
-
         attribute.is_ordered = to_bool(t_attribute.attr_isordered)
         attribute.is_static = to_bool(t_attribute.attr_isstatic)
         attribute.notes = t_attribute.attr_notes
-        if t_attribute.attr_default is not None:
-            # @default Annotation
-            #           This annotation allows specifying a default value for the annotated element.
-            #
-            if t_attribute.attr_type in ["str"]:
-                # We allow for empty strings
-                attribute.properties["default"] = ModelAnnotation(
-                    value=t_attribute.attr_default, value_type=t_attribute.attr_type
-                )
-            if t_attribute.attr_type in ["int", "float"] and t_attribute.attr_default != "":
-                attribute.properties["default"] = ModelAnnotation(
-                    value=t_attribute.attr_default, value_type=t_attribute.attr_type
-                )
-            elif t_attribute.attr_type is not None and t_attribute.attr_default != "":
-                attribute.properties["default"] = ModelAnnotation(value=t_attribute.attr_default, value_type="object")
-            else:
-                if t_attribute.attr_default == "":
-                    # We have not type, and attribute is empty string. Type should be set to string
-                    # in that case, but its hard to tell - maybe there is just no default value, so
-                    # we don't report error here
-                    pass
-                else:
-                    log.error(
-                        "What is type here? %s %s %s", attribute.name, t_attribute.attr_type, t_attribute.attr_default
-                    )
 
-                # We don't set anything here
-                # attribute.properties["value"] = ModelAnnotation(value=None, value_type="none")
+        self._parse_attribute_multiplicity(attribute, t_attribute)
+        self._parse_attribute_default_value(attribute, t_attribute)
 
-        if attribute.is_optional is True:
-            # This is optional when present
+        if attribute.is_optional:
             attribute.properties["optional"] = self.create_annotation(None)
+
+        self._parse_attribute_association(attribute, parent_class)
+
+        validation.base.run("attribute", self.config, attribute=attribute, cls=parent_class)
+        return attribute
+
+    def _parse_attribute_multiplicity(self, attribute: ModelAttribute, t_attribute) -> None:
+        """Parse attribute multiplicity (bounds and collection flags)."""
+        attribute.lower_bound = t_attribute.attr_lowerbound
+        attribute.upper_bound = t_attribute.attr_upperbound
+        attribute.is_collection = to_bool(t_attribute.attr_iscollection)
+
+        if not attribute.is_collection:
+            return
+
+        if attribute.lower_bound and attribute.lower_bound != "*":
+            attribute.lower_bound_number = int(attribute.lower_bound)
+            if attribute.lower_bound_number != 0:
+                attribute.properties[self.config.min_items] = ModelAnnotation(
+                    value=attribute.lower_bound_number, value_type="int"
+                )
+
+        if attribute.upper_bound and attribute.upper_bound != "*":
+            attribute.upper_bound_number = int(attribute.upper_bound)
+            attribute.properties[self.config.max_items] = ModelAnnotation(
+                value=attribute.upper_bound_number, value_type="int"
+            )
+
+    def _parse_attribute_default_value(self, attribute: ModelAttribute, t_attribute) -> None:
+        """Parse attribute default value."""
+        if t_attribute.attr_default is None:
+            return
+
+        attr_type = t_attribute.attr_type
+        attr_default = t_attribute.attr_default
+
+        if attr_type == "str":
+            attribute.properties["default"] = ModelAnnotation(value=attr_default, value_type=attr_type)
+        elif attr_type in ["int", "float"] and attr_default:
+            attribute.properties["default"] = ModelAnnotation(value=attr_default, value_type=attr_type)
+        elif attr_type and attr_default:
+            attribute.properties["default"] = ModelAnnotation(value=attr_default, value_type="object")
+        elif attr_default:  # No type but has default
+            log.error("What is type here? %s %s %s", attribute.name, attr_type, attr_default)
+
+    def _parse_attribute_association(self, attribute: ModelAttribute, parent_class: ModelClass) -> None:
+        """Parse attribute association connectors."""
         try:
             connections = self.get_object_connections(parent_class.object_id, mode="source")
         except pydantic.ValidationError:
             log.error(attribute.model_dump_json(indent=4))
+            return
+
         for connection in connections:
             if connection.connector_type != "Association":
                 continue
             if connection.destination.role != attribute.alias:
-                # This ignores general assoctiations between classes.
                 continue
-            # We can gent object from database, but we probably prefer to find it in our structure
-            # right now it might not be there yet... but still we can find right connection
-            # and have to look up actual class later.
+
             destination = self.get_object(connection.end_object_id)
-            # We create dependency, so we can sort classes later
             if connection.end_object_id not in parent_class.depends_on:
                 parent_class.depends_on.append(connection.end_object_id)
-            # We are really interested in namespace here. So we need to go up.
+
             attribute.namespace = self.get_namespace(destination.attr_package_id)
             if destination.attr_name == attribute.type:
                 attribute.connector = connection
-                # Update is_collection if the connection specifies it via cardinality
+                # Update is_collection if connector specifies it via cardinality
                 if connection.destination.cardinality in ["*", "0..*", "1..*"]:
                     attribute.is_collection = True
                 break
-
-        # There is some validation
-        validation.base.run("attribute", self.config, attribute=attribute, cls=parent_class)
-        return attribute
 
     def get_stereotypes(self, guid: str) -> List[str]:
         stereotypes = []
@@ -1016,6 +1012,10 @@ class ModelParser:
             union_attr.union_namespace = model_enum.namespace
 
     def class_parse(self, parent_package: Optional[ModelPackage], t_object) -> ModelClass:
+        """Parse EA object into ModelClass.
+
+        Orchestrates parsing of class metadata, attributes, dependencies, and properties.
+        """
         model_class = ModelClass(
             name=t_object.attr_name,
             object_id=t_object.attr_object_id,
@@ -1024,22 +1024,40 @@ class ModelParser:
         if parent_package is not None:
             model_class.namespace = parent_package.namespace
 
-        model_class.stereotypes = self.get_stereotypes(t_object.attr_ea_guid)
+        self._parse_class_basic_metadata(model_class, t_object)
+        self._parse_generalization(model_class)
+        self._parse_class_attributes(parent_package, model_class)
+        self._parse_typedef_dependencies(model_class)
+        self._parse_union_dependencies(model_class)
+        self._parse_class_properties(model_class, t_object)
 
+        model_class.linked_notes = self.get_linked_notes(model_class.object_id)
+        self._set_class_type_flags(model_class)
+
+        validation.base.run("struct", self.config, cls=model_class)
+        return model_class
+
+    def _parse_class_basic_metadata(self, model_class: ModelClass, t_object) -> None:
+        """Parse basic class metadata (stereotypes, abstract flag, parent type, notes)."""
+        model_class.stereotypes = self.get_stereotypes(t_object.attr_ea_guid)
         model_class.is_abstract = to_bool(t_object.attr_abstract)
         if t_object.attr_genlinks is not None:
-            # We set parent for typedefs. Handle both "Parent=" and "Implements=" forms.
             model_class.parent_type = (
                 m.group(1)
                 if (m := re.search(r"(?:Parent|Implements)=(.*?);", t_object.attr_genlinks)) is not None
                 else None
             )
         model_class.notes = t_object.attr_note
+
+    def _parse_generalization(self, model_class: ModelClass) -> None:
+        """Parse generalization (inheritance) links."""
         try:
             connections = self.get_object_connections(model_class.object_id, mode="source")
         except pydantic.ValidationError as e:
             log.error("Unable to create union connections %s %s", model_class.namespace, model_class.name)
             log.exception(e)
+            return
+
         for connection in connections:
             if connection.connector_type == "Generalization":
                 destination = self.get_object(connection.end_object_id)
@@ -1048,7 +1066,8 @@ class ModelParser:
                 model_class.depends_on.append(connection.end_object_id)
                 model_class.generalization = namespace
 
-        # Add attributes
+    def _parse_class_attributes(self, parent_package: Optional[ModelPackage], model_class: ModelClass) -> None:
+        """Parse class attributes."""
         TAttribute = base.classes.t_attribute
         t_attributes = (
             self.session.query(TAttribute)
@@ -1059,47 +1078,53 @@ class ModelParser:
         for t_attribute in t_attributes:
             model_class.attributes.append(self.attribute_parse(parent_package, model_class, t_attribute))
 
-        if self.config.stereotypes.idl_typedef in model_class.stereotypes:
-            # Check if we have an Association connector for the typedef
-            # This is the preferred way to define typedef dependencies in EA
-            # ALL dependencies are tracked for proper ordering; circular dependencies
-            # with sequence<> are handled by SCC detection
-            try:
-                connections = self.get_object_connections(model_class.object_id, mode="source")
-            except pydantic.ValidationError as e:
-                log.error("Unable to get typedef connections %s %s", model_class.namespace, model_class.name)
-                log.exception(e)
-            else:
-                for connection in connections:
-                    if connection.connector_type == "Association":
-                        # Typedef association points from typedef to the referenced type
-                        ref_type_id = connection.end_object_id
-                        if ref_type_id not in model_class.depends_on:
-                            model_class.depends_on.append(ref_type_id)
-                            log.debug(
-                                f"Added typedef dependency from Association connector: "
-                                f"{model_class.name} -> object_id {ref_type_id} "
-                                f"(parent_type: {model_class.parent_type})"
-                            )
+    def _parse_typedef_dependencies(self, model_class: ModelClass) -> None:
+        """Parse typedef-specific dependencies (Association connectors)."""
+        if self.config.stereotypes.idl_typedef not in model_class.stereotypes:
+            return
 
-        if self.config.stereotypes.idl_union in model_class.stereotypes:
-            # Check if we have enumeration for that union
-            try:
-                connections = self.get_object_connections(model_class.object_id)
-            except pydantic.ValidationError as e:
-                log.error("Unable to create union connections %s %s", model_class.namespace, model_class.name)
-                log.exception(e)
-            for connection in connections:
-                if connection.stereotype == "union":
-                    # Need to add dependency, we don't care for direction here
-                    if model_class.object_id != connection.end_object_id:
-                        enum_id = connection.end_object_id
-                    if model_class.object_id != connection.start_object_id:
-                        enum_id = connection.start_object_id
-                    model_class.depends_on.append(enum_id)
-                    # We want to do this later, when our tree is build
-                    # self.check_union_and_enum(model_class, self.class_parse(None, self.get_object(enum_id)))
+        try:
+            connections = self.get_object_connections(model_class.object_id, mode="source")
+        except pydantic.ValidationError as e:
+            log.error("Unable to get typedef connections %s %s", model_class.namespace, model_class.name)
+            log.exception(e)
+            return
 
+        for connection in connections:
+            if connection.connector_type == "Association":
+                ref_type_id = connection.end_object_id
+                if ref_type_id not in model_class.depends_on:
+                    model_class.depends_on.append(ref_type_id)
+                    log.debug(
+                        f"Added typedef dependency from Association connector: "
+                        f"{model_class.name} -> object_id {ref_type_id} "
+                        f"(parent_type: {model_class.parent_type})"
+                    )
+
+    def _parse_union_dependencies(self, model_class: ModelClass) -> None:
+        """Parse union-specific dependencies (enum connections)."""
+        if self.config.stereotypes.idl_union not in model_class.stereotypes:
+            return
+
+        try:
+            connections = self.get_object_connections(model_class.object_id)
+        except pydantic.ValidationError as e:
+            log.error("Unable to create union connections %s %s", model_class.namespace, model_class.name)
+            log.exception(e)
+            return
+
+        for connection in connections:
+            if connection.stereotype == "union":
+                enum_id = (
+                    connection.end_object_id
+                    if model_class.object_id != connection.end_object_id
+                    else connection.start_object_id
+                )
+                model_class.depends_on.append(enum_id)
+
+    def _parse_class_properties(self, model_class: ModelClass, t_object) -> None:
+        """Parse class properties and annotations from EA database."""
+        # Parse properties from t_objectproperties
         TObjectProperties = base.classes.t_objectproperties
         t_properties = (
             self.session.query(TObjectProperties)
@@ -1109,70 +1134,57 @@ class ModelParser:
         for t_property in t_properties:
             if t_property.attr_property in self.config.annotations.keys():
                 prop_config = self.config.annotations[t_property.attr_property]
+                val = None
                 for item in [int, float, str]:
                     val = try_cast(t_property.attr_value, item)
                     if val is not None:
                         break
+
                 if prop_config.idl_default:
-                    if prop_config.idl_name is not None:
-                        model_class.properties[prop_config.idl_name] = self.create_annotation(val)
-                    else:
-                        model_class.properties[t_property.attr_property] = self.create_annotation(val)
+                    prop_name = prop_config.idl_name if prop_config.idl_name else t_property.attr_property
+                    model_class.properties[prop_name] = self.create_annotation(val)
                 else:
                     model_class.properties[f"ext::{t_property.attr_property}"] = self.create_annotation(val)
-            else:
-                if t_property.attr_property not in ["URI", "isEncapsulated"]:
-                    # Those are set by EA on bunch of things, so lets skip the warning
-                    log.warning("Property %s is not configured", t_property.attr_property)
+            elif t_property.attr_property not in ["URI", "isEncapsulated"]:
+                log.warning("Property %s is not configured", t_property.attr_property)
+
+        # Parse annotations from stereotypes
         for stereotype in model_class.stereotypes:
             if stereotype in self.config.annotations_from_stereotypes and stereotype in self.config.annotations.keys():
                 prop_config = self.config.annotations[stereotype]
-                val = None
                 if prop_config.idl_default:
-                    if prop_config.idl_name is not None:
-                        model_class.properties[stereotype] = self.create_annotation(val)
-                    else:
-                        model_class.properties[stereotype] = self.create_annotation(val)
+                    prop_name = prop_config.idl_name if prop_config.idl_name else stereotype
+                    model_class.properties[prop_name] = self.create_annotation(None)
                 else:
-                    model_class.properties[f"ext::{stereotype}"] = self.create_annotation(val)
+                    model_class.properties[f"ext::{stereotype}"] = self.create_annotation(None)
+
+        # Parse custom properties
         for prop in self.get_custom_properties(t_object.attr_ea_guid):
             if prop.name in self.config.annotations.keys():
                 prop_config = self.config.annotations[prop.name]
-                value = prop.value
-                if prop.type == "Boolean":
-                    # This does something silly with isFinalSpecialization
-                    # (as bool(-1) is True)
-                    value = to_bool(prop.value)
-                if value is False:
-                    pass
-                elif prop_config.idl_default:
-                    if prop_config.idl_name is not None:
-                        model_class.properties[prop_config.idl_name] = self.create_annotation(val)
+                value = to_bool(prop.value) if prop.type == "Boolean" else prop.value
+
+                if value is not False:
+                    if prop_config.idl_default:
+                        prop_name = prop_config.idl_name if prop_config.idl_name else prop.name
+                        model_class.properties[prop_name] = self.create_annotation(value)
                     else:
-                        model_class.properties[t_property.attr_property] = self.create_annotation(val)
-                else:
-                    model_class.properties[f"ext::{t_property.attr_property}"] = self.create_annotation(value)
-            else:
-                if prop.name not in []:
-                    # Those are set by EA on bunch of things, so lets skip the warning
-                    log.warning("Custom property %s is not configured", prop.name)
+                        model_class.properties[f"ext::{prop.name}"] = self.create_annotation(value)
+            elif prop.name not in []:
+                log.warning("Custom property %s is not configured", prop.name)
 
-        # Load linked notes for this class
-        model_class.linked_notes = self.get_linked_notes(model_class.object_id)
+    def _set_class_type_flags(self, model_class: ModelClass) -> None:
+        """Set type flags (is_union, is_struct, etc.) based on stereotypes."""
+        if self.config.stereotypes.main_class not in model_class.stereotypes:
+            return
 
-        # Check if we have one of proper stereotypes on all P7
-        if self.config.stereotypes.main_class in model_class.stereotypes:
-            if self.config.stereotypes.idl_union in model_class.stereotypes:
-                model_class.is_union = True
-            if self.config.stereotypes.idl_struct in model_class.stereotypes:
-                model_class.is_struct = True
-            if self.config.stereotypes.idl_map in model_class.stereotypes:
-                model_class.is_map = True
-            if self.config.stereotypes.idl_enum in model_class.stereotypes:
-                model_class.is_enum = True
-            if self.config.stereotypes.idl_typedef in model_class.stereotypes:
-                model_class.is_typedef = True
-
-        # There is some validation
-        validation.base.run("struct", self.config, cls=model_class)
-        return model_class
+        if self.config.stereotypes.idl_union in model_class.stereotypes:
+            model_class.is_union = True
+        if self.config.stereotypes.idl_struct in model_class.stereotypes:
+            model_class.is_struct = True
+        if self.config.stereotypes.idl_map in model_class.stereotypes:
+            model_class.is_map = True
+        if self.config.stereotypes.idl_enum in model_class.stereotypes:
+            model_class.is_enum = True
+        if self.config.stereotypes.idl_typedef in model_class.stereotypes:
+            model_class.is_typedef = True
