@@ -279,13 +279,34 @@ def generate_package_diagram(
     """
     Generate Mermaid class diagram for a package.
 
-    Convenience function that creates a MermaidClassDiagramGenerator
-    and generates the diagram.
+    .. deprecated::
+        This function is deprecated and will be removed in a future version.
+        Use the new builder → renderer pipeline instead:
+
+        .. code-block:: python
+
+            from eaidl.diagram_builder import ClassDiagramBuilder
+            from eaidl.renderers.factory import get_renderer
+
+            builder = ClassDiagramBuilder(package, config, all_packages)
+            desc = builder.build()
+            renderer = get_renderer(config)
+            output = renderer.render_class_diagram(desc)
+            diagram_text = output.content
 
     :param package: Package to diagram
     :param config: Configuration
     :param all_packages: All packages in the model (for inheritance lookups)
     :return: Mermaid diagram syntax
     """
+    import warnings
+
+    warnings.warn(
+        "generate_package_diagram() is deprecated. Use ClassDiagramBuilder with "
+        "get_renderer() instead. See the function docstring for migration example.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
     generator = MermaidClassDiagramGenerator(package, config, all_packages)
     return generator.generate_mermaid()

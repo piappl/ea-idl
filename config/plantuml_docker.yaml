@@ -1,0 +1,37 @@
+# Example configuration for PlantUML with Docker server
+#
+# This configuration shows how to use PlantUML with a Docker container,
+# which is the easiest way to run a PlantUML server without Java installation.
+#
+# Docker setup (one-time):
+#   docker run -d --name plantuml -p 10005:8080 plantuml/plantuml-server:jetty
+#
+# Docker commands:
+#   docker start plantuml   # Start server
+#   docker stop plantuml    # Stop server
+#   docker logs plantuml    # View logs
+#
+# Test server is running:
+#   curl http://localhost:10005/
+
+database_url: sqlite+pysqlite:///tests/data/nafv4.qea
+root_packages: ["{753A4DFC-7876-4b00-BB5A-6274AD3817C3}"]
+
+diagrams:
+  renderer: plantuml
+  plantuml_server_url: http://localhost:10005/
+  plantuml_timeout: 30
+  max_attributes_displayed: 15
+
+# Usage:
+#   # Start Docker container (first time):
+#   docker run -d --name plantuml -p 10005:8080 plantuml/plantuml-server:jetty
+#
+#   # Generate documentation:
+#   uv run eaidl docs --config config/plantuml_docker.yaml --output ./docs
+#
+#   # View in browser:
+#   firefox docs/index.html
+#
+# For CI/CD:
+#   Add the docker run command to your CI pipeline before running eaidl docs

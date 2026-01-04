@@ -1,0 +1,44 @@
+# Example configuration for HTML documentation with PlantUML diagrams
+#
+# PlantUML generates high-quality SVG diagrams server-side with full support
+# for stereotypes (<<struct>>, <<enum>>, <<union>>, <<typedef>>), which
+# Mermaid v11 cannot display.
+#
+# Use this configuration when:
+#   - You need stereotypes visible in diagrams
+#   - You prefer server-side rendering (consistent across browsers)
+#   - You can run a PlantUML server
+#
+# PREREQUISITE: PlantUML server must be running
+# Quick start with Docker:
+#   docker run -d -p 10005:8080 plantuml/plantuml-server:jetty
+
+database_url: sqlite+pysqlite:///tests/data/nafv4.qea
+root_packages:
+  - "{753A4DFC-7876-4b00-BB5A-6274AD3817C3}" # p7
+  - "{E39189FC-1B6D-4472-8701-39724501EBE3}" # l7
+  - "{1EC0B224-2C43-464f-A209-99F2FA2E0971}" # p2
+  - "{2C45CBAF-87B9-46b2-B01C-8A04E5964CD4}" # p6
+
+# Diagram configuration
+diagrams:
+  # Use PlantUML renderer instead of default Mermaid
+  renderer: plantuml
+
+  # PlantUML server URL (required when renderer is "plantuml")
+  plantuml_server_url: http://localhost:10005/
+
+  # Request timeout in seconds (increase for large/complex diagrams)
+  plantuml_timeout: 30
+
+  # Maximum attributes to display per class
+  max_attributes_displayed: 15
+
+# Generate HTML documentation:
+#   # 1. Start PlantUML server (if not already running):
+#   docker run -d -p 10005:8080 plantuml/plantuml-server:jetty
+#
+#   # 2. Generate docs:
+#   uv run eaidl docs --config config/plantuml_diagrams.yaml --output ./docs
+#
+#   # 3. Open docs/index.html in browser to see diagrams with stereotypes!

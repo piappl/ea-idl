@@ -16,8 +16,6 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 
 from eaidl.model import ModelPackage
 from eaidl.config import Configuration
-from eaidl.mermaid_diagram import generate_package_diagram
-from eaidl.ea_diagram_converter import EADiagramToMermaidConverter
 from eaidl.link_utils import (
     generate_class_link,
     generate_package_link,
@@ -205,27 +203,66 @@ def generate_package_pages(
 
         # Generate diagram page with both auto-generated and EA diagrams
         if package.classes or package.diagrams:
-            # Generate auto-generated Mermaid diagram
-            auto_mermaid_code = None
-            if package.classes:
-                auto_mermaid_code = generate_package_diagram(package, config, packages)
+            # Use new builder → renderer pipeline
+            from eaidl.diagram_builder import ClassDiagramBuilder
+            from eaidl.renderers.factory import get_renderer
 
-            # Convert EA diagrams to Mermaid
+            renderer = get_renderer(config)
+
+            # Generate auto-generated diagram
+            auto_diagram_output = None
+            auto_diagram_content = None
+            auto_diagram_type = None
+            if package.classes:
+                try:
+                    builder = ClassDiagramBuilder(package, config, packages)
+                    diagram_desc = builder.build()
+                    auto_diagram_output = renderer.render_class_diagram(diagram_desc)
+                    auto_diagram_content = auto_diagram_output.content
+                    auto_diagram_type = auto_diagram_output.output_type.value
+                except Exception as e:
+                    # Re-raise PlantUML server errors to fail the build
+                    from eaidl.renderers import PlantUMLServerError
+
+                    if isinstance(e, PlantUMLServerError):
+                        raise
+                    log.error(f"Failed to generate auto diagram for package '{package.name}': {e}")
+                    # For Mermaid and other errors, this is non-fatal
+
+            # Convert EA diagrams using builder → renderer pipeline
             ea_diagrams = []
             for ea_diagram in package.diagrams:
                 try:
-                    converter = EADiagramToMermaidConverter(ea_diagram, packages, config, session)
-                    ea_mermaid = converter.convert()
+                    # Use new builder architecture
+                    from eaidl.ea_diagram_builder import EADiagramBuilder
+
+                    builder = EADiagramBuilder(ea_diagram, packages, config, session)
+                    diagram_desc = builder.build()
+
+                    # Render with configured renderer (Mermaid or PlantUML)
+                    if hasattr(diagram_desc, "participants"):
+                        # Sequence diagram
+                        ea_output = renderer.render_sequence_diagram(diagram_desc)
+                    else:
+                        # Class diagram
+                        ea_output = renderer.render_class_diagram(diagram_desc)
+
                     ea_diagrams.append(
                         {
                             "name": ea_diagram.name,
                             "type": ea_diagram.diagram_type,
                             "notes": ea_diagram.notes,
                             "author": ea_diagram.author,
-                            "mermaid_code": ea_mermaid,
+                            "diagram_content": ea_output.content,
+                            "diagram_type": ea_output.output_type.value,  # "text" or "svg"
                         }
                     )
                 except Exception as e:
+                    # Re-raise PlantUML server errors to fail the build
+                    from eaidl.renderers import PlantUMLServerError
+
+                    if isinstance(e, PlantUMLServerError):
+                        raise
                     log.warning(
                         f"Failed to convert EA diagram '{ea_diagram.name}' " f"in package '{package.name}': {e}"
                     )
@@ -234,7 +271,8 @@ def generate_package_pages(
             # Render diagram page with tabs
             html_diagram = template_diagram.render(
                 package=package,
-                auto_mermaid_code=auto_mermaid_code,
+                auto_diagram_content=auto_diagram_content,
+                auto_diagram_type=auto_diagram_type,
                 ea_diagrams=ea_diagrams,
                 current_namespace=namespace_path,
                 index_link=index_rel_link,
