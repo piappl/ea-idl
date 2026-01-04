@@ -148,11 +148,11 @@ def linked_notes_spelling(config: Configuration, cls: ModelClass):
         return  # No linked notes to check
 
     for idx, note in enumerate(cls.linked_notes):
-        if not note or not note.strip():
+        if not note or not note.content or not note.content.strip():
             continue
 
         errors = check_spelling(
-            text=note,
+            text=note.content,
             language=config.spellcheck.language,
             min_word_length=config.spellcheck.min_word_length,
             custom_words=config.spellcheck.custom_words,

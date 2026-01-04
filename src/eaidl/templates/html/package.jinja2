@@ -17,7 +17,7 @@
     <div class="alert alert-info">
         <h6>Additional Notes</h6>
         {% for note in package.unlinked_notes %}
-        <div class="mb-1">{{ note | format_notes | safe }}</div>
+        <div class="mb-1">{{ note.content | format_notes | safe }}</div>
         {% endfor %}
     </div>
     {% endif %}

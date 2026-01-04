@@ -150,7 +150,7 @@ def test_linked_notes() -> None:
     assert nationality_class is not None, "Nationality class not found"
     # Notes are always loaded for spell checking
     assert len(nationality_class.linked_notes) == 1, "Expected 1 linked note"
-    assert "Note about nationality." in nationality_class.linked_notes[0]
+    assert "Note about nationality." in nationality_class.linked_notes[0].content
 
 
 def test_unlinked_notes() -> None:
@@ -168,7 +168,7 @@ def test_unlinked_notes() -> None:
     # Check if our random note is there
     found_random = False
     for note in message_package.unlinked_notes:
-        if "Random note." in note:
+        if "Random note." in note.content:
             found_random = True
             break
     assert found_random, "Random note not found in unlinked notes"

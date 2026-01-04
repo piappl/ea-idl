@@ -85,11 +85,11 @@ def unlinked_notes_spelling(config: Configuration, package: ModelPackage):
         return  # No unlinked notes to check
 
     for idx, note in enumerate(package.unlinked_notes):
-        if not note or not note.strip():
+        if not note or not note.content or not note.content.strip():
             continue
 
         errors = check_spelling(
-            text=note,
+            text=note.content,
             language=config.spellcheck.language,
             min_word_length=config.spellcheck.min_word_length,
             custom_words=config.spellcheck.custom_words,

@@ -14,7 +14,7 @@
 {% endif %}
 {% for note in cls.linked_notes %}
     Linked note:
-{{ note | trim | wordwrap(78) | indent(4, true) }}
+{{ note.content | trim | wordwrap(78) | indent(4, true) }}
 {% if not loop.last %}
 
 {% endif %}
@@ -26,7 +26,7 @@
 {% endif %}
 {% for note in cls.unlinked_notes %}
     Note:
-{{ note | trim | wordwrap(78) | indent(4, true) }}
+{{ note.content | trim | wordwrap(78) | indent(4, true) }}
 {% if not loop.last %}
 
 {% endif %}

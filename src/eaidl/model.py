@@ -58,6 +58,19 @@ class ModelPropertyType(BaseModel):
     property_types: List[str] = []
 
 
+class LinkedNote(BaseModel):
+    """Represents a note linked via NoteLink connector.
+
+    Used for notes that are separate Note objects in EA,
+    linked to packages/classes/attributes via NoteLink connectors.
+    """
+
+    note_id: int  # Object_ID of Note object in t_object
+    content: str  # Markdown content (for display)
+    content_html: str  # Original HTML from EA (for checksum)
+    checksum: str  # MD5 checksum of content_html
+
+
 class ModelConnectionEnd(LocalBaseModel):
     cardinality: Optional[str] = None
     access: Optional[ModelScope] = None
@@ -186,7 +199,7 @@ class ModelClass(LocalBaseModel):
     #: If this class has <<values>> relationships to enums, the enums are listed here
     values_enums: List[str] = []
     #: Additional notes linked to this class via NoteLink connectors
-    linked_notes: List[str] = []
+    linked_notes: List[LinkedNote] = []
     is_union: bool = False
     is_enum: bool = False
     is_typedef: bool = False
@@ -241,7 +254,7 @@ class ModelPackage(LocalBaseModel):
     info: ModelPackageInfo = ModelPackageInfo()
     property_types: List[ModelPropertyType] = []
     #: Notes that are not linked to any object in this package
-    unlinked_notes: List[str] = []
+    unlinked_notes: List[LinkedNote] = []
     #: EA diagrams associated with this package
     diagrams: List[ModelDiagram] = []
 
@@ -285,3 +298,5 @@ class ModelAttribute(LocalBaseModel):
     union_namespace: Optional[List[str]] = []
     #: If this attribute has a <<values>> relationship to an enum, the enum is specified here
     values_enum: Optional[str] = None
+    #: Additional notes linked to this attribute via NoteLink connectors
+    linked_notes: List[LinkedNote] = []

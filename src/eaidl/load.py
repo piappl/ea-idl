@@ -18,6 +18,7 @@ import re
 import uuid
 import copy
 import pydantic
+import hashlib
 from eaidl.validation.base import RESERVED_NAMES
 from collections import deque
 from eaidl.model import (
@@ -36,6 +37,7 @@ from eaidl.model import (
     ModelDiagramLink,
     ModelDiagramNote,
     ModelInteractionFragment,
+    LinkedNote,
 )
 from eaidl import validation
 from eaidl.sorting import topological_sort_classes, topological_sort_packages, CircularDependencyError
@@ -442,13 +444,13 @@ class ModelParser:
         TObject = base.classes.t_object
         return self.session.query(TObject).filter(TObject.attr_object_id == object_id).scalar()
 
-    def get_linked_notes(self, object_id: int) -> List[str]:
+    def get_linked_notes(self, object_id: int) -> List[LinkedNote]:
         """Get notes linked to an object via NoteLink connectors.
 
         Notes are always loaded for spell checking, regardless of output_linked_notes setting.
 
         :param object_id: object identifier
-        :return: list of note contents (HTML stripped)
+        :return: list of LinkedNote objects with full metadata
         """
         notes = []
         TConnector = base.classes.t_connector
@@ -469,20 +471,28 @@ class ModelParser:
                 self.session.query(TObject).filter(TObject.attr_object_id == connector.attr_end_object_id).scalar()
             )
             if note_obj and note_obj.attr_object_type == "Note" and note_obj.attr_note:
-                # Strip HTML formatting from note
-                clean_note = strip_html(note_obj.attr_note)
-                if clean_note:
-                    notes.append(clean_note)
+                content_html = note_obj.attr_note
+                content_md = strip_html(content_html)
+                if content_md:
+                    checksum = hashlib.md5(content_html.encode("utf-8")).hexdigest()
+                    notes.append(
+                        LinkedNote(
+                            note_id=note_obj.attr_object_id,
+                            content=content_md,
+                            content_html=content_html,
+                            checksum=checksum,
+                        )
+                    )
 
         return notes
 
-    def get_unlinked_notes(self, package_id: int) -> List[str]:
+    def get_unlinked_notes(self, package_id: int) -> List[LinkedNote]:
         """Get notes in a package that are not linked to any object.
 
         Notes are always loaded for spell checking, regardless of output_unlinked_notes setting.
 
         :param package_id: package identifier
-        :return: list of note contents (HTML stripped)
+        :return: list of LinkedNote objects with full metadata
         """
         notes = []
         TObject = base.classes.t_object
@@ -511,10 +521,18 @@ class ModelParser:
 
             # If not linked and has content, add it
             if not linked_connector and note_obj.attr_note:
-                # Strip HTML formatting from note
-                clean_note = strip_html(note_obj.attr_note)
-                if clean_note:
-                    notes.append(clean_note)
+                content_html = note_obj.attr_note
+                content_md = strip_html(content_html)
+                if content_md:
+                    checksum = hashlib.md5(content_html.encode("utf-8")).hexdigest()
+                    notes.append(
+                        LinkedNote(
+                            note_id=note_obj.attr_object_id,
+                            content=content_md,
+                            content_html=content_html,
+                            checksum=checksum,
+                        )
+                    )
 
         return notes
 
@@ -861,6 +879,7 @@ class ModelParser:
         attribute.is_ordered = to_bool(t_attribute.attr_isordered)
         attribute.is_static = to_bool(t_attribute.attr_isstatic)
         attribute.notes = t_attribute.attr_notes
+        attribute.linked_notes = self.get_linked_notes(attribute.attribute_id)
 
         self._parse_attribute_multiplicity(attribute, t_attribute)
         self._parse_attribute_default_value(attribute, t_attribute)

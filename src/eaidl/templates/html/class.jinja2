@@ -36,7 +36,7 @@
     <div class="alert alert-info">
         <h6>Linked Notes</h6>
         {% for note in cls.linked_notes %}
-        <div class="mb-1">{{ note | format_notes | safe }}</div>
+        <div class="mb-1">{{ note.content | format_notes | safe }}</div>
         {% endfor %}
     </div>
     {% endif %}
