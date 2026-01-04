@@ -57,16 +57,58 @@ There are sample configuration files provided in [config](./config/).
 
 ```sh
 # Generate IDL from sample SQLite database:
-eaidl run --config config/sqlite.yaml
+uv run eaidl run --config config/sqlite.yaml
 
 # Generate IDL from PostgreSQL (needs custom configuration):
-eaidl run --config config/postgres.yaml > res.idl
+uv run eaidl run --config config/postgres.yaml > res.idl
 
 # Other commands available:
-eaidl diagram --config config/sqlite.yaml --output diagram.puml  # Generate PlantUML diagram
-eaidl packages --config config/sqlite.yaml                        # List packages
-eaidl docs --config config/sqlite.yaml --output ./_docs           # Generate HTML docs
+uv run eaidl diagram --config config/sqlite.yaml --output diagram.puml  # Generate PlantUML diagram
+uv run eaidl packages --config config/sqlite.yaml                        # List packages
+uv run eaidl docs --config config/sqlite.yaml --output ./_docs           # Generate HTML docs
+
+# Export/import notes for review by non-EA users:
+uv run eaidl export-notes --config config/sqlite.yaml --output notes.docx  # Export notes to DOCX
+uv run eaidl import-notes --config config/sqlite.yaml --input notes.docx   # Import edited notes (dry-run)
 ```
+
+## Export and Import Notes for External Review
+
+The `export-notes` and `import-notes` commands enable collaborative documentation review workflows. Export model notes to DOCX format for editing by non-EA users, then safely import changes back to the database.
+
+### Export Notes to DOCX
+
+```sh
+# Export all notes from the EA model
+uv run eaidl export-notes --config config/sqlite.yaml --output notes.docx
+```
+
+This creates a DOCX file with:
+- **Hierarchical structure**: Packages → Classes → Attributes
+- **All note types**: Main notes, linked notes, and unlinked notes
+- **Metadata tables**: For round-trip validation (checksums, IDs, paths)
+- **Markdown content**: Editable text that reviewers can modify
+
+### Import Edited Notes
+
+```sh
+# Dry-run import (default, no database changes)
+uv run eaidl import-notes --config config/sqlite.yaml --input notes.docx
+
+# Live import (commits changes to database)
+uv run eaidl import-notes --config config/sqlite.yaml --input notes.docx --no-dry-run
+
+# Strict mode (fail on any checksum mismatch)
+uv run eaidl import-notes --config config/sqlite.yaml --input notes.docx --strict
+
+# Save detailed JSON report
+uv run eaidl import-notes --config config/sqlite.yaml --input notes.docx --report import_report.json
+```
+
+### Parallel Review Workflow
+
+The import process supports **partial imports** - only notes with matching checksums are updated. This enables parallel review workflows.
+
 ### using uvx
 
 ```sh
@@ -81,10 +123,10 @@ The `docs` command generates a complete static website with interactive document
 
 ```sh
 # Generate HTML documentation
-eaidl docs --config config/sqlite.yaml --output ./docs
+uv run eaidl docs --config config/sqlite.yaml --output ./docs
 
 # With debug logging
-eaidl docs --config config/sqlite.yaml --output ./docs --debug
+uv run eaidl docs --config config/sqlite.yaml --output ./docs --debug
 ```
 
 ## Regenerate docs

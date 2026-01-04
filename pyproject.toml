@@ -19,6 +19,7 @@ dependencies = [
     "markdownify>=1.2.2",
     "markdown>=3.10",
     "requests>=2.31.0",
+    "python-docx>=1.1.0",
 ]
 
 [project.scripts]

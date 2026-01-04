@@ -230,12 +230,95 @@ def import_schema(config_obj, schema, package, debug):
     click.echo(f"  Created {len(model_package.classes)} classes")
 
 
+@click.command()
+@click.option("--config", required=True, help="Configuration file.")
+@click.option("--output", required=True, help="Output DOCX file path.")
+@click.option("--debug", default=False, is_flag=True, help="Enable debug.")
+@setup_command
+def export_notes(config_obj, debug, output):
+    """Export EA model notes to DOCX format for editing."""
+    from eaidl.notes_export import NotesCollector, DocxExporter
+
+    # Load model
+    parser = ModelParser(config_obj)
+    packages = parser.load()
+
+    # Collect notes
+    click.echo("Collecting notes from model...")
+    collector = NotesCollector(config_obj, packages)
+    notes_export = collector.collect_all_notes()
+
+    # Export to DOCX
+    click.echo(f"Exporting {len(notes_export.notes)} notes to {output}...")
+    exporter = DocxExporter(notes_export)
+    exporter.export_to_file(output)
+
+    click.echo(f"✓ Successfully exported {len(notes_export.notes)} notes to {output}")
+
+
+@click.command()
+@click.option("--config", required=True, help="Configuration file.")
+@click.option("--input", required=True, help="Input DOCX file path.")
+@click.option("--dry-run/--no-dry-run", default=True, help="Dry run (no database changes).")
+@click.option("--strict", is_flag=True, help="Fail on any checksum mismatch.")
+@click.option("--report", default=None, help="Save detailed report to file (JSON).")
+@click.option("--debug", default=False, is_flag=True, help="Enable debug.")
+@setup_command
+def import_notes(config_obj, debug, input, dry_run, strict, report):
+    """Import edited notes from DOCX back to EA database."""
+    from eaidl.notes_import import DocxImporter
+    import json
+
+    # Load model parser (for database access)
+    parser = ModelParser(config_obj)
+    parser.load()  # Initialize session
+
+    # Parse DOCX
+    click.echo(f"Parsing notes from {input}...")
+    importer = DocxImporter(input, config_obj, parser)
+    parsed_notes = importer.parse_document()
+    click.echo(f"Parsed {len(parsed_notes)} notes from document")
+
+    # Validate and import
+    mode = "DRY RUN" if dry_run else "LIVE IMPORT"
+    click.echo(f"\n{mode}: Validating and importing notes...")
+    summary = importer.validate_and_import(parsed_notes, dry_run=dry_run, strict=strict)
+
+    # Print summary
+    summary.print_report()
+
+    # Save detailed report if requested
+    if report:
+        report_data = {
+            "total_notes": summary.total_notes,
+            "imported": summary.imported,
+            "skipped_checksum": summary.skipped_checksum,
+            "skipped_unchanged": summary.skipped_unchanged,
+            "not_found": summary.not_found,
+            "errors": summary.errors,
+            "results": [
+                {
+                    "note_type": r.note_type,
+                    "path": r.path,
+                    "status": r.status.value,
+                    "message": r.message,
+                }
+                for r in summary.results
+            ],
+        }
+        with open(report, "w") as f:
+            json.dump(report_data, f, indent=2)
+        click.echo(f"\n📄 Detailed report saved to {report}")
+
+
 cli.add_command(run)
 cli.add_command(change)
 cli.add_command(diagram)
 cli.add_command(packages)
 cli.add_command(docs)
 cli.add_command(import_schema)
+cli.add_command(export_notes)
+cli.add_command(import_notes)
 
 if __name__ == "__main__":
     cli()
