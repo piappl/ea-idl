@@ -62,10 +62,16 @@ class PlantUMLClient:
                 headers={"Content-Type": "text/plain; charset=utf-8"},
             )
 
-            if response.status_code != 200:
-                raise PlantUMLServerError(f"PlantUML server returned HTTP {response.status_code}: {response.text}")
+            if response.status_code == 400:
+                # For bad request plantuml returns information on error as svg, we can return it
+                log.error(f"Got bad request {response.status_code}")
+                log.error(plantuml_text)
+                log.error(response.text)
 
-            return response.text
+                return response.text
+            if response.status_code == 200:
+                return response.text
+            raise PlantUMLServerError(f"PlantUML server returned HTTP {response.status_code}: {response.text}")
 
         except requests.exceptions.Timeout:
             raise PlantUMLServerError(f"PlantUML server request timed out after {self.timeout} seconds")
@@ -107,26 +113,8 @@ class PlantUMLRenderer:
         :return: DiagramOutput with SVG content
         :raises PlantUMLServerError: If server request fails
         """
-        try:
-            # Generate PlantUML syntax
-            plantuml_text = self._generate_class_diagram_syntax(desc)
-
-            # Get SVG from server
-            svg = self.client.generate_svg(plantuml_text)
-
-            return DiagramOutput(output_type=OutputType.SVG, content=svg)
-
-        except PlantUMLServerError as e:
-            log.error(f"PlantUML server error: {e}")
-            raise  # Re-raise to fail the build (no automatic failover)
-
-        except Exception as e:
-            log.error(f"Failed to render PlantUML class diagram: {e}")
-            return DiagramOutput(
-                output_type=OutputType.SVG,
-                content="",
-                error=f"PlantUML rendering failed: {e}",
-            )
+        plantuml_text = self._generate_class_diagram_syntax(desc)
+        return self._render(plantuml_text)
 
     def render_sequence_diagram(self, desc: SequenceDiagramDescription) -> DiagramOutput:
         """
@@ -135,31 +123,20 @@ class PlantUMLRenderer:
         :param desc: SequenceDiagramDescription
         :return: DiagramOutput with SVG content
         """
+        plantuml_text = self._generate_sequence_diagram_syntax(desc)
+        return self._render(plantuml_text)
+
+    def _render(self, desc: str) -> DiagramOutput:
         try:
-            # Generate PlantUML syntax
-            plantuml_text = self._generate_sequence_diagram_syntax(desc)
-            log.debug(f"Generated PlantUML sequence syntax ({len(plantuml_text)} chars)")
-
-            # Send to server and get SVG
-            svg_content = self.client.generate_svg(plantuml_text)
-            log.debug(f"Received SVG from PlantUML server ({len(svg_content)} chars)")
-
+            svg_content = self.client.generate_svg(desc)
             return DiagramOutput(output_type=OutputType.SVG, content=svg_content)
-
         except PlantUMLServerError as e:
             log.error(f"PlantUML server error: {e}")
-            return DiagramOutput(
-                output_type=OutputType.SVG,
-                content="",
-                error=str(e),
-            )
+            log.error(f"PlantUML sequence syntax ({len(desc)} chars)")
+            raise
         except Exception as e:
             log.error(f"Failed to render PlantUML sequence diagram: {e}")
-            return DiagramOutput(
-                output_type=OutputType.SVG,
-                content="",
-                error=f"PlantUML sequence rendering failed: {e}",
-            )
+            raise
 
     def _generate_sequence_diagram_syntax(self, desc: SequenceDiagramDescription) -> str:
         """
@@ -178,10 +155,10 @@ class PlantUMLRenderer:
         for note in desc.notes:
             if note.attached_to:
                 note_text = note.text.replace('"', '\\"')
-                lines.append(f"note right of {note.attached_to}: {note_text}")
+                lines.append(f"note right of {note.attached_to}: {repr(note_text)}")
             elif desc.participants:
                 note_text = note.text.replace('"', '\\"')
-                lines.append(f"note over {desc.participants[0].id}: {note_text}")
+                lines.append(f"note over {desc.participants[0].id}: {repr(note_text)}")
 
         # Add messages (not in fragments)
         for message in desc.messages:
@@ -328,11 +305,7 @@ class PlantUMLRenderer:
             return f"{rel.source_id} ..> {rel.target_id}"
 
         elif rel.type == RelationType.ASSOCIATION:
-            # Association with optional cardinality
-            if rel.source_cardinality and rel.target_cardinality:
-                return f'"{rel.source_cardinality}" {rel.source_id} --> "{rel.target_cardinality}" {rel.target_id}'
-            else:
-                return f"{rel.source_id} --> {rel.target_id}"
+            return f"{rel.source_id} --> {rel.target_id}"
 
         else:
             # Default: simple association
