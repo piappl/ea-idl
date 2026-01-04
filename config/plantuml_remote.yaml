@@ -14,48 +14,11 @@ root_packages: ["{753A4DFC-7876-4b00-BB5A-6274AD3817C3}"]
 
 diagrams:
   renderer: plantuml
-
   # Example remote server URLs:
-
-  # Option 1: Your organization's PlantUML server
   plantuml_server_url: http://plantuml.mycompany.com:8080/
-
-  # Option 2: Public PlantUML server (NOT recommended for sensitive data)
-  # plantuml_server_url: http://www.plantuml.com/plantuml/
-
-  # Option 3: Kubernetes service in your cluster
-  # plantuml_server_url: http://plantuml-service.default.svc.cluster.local:8080/
-
-  # Increase timeout for remote servers (network latency)
-  plantuml_timeout: 60
-
-  max_attributes_displayed: 15
 
 # Security considerations:
 #   - Remote servers can see diagram content (class names, attributes, etc.)
 #   - Use HTTPS if available: https://plantuml.mycompany.com/
 #   - Consider authentication/API keys if server supports them
 #   - For sensitive data, use local Docker container instead
-
-# CI/CD Example (GitHub Actions):
-#
-#   jobs:
-#     docs:
-#       runs-on: ubuntu-latest
-#       services:
-#         plantuml:
-#           image: plantuml/plantuml-server:jetty
-#           ports:
-#             - 10005:8080
-#       steps:
-#         - uses: actions/checkout@v3
-#         - name: Generate docs
-#           run: |
-#             uv run eaidl docs \
-#               --config config/plantuml_remote.yaml \
-#               --output ./docs
-#         - name: Publish docs
-#           uses: peaceiris/actions-gh-pages@v3
-#           with:
-#             github_token: ${{ secrets.GITHUB_TOKEN }}
-#             publish_dir: ./docs

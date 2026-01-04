@@ -72,13 +72,6 @@ diagrams:
   # Start server with: docker run -d -p 10005:8080 plantuml/plantuml-server:jetty
   plantuml_server_url: http://localhost:10005/
 
-  # Request timeout in seconds (increase for large diagrams)
-  plantuml_timeout: 30
-
-  # Maximum attributes to display per class in diagrams
-  # Prevents overcrowding in large classes
-  max_attributes_displayed: 15
-
 # =============================================================================
 # Validation & Spellcheck
 # =============================================================================
@@ -99,7 +92,6 @@ spellcheck:
 # Include notes in output
 # output_linked_notes: true
 # output_unlinked_notes: false
-
 # Allow recursive struct definitions (IDL 4.2+)
 # allow_recursive_structs: true
 
@@ -116,28 +108,3 @@ spellcheck:
 # Validate model:
 #   uv run eaidl validate --config config/complete_example.yaml
 #
-# =============================================================================
-# Migrating from Mermaid to PlantUML
-# =============================================================================
-#
-# If you're currently using Mermaid and want to try PlantUML:
-#
-# 1. Start PlantUML server:
-#    docker run -d -p 10005:8080 plantuml/plantuml-server:jetty
-#
-# 2. Change renderer in config:
-#    diagrams:
-#      renderer: plantuml
-#      plantuml_server_url: http://localhost:10005/
-#
-# 3. Regenerate documentation:
-#    uv run eaidl docs --config config/complete_example.yaml --output ./docs
-#
-# 4. Compare diagrams:
-#    - PlantUML will show stereotypes: <<struct>>, <<enum>>, etc.
-#    - PlantUML SVG is server-rendered (consistent across browsers)
-#    - All interactive features (zoom, click handlers) still work
-#
-# To switch back to Mermaid:
-#    diagrams:
-#      renderer: mermaid

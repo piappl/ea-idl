@@ -20,8 +20,7 @@ root_packages: ["{753A4DFC-7876-4b00-BB5A-6274AD3817C3}"]
 diagrams:
   renderer: plantuml
   plantuml_server_url: http://localhost:10005/
-  plantuml_timeout: 30
-  max_attributes_displayed: 15
+
 
 # Usage:
 #   # Start Docker container (first time):
@@ -33,5 +32,3 @@ diagrams:
 #   # View in browser:
 #   firefox docs/index.html
 #
-# For CI/CD:
-#   Add the docker run command to your CI pipeline before running eaidl docs

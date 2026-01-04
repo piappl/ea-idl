@@ -28,12 +28,6 @@ diagrams:
   # PlantUML server URL (required when renderer is "plantuml")
   plantuml_server_url: http://localhost:10005/
 
-  # Request timeout in seconds (increase for large/complex diagrams)
-  plantuml_timeout: 30
-
-  # Maximum attributes to display per class
-  max_attributes_displayed: 15
-
 # Generate HTML documentation:
 #   # 1. Start PlantUML server (if not already running):
 #   docker run -d -p 10005:8080 plantuml/plantuml-server:jetty

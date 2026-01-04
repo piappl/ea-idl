@@ -14,16 +14,11 @@ database_url: sqlite+pysqlite:///tests/data/nafv4.qea
 root_packages:
   - "{753A4DFC-7876-4b00-BB5A-6274AD3817C3}"  # core package
 
-# Alternative: use package name (requires unique names)
-# root_package_name: core
 
 # Diagram configuration
 diagrams:
   # Renderer: "mermaid" (default) or "plantuml"
   renderer: mermaid
-
-  # Maximum attributes to display per class (prevents diagram overcrowding)
-  max_attributes_displayed: 15
 
 # Generate HTML documentation:
 #   uv run eaidl docs --config config/mermaid_diagrams.yaml --output ./docs
