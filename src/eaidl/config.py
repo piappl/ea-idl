@@ -116,7 +116,7 @@ class Configuration(BaseModel):
         "octet": "octet",
         "string": "string",
         # The ea can be stupid.
-        "String": "string",
+        "str": "string",
         "wstring": "wstring",
         # Common aliases (mapped to IDL equivalents)
         "int": "long",  # int is not valid IDL, map to long (32-bit)
