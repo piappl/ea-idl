@@ -1,0 +1,143 @@
+# Complete EA-IDL configuration example
+#
+# This file demonstrates all available configuration options, including
+# the new diagram renderer settings introduced in version 0.2.0.
+
+# =============================================================================
+# Database Connection
+# =============================================================================
+database_url: sqlite+pysqlite:///tests/data/nafv4.qea
+# Or for PostgreSQL:
+# database_url: postgresql+psycopg2://user:password@localhost/dbname
+
+# =============================================================================
+# Package Selection
+# =============================================================================
+# Root packages to process (by GUID)
+root_packages:
+  - "{753A4DFC-7876-4b00-BB5A-6274AD3817C3}"
+
+# Alternative: specify by name (less reliable)
+# root_package_name: "MyRootPackage"
+
+# Packages to exclude (by GUID)
+# ignore_packages:
+#   - "{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}"
+
+# =============================================================================
+# Stereotypes Configuration
+# =============================================================================
+# Filter by stereotypes (only process elements with these stereotypes)
+# filter_stereotypes:
+#   - "idlStruct"
+#   - "idlEnum"
+
+# =============================================================================
+# Template Selection
+# =============================================================================
+# IDL template to use (see src/eaidl/templates/)
+# template: "idl_just_defs.jinja2"  # Default
+# template: "idl.jinja2"  # Full IDL with includes
+
+# =============================================================================
+# Type Mapping
+# =============================================================================
+# Map EA types to IDL types
+# primitive_types:
+#   "int": "long"
+#   "unsigned int": "unsigned long"
+#   "bool": "boolean"
+#   "text": "string"
+
+# =============================================================================
+# Diagram Configuration (NEW in v0.2.0)
+# =============================================================================
+diagrams:
+  # Diagram renderer: "mermaid" (default) or "plantuml"
+  #
+  # Mermaid:
+  #   + No server required (client-side JavaScript rendering)
+  #   + Works with file:// URLs
+  #   - No stereotype support in v11
+  #   - Rendering can vary by browser
+  #
+  # PlantUML:
+  #   + Full stereotype support (<<struct>>, <<enum>>, etc.)
+  #   + Server-side rendering (consistent across browsers)
+  #   + Better label handling
+  #   - Requires PlantUML server
+  renderer: plantuml
+
+  # PlantUML server URL (required when renderer is "plantuml")
+  # Start server with: docker run -d -p 10005:8080 plantuml/plantuml-server:jetty
+  plantuml_server_url: http://localhost:10005/
+
+  # Request timeout in seconds (increase for large diagrams)
+  plantuml_timeout: 30
+
+  # Maximum attributes to display per class in diagrams
+  # Prevents overcrowding in large classes
+  max_attributes_displayed: 15
+
+# =============================================================================
+# Validation & Spellcheck
+# =============================================================================
+spellcheck:
+  enabled: true
+  check_notes: true
+  check_identifiers: true
+  # Add custom words to dictionary
+  custom_words:
+    - seq
+    - lobw
+    - hibw
+    - nafv4
+
+# =============================================================================
+# Output Options
+# =============================================================================
+# Include notes in output
+# output_linked_notes: true
+# output_unlinked_notes: false
+
+# Allow recursive struct definitions (IDL 4.2+)
+# allow_recursive_structs: true
+
+# =============================================================================
+# Usage Examples
+# =============================================================================
+#
+# Generate IDL:
+#   uv run eaidl run --config config/complete_example.yaml
+#
+# Generate HTML documentation:
+#   uv run eaidl docs --config config/complete_example.yaml --output ./docs
+#
+# Validate model:
+#   uv run eaidl validate --config config/complete_example.yaml
+#
+# =============================================================================
+# Migrating from Mermaid to PlantUML
+# =============================================================================
+#
+# If you're currently using Mermaid and want to try PlantUML:
+#
+# 1. Start PlantUML server:
+#    docker run -d -p 10005:8080 plantuml/plantuml-server:jetty
+#
+# 2. Change renderer in config:
+#    diagrams:
+#      renderer: plantuml
+#      plantuml_server_url: http://localhost:10005/
+#
+# 3. Regenerate documentation:
+#    uv run eaidl docs --config config/complete_example.yaml --output ./docs
+#
+# 4. Compare diagrams:
+#    - PlantUML will show stereotypes: <<struct>>, <<enum>>, etc.
+#    - PlantUML SVG is server-rendered (consistent across browsers)
+#    - All interactive features (zoom, click handlers) still work
+#
+# To switch back to Mermaid:
+#    diagrams:
+#      renderer: mermaid

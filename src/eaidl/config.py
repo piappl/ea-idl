@@ -1,7 +1,7 @@
 """Stuff related to application configuration."""
 
 from pydantic import BaseModel, ConfigDict
-from typing import TypeAlias, List, Dict, Optional
+from typing import TypeAlias, List, Dict, Optional, Literal
 
 #: General JSON type
 JSON: TypeAlias = dict[str, "JSON"] | list["JSON"] | str | int | float | bool | None
@@ -69,9 +69,23 @@ class ConfigurationSpellcheck(BaseModel):
     language: str = "en"
 
 
+class DiagramConfiguration(BaseModel):
+    """Configuration for diagram generation."""
+
+    #: Which renderer to use (mermaid or plantuml)
+    renderer: Literal["mermaid", "plantuml"] = "mermaid"
+    #: PlantUML server URL (used when renderer is "plantuml")
+    plantuml_server_url: str = "http://127.0.0.1:10005/"
+    #: PlantUML request timeout in seconds
+    plantuml_timeout: int = 30
+    #: Maximum number of attributes to display in class diagrams (prevents overcrowding)
+    max_attributes_displayed: int = 15
+
+
 class Configuration(BaseModel):
     stereotypes: ConfigurationStereotypes = ConfigurationStereotypes()
     spellcheck: ConfigurationSpellcheck = ConfigurationSpellcheck()
+    diagrams: DiagramConfiguration = DiagramConfiguration()
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
     #: Database connection string, see https://docs.sqlalchemy.org/en/20/core/connections.html
     database_url: str = "sqlite+pysqlite:///tests/data/nafv4.qea"

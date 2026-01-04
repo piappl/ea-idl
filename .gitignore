@@ -15,3 +15,4 @@ _docs/
 # coverage
 .coverage
 coverage.json
+.playwright-mcp/

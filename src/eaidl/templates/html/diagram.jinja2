@@ -66,11 +66,11 @@
         <div class="card-body">
             <h5 class="card-title">Interactive Diagrams</h5>
             <p class="card-text">
-                {% if auto_mermaid_code and ea_diagrams %}
+                {% if auto_diagram_content and ea_diagrams %}
                 This package has {{ ea_diagrams | length }} EA diagram(s) plus an auto-generated class diagram.
                 {% elif ea_diagrams %}
                 This package has {{ ea_diagrams | length }} EA diagram(s).
-                {% elif auto_mermaid_code %}
+                {% elif auto_diagram_content %}
                 This package has an auto-generated class diagram showing all classes and relationships.
                 {% endif %}
                 Click on any class in the diagrams to navigate to its detailed documentation.
@@ -79,11 +79,11 @@
         </div>
     </div>
 
-    {% if auto_mermaid_code or ea_diagrams %}
+    {% if auto_diagram_content or ea_diagrams %}
     <!-- Tab Navigation -->
     <ul class="nav nav-tabs mb-3" id="diagramTabs" role="tablist">
         <!-- Auto-generated diagram tab -->
-        {% if auto_mermaid_code %}
+        {% if auto_diagram_content %}
         <li class="nav-item" role="presentation">
             <button class="nav-link active" id="auto-tab" data-bs-toggle="tab"
                     data-bs-target="#auto-diagram" type="button" role="tab"
@@ -96,10 +96,10 @@
         <!-- EA diagram tabs -->
         {% for ea_diagram in ea_diagrams %}
         <li class="nav-item" role="presentation">
-            <button class="nav-link {% if not auto_mermaid_code and loop.first %}active{% endif %}"
+            <button class="nav-link {% if not auto_diagram_content and loop.first %}active{% endif %}"
                     id="ea-{{ loop.index }}-tab" data-bs-toggle="tab"
                     data-bs-target="#ea-diagram-{{ loop.index }}" type="button" role="tab"
-                    aria-controls="ea-diagram-{{ loop.index }}" aria-selected="{% if not auto_mermaid_code and loop.first %}true{% else %}false{% endif %}">
+                    aria-controls="ea-diagram-{{ loop.index }}" aria-selected="{% if not auto_diagram_content and loop.first %}true{% else %}false{% endif %}">
                 {{ ea_diagram.name }}
                 {% if ea_diagram.type %}
                 <span class="badge bg-secondary ms-1">{{ ea_diagram.type }}</span>
@@ -112,7 +112,7 @@
     <!-- Tab Content -->
     <div class="tab-content" id="diagramTabsContent">
         <!-- Auto-generated diagram pane -->
-        {% if auto_mermaid_code %}
+        {% if auto_diagram_content %}
         <div class="tab-pane fade show active" id="auto-diagram" role="tabpanel" aria-labelledby="auto-tab">
             <div class="card mb-3">
                 <div class="card-body">
@@ -124,28 +124,36 @@
                 </div>
             </div>
 
-            <div id="auto-loading" class="alert alert-info">
-                <div class="spinner-border spinner-border-sm me-2" role="status">
-                    <span class="visually-hidden">Loading...</span>
+            {% if auto_diagram_type == 'svg' %}
+                <!-- PlantUML SVG: Direct embedding -->
+                <div class="diagram-container" id="auto-content" data-diagram-id="auto">
+                    {{ auto_diagram_content | safe }}
                 </div>
-                Loading diagram...
-            </div>
-            <div class="diagram-container" id="auto-content" data-diagram-id="auto">
-                <div class="mermaid">{{ auto_mermaid_code }}</div>
-            </div>
-            <div id="auto-error" class="alert alert-danger" style="display: none;">
-                <strong>Error rendering diagram:</strong> <span class="error-message"></span>
-                <details class="mt-2">
-                    <summary>Diagram source code</summary>
-                    <pre><code>{{ auto_mermaid_code }}</code></pre>
-                </details>
-            </div>
+            {% else %}
+                <!-- Mermaid: Text + JS rendering -->
+                <div id="auto-loading" class="alert alert-info">
+                    <div class="spinner-border spinner-border-sm me-2" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    Loading diagram...
+                </div>
+                <div class="diagram-container" id="auto-content" data-diagram-id="auto">
+                    <div class="mermaid">{{ auto_diagram_content }}</div>
+                </div>
+                <div id="auto-error" class="alert alert-danger" style="display: none;">
+                    <strong>Error rendering diagram:</strong> <span class="error-message"></span>
+                    <details class="mt-2">
+                        <summary>Diagram source code</summary>
+                        <pre><code>{{ auto_diagram_content }}</code></pre>
+                    </details>
+                </div>
+            {% endif %}
         </div>
         {% endif %}
 
         <!-- EA diagram panes -->
         {% for ea_diagram in ea_diagrams %}
-        <div class="tab-pane fade {% if not auto_mermaid_code and loop.first %}show active{% endif %}"
+        <div class="tab-pane fade {% if not auto_diagram_content and loop.first %}show active{% endif %}"
              id="ea-diagram-{{ loop.index }}" role="tabpanel" aria-labelledby="ea-{{ loop.index }}-tab">
             <div class="card mb-3">
                 <div class="card-body">
@@ -160,22 +168,30 @@
                 </div>
             </div>
 
-            <div id="ea-{{ loop.index }}-loading" class="alert alert-info">
-                <div class="spinner-border spinner-border-sm me-2" role="status">
-                    <span class="visually-hidden">Loading...</span>
+            {% if ea_diagram.diagram_type == 'svg' %}
+                <!-- PlantUML SVG: Direct embedding -->
+                <div class="diagram-container" id="ea-{{ loop.index }}-content" data-diagram-id="ea-{{ loop.index }}">
+                    {{ ea_diagram.diagram_content | safe }}
                 </div>
-                Loading diagram...
-            </div>
-            <div class="diagram-container" id="ea-{{ loop.index }}-content" data-diagram-id="ea-{{ loop.index }}">
-                <div class="mermaid">{{ ea_diagram.mermaid_code }}</div>
-            </div>
-            <div id="ea-{{ loop.index }}-error" class="alert alert-danger" style="display: none;">
-                <strong>Error rendering diagram:</strong> <span class="error-message"></span>
-                <details class="mt-2">
-                    <summary>Diagram source code</summary>
-                    <pre><code>{{ ea_diagram.mermaid_code }}</code></pre>
-                </details>
-            </div>
+            {% else %}
+                <!-- Mermaid: Text + JS rendering -->
+                <div id="ea-{{ loop.index }}-loading" class="alert alert-info">
+                    <div class="spinner-border spinner-border-sm me-2" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    Loading diagram...
+                </div>
+                <div class="diagram-container" id="ea-{{ loop.index }}-content" data-diagram-id="ea-{{ loop.index }}">
+                    <div class="mermaid">{{ ea_diagram.diagram_content }}</div>
+                </div>
+                <div id="ea-{{ loop.index }}-error" class="alert alert-danger" style="display: none;">
+                    <strong>Error rendering diagram:</strong> <span class="error-message"></span>
+                    <details class="mt-2">
+                        <summary>Diagram source code</summary>
+                        <pre><code>{{ ea_diagram.diagram_content }}</code></pre>
+                    </details>
+                </div>
+            {% endif %}
         </div>
         {% endfor %}
     </div>
@@ -246,14 +262,30 @@
             return;
         }
 
-        try {
-            const mermaidElement = diagramDiv.querySelector('.mermaid');
-            if (!mermaidElement) {
-                throw new Error('Mermaid element not found');
-            }
+        // Check if this is a Mermaid diagram or SVG diagram
+        const mermaidElement = diagramDiv.querySelector('.mermaid');
+        const svgElement = diagramDiv.querySelector('svg');
 
+        if (svgElement && !mermaidElement) {
+            // This is a PlantUML SVG diagram - just add zoom controls
+            console.log(`PlantUML SVG diagram ${diagramId} already rendered`);
+            setTimeout(() => addZoomControls(diagramId), 100);
+            renderedDiagrams.add(diagramId);
+            return;
+        }
+
+        if (!mermaidElement) {
+            // No diagram to render
+            console.log(`No diagram found for ${diagramId}`);
+            if (loadingDiv) loadingDiv.style.display = 'none';
+            renderedDiagrams.add(diagramId);
+            return;
+        }
+
+        // Render Mermaid diagram
+        try {
             const diagramSource = mermaidElement.textContent;
-            console.log(`Rendering diagram ${diagramId}, source length:`, diagramSource.length);
+            console.log(`Rendering Mermaid diagram ${diagramId}, source length:`, diagramSource.length);
 
             // Render this specific diagram
             await mermaid.run({
@@ -286,11 +318,17 @@
         const container = document.getElementById(`${diagramId}-content`);
         if (!container) return;
 
+        // Check if already has zoom controls
+        if (container.querySelector('.diagram-controls')) {
+            return;  // Already added
+        }
+
+        // Find SVG element (either in .mermaid div or directly in container)
         const mermaidDiv = container.querySelector('.mermaid');
-        const svgElement = mermaidDiv ? mermaidDiv.querySelector('svg') : null;
+        const svgElement = mermaidDiv ? mermaidDiv.querySelector('svg') : container.querySelector('svg');
 
         if (!svgElement) {
-            console.error(`SVG element not found for ${diagramId}`);
+            console.log(`No SVG element found for ${diagramId} - skipping zoom controls`);
             return;
         }
 

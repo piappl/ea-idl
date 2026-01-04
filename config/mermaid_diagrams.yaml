@@ -1,0 +1,29 @@
+# Example configuration for HTML documentation with Mermaid diagrams (default)
+#
+# Mermaid is the default diagram renderer - it generates JavaScript text that
+# renders client-side in the browser. No server required!
+#
+# Use this configuration when:
+#   - You want zero infrastructure (no PlantUML server needed)
+#   - Client-side rendering is acceptable
+#   - You don't need stereotypes in diagrams (Mermaid v11 limitation)
+
+database_url: sqlite+pysqlite:///tests/data/nafv4.qea
+
+# Root packages to process (prefer package names for readability)
+root_packages:
+  - "{753A4DFC-7876-4b00-BB5A-6274AD3817C3}"  # core package
+
+# Alternative: use package name (requires unique names)
+# root_package_name: core
+
+# Diagram configuration
+diagrams:
+  # Renderer: "mermaid" (default) or "plantuml"
+  renderer: mermaid
+
+  # Maximum attributes to display per class (prevents diagram overcrowding)
+  max_attributes_displayed: 15
+
+# Generate HTML documentation:
+#   uv run eaidl docs --config config/mermaid_diagrams.yaml --output ./docs

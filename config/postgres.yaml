@@ -1,13 +1,2 @@
 database_url: postgresql+psycopg2://postgres:postgres@localhost/4817
-# sqlite+pysqlite:///stanag4817.qea
-# root_package: "{F8223B9B-2CE3-4abd-A93D-2946EE17ED9B}"
-root_packages:
-  # - "{F8223B9B-2CE3-4abd-A93D-2946EE17ED9B}" # p7
-  - "{0043965D-5BD2-49e9-90E1-9B73FFDDCDE0}" # base
-  - "{6A53074D-C352-4a3d-B3F2-C14F7CD56FD8}" # catl
-  # - "{EA7CB4D8-8898-4e5f-A278-62236C885A9E}" # i2i
-# root_package_name: stanag4817
-template: "idl_just_defs.jinja2"
-# ignore_packages:
-#   - "{EA7CB4D8-8898-4e5f-A278-62236C885A9E}" # I2I
-filter_stereotypes: ["lobw"]
+root_packages: ["{753A4DFC-7876-4b00-BB5A-6274AD3817C3}"]
