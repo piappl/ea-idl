@@ -388,6 +388,8 @@ def generate_search_index(packages: List[ModelPackage], output_dir: Path) -> Non
                 if cls.is_union
                 else "typedef"
                 if cls.is_typedef
+                else "map"
+                if cls.is_map
                 else "class"
             )
 
@@ -453,6 +455,7 @@ def calculate_model_statistics(packages: List[ModelPackage]) -> Dict[str, int]:
         "enums": 0,
         "unions": 0,
         "typedefs": 0,
+        "maps": 0,
         "classes": 0,
         "attributes": 0,
     }
@@ -473,7 +476,8 @@ def calculate_model_statistics(packages: List[ModelPackage]) -> Dict[str, int]:
                 stats["unions"] += 1
             elif cls.is_typedef:
                 stats["typedefs"] += 1
-
+            elif cls.is_map:
+                stats["maps"] += 1
         for nested in package.packages:
             count_package(nested)
 

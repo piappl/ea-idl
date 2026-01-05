@@ -69,6 +69,8 @@
     <span class="badge badge-union class-badge">union</span>
 {% elif cls.is_typedef %}
     <span class="badge badge-typedef class-badge">typedef</span>
+{% elif cls.is_map %}
+    <span class="badge badge-map class-badge">map</span>
 {% endif %}
 {% endmacro %}
 
@@ -161,6 +163,10 @@
 
         .badge-typedef {
             background-color: #6f42c1;
+        }
+
+        .badge-map {
+            background-color: #ff5566;
         }
 
         .badge-optional {
