@@ -30,10 +30,8 @@ src/eaidl/
 ├── diagram.py                  - PlantUML diagram generation
 ├── html_export.py              - HTML documentation generator
 ├── html_utils.py               - HTML formatting utilities
-├── mermaid_diagram.py          - Mermaid class diagram generator
 ├── mermaid_utils.py            - Mermaid syntax utilities
 ├── link_utils.py               - Link resolution for HTML cross-references
-├── ea_diagram_converter.py     - EA diagram to Mermaid converter
 ├── json_schema_importer.py     - JSON Schema to EA model importer
 ├── change.py                   - Database modification utilities
 ├── validation/                 - Validation framework
@@ -208,16 +206,6 @@ Static site generator creating multi-page HTML with Bootstrap 5 UI, Mermaid.js d
 - `generate_package_pages()` - Package pages with class tables
 - `generate_class_pages()` - Class detail pages
 - `generate_search_index()` - JSON search index
-
-**mermaid_diagram.py** - Auto-generated class diagrams
-- `MermaidClassDiagramGenerator` - Generates diagram syntax
-- Shows classes, attributes, relationships
-- Adds click handlers for navigation
-
-**ea_diagram_converter.py** - EA-authored diagrams
-- Converts diagrams from `t_diagram`, `t_diagramobjects`, `t_diagramlinks`
-- Supports class and sequence diagrams
-- Preserves diagram author's intent (shows only objects on diagram)
 
 **link_utils.py** - Cross-reference resolution
 - `get_relative_path()` - Calculate relative paths between namespaces
