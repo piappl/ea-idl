@@ -151,59 +151,76 @@ class PlantUMLRenderer:
         for participant in desc.participants:
             lines.append(f"participant {participant.id}")
 
-        # Output notes in Y-order (higher Y first, which means less negative)
-        # EA coordinate system: larger values = higher on diagram
-        sorted_notes = sorted(desc.notes, key=lambda n: n.rect_top, reverse=True)
+        # Interleave notes with messages based on Y-position
+        # Create a unified list of items (messages and notes) sorted by Y-position
+        # EA coordinate system: larger values (less negative) = higher on diagram
+        items = []
 
-        # For proper positioning, we output notes at logical points:
-        # - Notes with Y > max(participant Y) before first message
-        # - Other notes after corresponding messages
-        # Since we don't have message Y-positions here, we use a simple heuristic:
-        # Output notes in their Y-order, interspersed with messages
-
-        note_idx = 0
-
-        # Output notes that should appear at the top (before all messages)
-        # These are notes with higher Y values (less negative) than typical message positions
-        # Simple heuristic: notes with Y > -150 appear before messages
-        early_threshold = -150  # Notes above this Y appear before messages
-
-        while note_idx < len(sorted_notes):
-            note = sorted_notes[note_idx]
-            if note.rect_top < early_threshold:
-                break
-            if note.attached_to:
-                note_text = note.text.replace('"', '\\"')
-                lines.append(f"note right of {note.attached_to}: {repr(note_text)}")
-            elif desc.participants:
-                note_text = note.text.replace('"', '\\"')
-                lines.append(f"note over {desc.participants[0].id}: {repr(note_text)}")
-            note_idx += 1
-
-        # Add messages (not in fragments)
+        # Add top-level messages
         for message in desc.messages:
-            msg_line = self._generate_sequence_message_syntax(message)
-            lines.append(msg_line)
+            items.append(("message", message.rect_top, message))
 
-        # Add fragments
+        # Add messages in fragments (we'll handle fragment wrapping separately)
         for fragment in desc.fragments:
-            condition = fragment.condition.replace('"', '\\"')
-            lines.append(f"{fragment.fragment_type} {condition}")
             for message in fragment.messages:
+                items.append(("fragment_message", message.rect_top, (fragment, message)))
+
+        # Add notes
+        for note in desc.notes:
+            items.append(("note", note.rect_top, note))
+
+        # Sort by Y-position (reverse=True means higher Y / less negative first)
+        items.sort(key=lambda x: x[1], reverse=True)
+
+        # Track which fragments we've opened/closed
+        open_fragment = None
+
+        # Output items in Y-order
+        for item_type, y_pos, item_data in items:
+            if item_type == "message":
+                # Close any open fragment before outputting top-level message
+                if open_fragment:
+                    lines.append("end")
+                    open_fragment = None
+
+                msg_line = self._generate_sequence_message_syntax(item_data)
+                lines.append(msg_line)
+
+            elif item_type == "fragment_message":
+                fragment, message = item_data
+
+                # Open fragment if not already open for this fragment
+                if open_fragment != fragment:
+                    # Close previous fragment if any
+                    if open_fragment:
+                        lines.append("end")
+
+                    # Open new fragment
+                    condition = fragment.condition.replace('"', '\\"')
+                    lines.append(f"{fragment.fragment_type} {condition}")
+                    open_fragment = fragment
+
+                # Output message within fragment
                 msg_line = self._generate_sequence_message_syntax(message)
                 lines.append(msg_line)
-            lines.append("end")
 
-        # Output remaining notes (those that should appear after messages/fragments)
-        while note_idx < len(sorted_notes):
-            note = sorted_notes[note_idx]
-            if note.attached_to:
-                note_text = note.text.replace('"', '\\"')
-                lines.append(f"note right of {note.attached_to}: {repr(note_text)}")
-            elif desc.participants:
-                note_text = note.text.replace('"', '\\"')
-                lines.append(f"note over {desc.participants[0].id}: {repr(note_text)}")
-            note_idx += 1
+            elif item_type == "note":
+                # Close any open fragment before outputting note
+                if open_fragment:
+                    lines.append("end")
+                    open_fragment = None
+
+                note = item_data
+                if note.attached_to:
+                    note_text = note.text.replace('"', '\\"')
+                    lines.append(f"note right of {note.attached_to}: {repr(note_text)}")
+                elif desc.participants:
+                    note_text = note.text.replace('"', '\\"')
+                    lines.append(f"note over {desc.participants[0].id}: {repr(note_text)}")
+
+        # Close any remaining open fragment
+        if open_fragment:
+            lines.append("end")
 
         lines.append("@enduml")
         return "\n".join(lines)

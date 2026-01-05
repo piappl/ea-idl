@@ -126,6 +126,7 @@ class SequenceMessage:
     label: str
     message_type: MessageType = MessageType.SYNC
     stereotype: Optional[str] = None
+    rect_top: int = 0  # Y-position for ordering with notes
 
 
 @dataclass
