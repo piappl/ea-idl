@@ -276,8 +276,13 @@ class EADiagramBuilder:
 
         return DiagramClickHandler(node_id=node_id, link=link)
 
-    def _build_sequence_message(self, conn) -> Optional[SequenceMessage]:
-        """Build SequenceMessage from EA connector."""
+    def _build_sequence_message(self, conn, rect_top: int = 0) -> Optional[SequenceMessage]:
+        """Build SequenceMessage from EA connector.
+
+        :param conn: EA connector object
+        :param rect_top: Estimated Y-position for this message
+        :return: SequenceMessage or None
+        """
         source_cls = self.object_lookup.get(conn.start_object_id)
         dest_cls = self.object_lookup.get(conn.end_object_id)
 
@@ -341,6 +346,7 @@ class EADiagramBuilder:
             label=label,
             message_type=message_type,
             stereotype=stereotype,
+            rect_top=rect_top,
         )
 
     def _find_closest_participant(self, note) -> Optional[tuple]:
@@ -391,7 +397,8 @@ class EADiagramBuilder:
             if assigned_conns:
                 fragment_messages = []
                 for conn in assigned_conns:
-                    msg = self._build_sequence_message(conn)
+                    y_pos = message_positions.get(conn.connector_id, 0)
+                    msg = self._build_sequence_message(conn, y_pos)
                     if msg:
                         fragment_messages.append(msg)
 
@@ -408,7 +415,8 @@ class EADiagramBuilder:
             # Check if this connector is assigned to any fragment
             in_fragment = any(conn in fragment_assignments.get(frag.object_id, []) for frag in self.diagram.fragments)
             if not in_fragment:
-                msg = self._build_sequence_message(conn)
+                y_pos = message_positions.get(conn.connector_id, 0)
+                msg = self._build_sequence_message(conn, y_pos)
                 if msg:
                     messages.append(msg)
 
