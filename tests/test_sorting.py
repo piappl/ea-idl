@@ -200,4 +200,10 @@ class TestTopologicalSortPackages:
 
         with pytest.raises(CircularDependencyError) as excinfo:
             topological_sort_packages(packages, dummy_get_all_depends_on, dummy_get_all_class_id)
-        assert "Circular dependency detected in packages: ['PackageA', 'PackageB']" in str(excinfo.value)
+        error_msg = str(excinfo.value)
+        assert "Circular dependency detected in packages:" in error_msg
+        assert "PackageA" in error_msg
+        assert "PackageB" in error_msg
+        assert "Inter-package dependencies (showing which classes cause the cycle):" in error_msg
+        # Should show the actual class names
+        assert "ClassInP1" in error_msg or "ClassInP2" in error_msg
