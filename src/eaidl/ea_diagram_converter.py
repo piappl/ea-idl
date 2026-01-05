@@ -453,12 +453,16 @@ class EADiagramToMermaidConverter:
             role_type=getattr(t_connector, "attr_destroletype", None),
         )
 
+        # Wrap single stereotype in list
+        stereotype = getattr(t_connector, "attr_stereotype", None)
+        stereotypes = [stereotype] if stereotype else []
+
         conn = ModelConnection(
             connector_id=t_connector.attr_connector_id,
             connector_type=t_connector.attr_connector_type,
             start_object_id=t_connector.attr_start_object_id,
             end_object_id=t_connector.attr_end_object_id,
-            stereotype=getattr(t_connector, "attr_stereotype", None),
+            stereotypes=stereotypes,
             source=source,
             destination=destination,
         )

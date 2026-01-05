@@ -79,6 +79,7 @@ class DiagramRelationship:
     target_label: Optional[str] = None
     source_cardinality: Optional[str] = None
     target_cardinality: Optional[str] = None
+    stereotypes: List[str] = field(default_factory=list)
 
 
 @dataclass

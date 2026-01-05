@@ -246,6 +246,9 @@ class ModelParser:
         for t_connector in t_connectors:
             if t_connector.attr_connector_type == "NoteLink":
                 continue
+            # Wrap single stereotype in list
+            stereotypes = [t_connector.attr_stereotype] if t_connector.attr_stereotype else []
+
             conn = ModelConnection(
                 connector_id=t_connector.attr_connector_id,
                 connector_type=t_connector.attr_connector_type,
@@ -253,7 +256,7 @@ class ModelParser:
                 connector_sub_type=t_connector.attr_subtype,
                 start_object_id=t_connector.attr_start_object_id,
                 end_object_id=t_connector.attr_end_object_id,
-                stereotype=t_connector.attr_stereotype,
+                stereotypes=stereotypes,
                 source=ModelConnectionEnd(
                     cardinality=t_connector.attr_sourcecard,
                     access=t_connector.attr_sourceaccess,
@@ -1133,7 +1136,7 @@ class ModelParser:
             return
 
         for connection in connections:
-            if connection.stereotype == "union":
+            if "union" in connection.stereotypes:
                 enum_id = (
                     connection.end_object_id
                     if model_class.object_id != connection.end_object_id

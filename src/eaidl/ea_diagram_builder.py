@@ -280,6 +280,7 @@ class EADiagramBuilder:
             type=rel_type,
             source_label=conn.source.role if conn.source.role else None,
             target_label=conn.destination.role if conn.destination.role else None,
+            stereotypes=conn.stereotypes,
         )
 
     def _map_connector_type(self, connector_type: str, conn) -> RelationType:
@@ -366,12 +367,15 @@ class EADiagramBuilder:
         msg_type_str = getattr(t_conn, "attr_pdata1", "Synchronous")
         message_type = MessageType.ASYNC if msg_type_str == "Asynchronous" else MessageType.SYNC
 
+        # Use first stereotype from conn if available (SequenceMessage currently supports single stereotype)
+        stereotype = conn.stereotypes[0] if conn.stereotypes else None
+
         return SequenceMessage(
             from_id=from_id,
             to_id=to_id,
             label=label,
             message_type=message_type,
-            stereotype=getattr(t_conn, "attr_stereotype", None),
+            stereotype=stereotype,
         )
 
     def _find_closest_participant(self, note) -> Optional[tuple]:
@@ -496,12 +500,16 @@ class EADiagramBuilder:
             role_type=getattr(t_connector, "attr_destroletype", None),
         )
 
+        # Wrap single stereotype in list
+        stereotype = getattr(t_connector, "attr_stereotype", None)
+        stereotypes = [stereotype] if stereotype else []
+
         conn = ModelConnection(
             connector_id=t_connector.attr_connector_id,
             connector_type=t_connector.attr_connector_type,
             start_object_id=t_connector.attr_start_object_id,
             end_object_id=t_connector.attr_end_object_id,
-            stereotype=getattr(t_connector, "attr_stereotype", None),
+            stereotypes=stereotypes,
             source=source,
             destination=destination,
         )

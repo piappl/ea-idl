@@ -98,7 +98,7 @@ class ModelConnection(LocalBaseModel):
     ] = None
     start_object_id: int
     end_object_id: int
-    stereotype: Optional[str] = None
+    stereotypes: List[str] = []
     source: ModelConnectionEnd = ModelConnectionEnd()
     destination: ModelConnectionEnd = ModelConnectionEnd()
 
