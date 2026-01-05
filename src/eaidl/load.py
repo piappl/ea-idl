@@ -699,9 +699,9 @@ class ModelParser:
         TObject = base.classes.t_object
         TDiagramObjects = base.classes.t_diagramobjects
 
-        # Query for interaction fragments via t_diagramobjects join
+        # Query for interaction fragments via t_diagramobjects join, including positioning
         fragments_query = (
-            self.session.query(TObject)
+            self.session.query(TObject, TDiagramObjects)
             .join(TDiagramObjects, TObject.attr_object_id == TDiagramObjects.attr_object_id)
             .filter(TDiagramObjects.attr_diagram_id == diagram_id)
             .filter((TObject.attr_object_type == "InteractionFragment") | (TObject.attr_object_type == "Interaction"))
@@ -709,13 +709,15 @@ class ModelParser:
         )
 
         fragments = []
-        for t_obj in fragments_query:
+        for t_obj, t_diag_obj in fragments_query:
             fragment = ModelInteractionFragment(
                 object_id=t_obj.attr_object_id,
                 name=getattr(t_obj, "attr_name", ""),
                 stereotype=getattr(t_obj, "attr_stereotype", None),
                 note=getattr(t_obj, "attr_note", None),
                 parent_id=getattr(t_obj, "attr_parentid", None),
+                rect_top=getattr(t_diag_obj, "attr_recttop", 0),
+                rect_bottom=getattr(t_diag_obj, "attr_rectbottom", 0),
             )
             fragments.append(fragment)
 

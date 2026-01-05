@@ -123,56 +123,21 @@ class EADiagramBuilder:
         self._build_object_lookup()
         self._load_part_objects()
 
-        # Build participants
+        # Build participants sorted by horizontal position (left to right)
         participants = []
-        for diag_obj in self.diagram.objects:
+        sorted_objects = sorted(self.diagram.objects, key=lambda obj: obj.rect_left)
+        for diag_obj in sorted_objects:
             cls = self.object_lookup.get(diag_obj.object_id)
             if cls:
                 participant_id = sanitize_id(cls.name)
                 participants.append(SequenceParticipant(id=participant_id, name=cls.name))
 
-        # Build notes
-        notes = []
-        for note in self.diagram.notes:
-            closest_participant = self._find_closest_participant(note)
-            if closest_participant:
-                notes.append(DiagramNote(text=note.name[:80], attached_to=closest_participant[0]))
-
         # Load sequence connectors (messages)
         participant_ids = [obj.object_id for obj in self.diagram.objects]
         sequence_connectors = self._load_sequence_connectors(participant_ids)
 
-        # Build messages
-        messages = []
-        fragments = []
-
-        # Simple heuristic: put last N messages in fragments if fragments exist
-        if self.diagram.fragments and sequence_connectors:
-            num_in_fragment = min(len(self.diagram.fragments), len(sequence_connectors))
-            messages_before_fragment = sequence_connectors[:-num_in_fragment]
-            messages_in_fragments = sequence_connectors[-num_in_fragment:]
-
-            # Add messages before fragments
-            for conn in messages_before_fragment:
-                msg = self._build_sequence_message(conn)
-                if msg:
-                    messages.append(msg)
-
-            # Add fragments with their messages
-            for i, fragment in enumerate(self.diagram.fragments):
-                if i < len(messages_in_fragments):
-                    msg = self._build_sequence_message(messages_in_fragments[i])
-                    if msg:
-                        fragment_type = fragment.stereotype.lower() if fragment.stereotype else "alt"
-                        fragments.append(
-                            SequenceFragment(fragment_type=fragment_type, condition=fragment.name, messages=[msg])
-                        )
-        else:
-            # No fragments - all messages at top level
-            for conn in sequence_connectors:
-                msg = self._build_sequence_message(conn)
-                if msg:
-                    messages.append(msg)
+        # Assign messages to fragments and build ordered notes
+        messages, fragments, notes = self._build_sequence_elements(sequence_connectors, participants)
 
         return SequenceDiagramDescription(
             participants=participants, messages=messages, fragments=fragments, notes=notes
@@ -392,6 +357,155 @@ class EADiagramBuilder:
                     closest = (sanitize_id(cls.name), diag_obj.rect_left)
 
         return closest
+
+    def _build_sequence_elements(
+        self, sequence_connectors: List, participants: List[SequenceParticipant]
+    ) -> tuple[List[SequenceMessage], List[SequenceFragment], List[DiagramNote]]:
+        """
+        Build messages, fragments, and notes with proper spatial ordering.
+
+        Uses spatial positioning to determine which messages belong to fragments
+        and where notes should appear relative to messages.
+
+        :param sequence_connectors: List of sequence connectors from EA
+        :param participants: List of participants for note attachment
+        :return: Tuple of (messages, fragments, notes)
+        """
+        messages = []
+        fragments = []
+        notes = []
+
+        if not sequence_connectors:
+            return messages, fragments, notes
+
+        # Estimate Y-positions for messages based on their sequence number
+        # In EA, messages are drawn top-to-bottom in SeqNo order
+        message_positions = self._estimate_message_positions(sequence_connectors)
+
+        # Assign messages to fragments based on spatial overlap
+        fragment_assignments = self._assign_messages_to_fragments(sequence_connectors, message_positions)
+
+        # Build fragments with their assigned messages
+        for fragment in self.diagram.fragments:
+            assigned_conns = fragment_assignments.get(fragment.object_id, [])
+            if assigned_conns:
+                fragment_messages = []
+                for conn in assigned_conns:
+                    msg = self._build_sequence_message(conn)
+                    if msg:
+                        fragment_messages.append(msg)
+
+                if fragment_messages:
+                    fragment_type = fragment.stereotype.lower() if fragment.stereotype else "alt"
+                    fragments.append(
+                        SequenceFragment(
+                            fragment_type=fragment_type, condition=fragment.name, messages=fragment_messages
+                        )
+                    )
+
+        # Build top-level messages (not in any fragment)
+        for conn in sequence_connectors:
+            # Check if this connector is assigned to any fragment
+            in_fragment = any(conn in fragment_assignments.get(frag.object_id, []) for frag in self.diagram.fragments)
+            if not in_fragment:
+                msg = self._build_sequence_message(conn)
+                if msg:
+                    messages.append(msg)
+
+        # Build notes with spatial ordering (for PlantUML only, positioned by Y-coordinate)
+        # Note: Mermaid doesn't support positioned notes, so they'll just be added at the top
+        for note in self.diagram.notes:
+            closest_participant = self._find_closest_participant(note)
+            if closest_participant:
+                notes.append(
+                    DiagramNote(text=note.name[:80], attached_to=closest_participant[0], rect_top=note.rect_top)
+                )
+
+        return messages, fragments, notes
+
+    def _estimate_message_positions(self, sequence_connectors: List) -> Dict[int, int]:
+        """
+        Estimate Y-position for each message based on SeqNo.
+
+        In EA sequence diagrams, messages are drawn from top to bottom based on their
+        execution order (SeqNo). This estimates their Y-coordinate for spatial analysis.
+
+        :param sequence_connectors: List of sequence connectors
+        :return: Dict mapping connector_id to estimated Y-position
+        """
+        if not sequence_connectors:
+            return {}
+
+        # Get the Y-range of the diagram from participants
+        participant_tops = [obj.rect_top for obj in self.diagram.objects if obj.rect_top != 0]
+        if not participant_tops:
+            # No positioning info, return empty
+            return {}
+
+        # Start messages below the participants (more negative Y)
+        start_y = max(participant_tops)  # EA: larger value = higher on diagram
+
+        # Calculate dynamic spacing based on fragment positions if available
+        message_spacing = 80  # Default spacing
+        if self.diagram.fragments:
+            # Use fragment positions to estimate better spacing
+            # Assume last message should be in the middle of the deepest fragment
+            fragment_bottoms = [f.rect_bottom for f in self.diagram.fragments]
+            fragment_tops = [f.rect_top for f in self.diagram.fragments]
+            deepest_bottom = min(fragment_bottoms)  # Most negative = lowest
+            deepest_top = min(fragment_tops)  # Entry point of deepest fragment
+
+            # Estimate that messages reach the deepest fragment
+            # Calculate spacing to spread messages from start_y to deepest fragment
+            num_messages = len(sequence_connectors)
+            if num_messages > 0:
+                # Target the middle of the deepest fragment for the last message
+                target_y = (deepest_top + deepest_bottom) // 2
+                total_distance = start_y - target_y  # Distance from start to fragment middle
+                message_spacing = total_distance // num_messages
+
+        positions = {}
+        for conn in sequence_connectors:
+            # Get SeqNo from the connector
+            TConnector = base.classes.t_connector
+            t_conn = self.session.query(TConnector).filter(TConnector.attr_connector_id == conn.connector_id).first()
+            if t_conn:
+                seqno = getattr(t_conn, "attr_seqno", 0)
+                # Move down (more negative) for each message
+                estimated_y = start_y - (seqno * message_spacing)
+                positions[conn.connector_id] = estimated_y
+
+        return positions
+
+    def _assign_messages_to_fragments(
+        self, sequence_connectors: List, message_positions: Dict[int, int]
+    ) -> Dict[int, List]:
+        """
+        Assign messages to fragments based on spatial overlap.
+
+        A message belongs to a fragment if its estimated Y-position falls within
+        the fragment's bounding box (rect_top to rect_bottom).
+
+        :param sequence_connectors: List of sequence connectors
+        :param message_positions: Dict mapping connector_id to Y-position
+        :return: Dict mapping fragment object_id to list of connectors
+        """
+        assignments = {}
+
+        for fragment in self.diagram.fragments:
+            assigned_conns = []
+            for conn in sequence_connectors:
+                msg_y = message_positions.get(conn.connector_id)
+                if msg_y is not None:
+                    # Check if message falls within fragment's vertical range
+                    # EA Y-axis is inverted: rect_top > rect_bottom (top is larger number)
+                    if fragment.rect_bottom <= msg_y <= fragment.rect_top:
+                        assigned_conns.append(conn)
+
+            if assigned_conns:
+                assignments[fragment.object_id] = assigned_conns
+
+        return assignments
 
     def _build_object_lookup(self):
         """Map object_id to ModelClass for quick lookup."""
