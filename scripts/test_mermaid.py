@@ -17,7 +17,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from eaidl.load import ModelParser
 from eaidl.utils import load_config
-from eaidl.mermaid_diagram import generate_package_diagram
+from eaidl.diagram_builder import ClassDiagramBuilder
+from eaidl.renderers.factory import get_renderer
 from eaidl.transforms import flatten_abstract_classes
 
 
@@ -110,7 +111,11 @@ def main():
             nonlocal test_count
             if pkg.classes:
                 print(f"Generating diagram for {'.'.join(namespace_path)}...")
-                diagram_code = generate_package_diagram(pkg, config, packages)
+                builder = ClassDiagramBuilder(pkg, config, packages)
+                desc = builder.build()
+                renderer = get_renderer(config)
+                output = renderer.render_class_diagram(desc)
+                diagram_code = output.content
 
                 # Create test HTML
                 title = f"Mermaid Test: {'.'.join(namespace_path)}"

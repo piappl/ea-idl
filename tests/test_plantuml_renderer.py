@@ -226,6 +226,35 @@ class TestPlantUMLRenderer:
         assert "Child *-- Helper" in plantuml_text
 
     @patch("eaidl.renderers.plantuml_renderer.requests.post")
+    def test_render_relationship_with_stereotypes(self, mock_post, renderer):
+        """Test rendering relationships with stereotypes."""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = "<svg>stereotyped relationships</svg>"
+        mock_post.return_value = mock_response
+
+        node1 = DiagramClassNode(id="Source", name="Source")
+        node2 = DiagramClassNode(id="Target", name="Target")
+
+        # Test single stereotype
+        rel1 = DiagramRelationship(
+            source_id="Source", target_id="Target", type=RelationType.ASSOCIATION, stereotypes=["create"]
+        )
+
+        # Test multiple stereotypes
+        rel2 = DiagramRelationship(
+            source_id="Target", target_id="Source", type=RelationType.DEPENDENCY, stereotypes=["use", "access"]
+        )
+
+        desc = ClassDiagramDescription(nodes=[node1, node2], relationships=[rel1, rel2])
+
+        renderer.render_class_diagram(desc)
+
+        plantuml_text = mock_post.call_args[1]["data"].decode("utf-8")
+        assert "Source --> Target : <<create>>" in plantuml_text
+        assert "Target ..> Source : <<use>> <<access>>" in plantuml_text
+
+    @patch("eaidl.renderers.plantuml_renderer.requests.post")
     def test_render_click_handlers(self, mock_post, renderer):
         """Test rendering click handlers as hyperlinks."""
         mock_response = Mock()

@@ -8,10 +8,11 @@ and will render properly in Mermaid.js.
 import re
 from typing import List, Set
 import pytest
-from eaidl.mermaid_diagram import generate_package_diagram
 from eaidl.load import ModelParser
 from eaidl.utils import load_config
 from eaidl.mermaid_debug import get_mermaid_live_link
+from eaidl.diagram_builder import ClassDiagramBuilder
+from eaidl.renderers.factory import get_renderer
 
 
 class MermaidSyntaxValidator:
@@ -301,7 +302,11 @@ class TestGeneratedDiagramsValidation:
         def check_package(pkg):
             """Recursively check package and its children."""
             if pkg.classes:  # Only check packages with classes
-                diagram = generate_package_diagram(pkg, config, packages)
+                builder = ClassDiagramBuilder(pkg, config, packages)
+                desc = builder.build()
+                renderer = get_renderer(config)
+                output = renderer.render_class_diagram(desc)
+                diagram = output.content
                 validation_errors = validate_mermaid_syntax(diagram)
                 if validation_errors:
                     namespace_key = ".".join(pkg.namespace)
@@ -339,7 +344,11 @@ class TestGeneratedDiagramsValidation:
                         break
 
                 if target_pkg:
-                    diagram = generate_package_diagram(target_pkg, config, packages)
+                    builder = ClassDiagramBuilder(target_pkg, config, packages)
+                    desc = builder.build()
+                    renderer = get_renderer(config)
+                    output = renderer.render_class_diagram(desc)
+                    diagram = output.content
                     debug_link = get_mermaid_live_link(diagram)
                     error_report.append(f"  Debug link: {debug_link}")
 
@@ -364,7 +373,11 @@ class TestGeneratedDiagramsValidation:
 
         assert test_package is not None, "No packages with classes found in test model"
 
-        diagram = generate_package_diagram(test_package, config, packages)
+        builder = ClassDiagramBuilder(test_package, config, packages)
+        desc = builder.build()
+        renderer = get_renderer(config)
+        output = renderer.render_class_diagram(desc)
+        diagram = output.content
 
         # Validate syntax
         errors = validate_mermaid_syntax(diagram)
@@ -393,7 +406,11 @@ class TestGeneratedDiagramsValidation:
 
         assert test_package is not None, "No packages with classes found in test model"
 
-        diagram = generate_package_diagram(test_package, config, packages)
+        builder = ClassDiagramBuilder(test_package, config, packages)
+        desc = builder.build()
+        renderer = get_renderer(config)
+        output = renderer.render_class_diagram(desc)
+        diagram = output.content
         lines = diagram.split("\n")
 
         # Extract and validate click handlers
@@ -454,7 +471,11 @@ class TestGeneratedDiagramsValidation:
                 continue
 
             # Generate diagram
-            diagram = generate_package_diagram(target_pkg, config, packages)
+            builder = ClassDiagramBuilder(target_pkg, config, packages)
+            desc = builder.build()
+            renderer = get_renderer(config)
+            output = renderer.render_class_diagram(desc)
+            diagram = output.content
 
             # Save to file
             diagram_file = tmp_path / f"{short_name}_diagram.mmd"

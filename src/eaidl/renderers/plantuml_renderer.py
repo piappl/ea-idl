@@ -288,28 +288,34 @@ class PlantUMLRenderer:
         :param rel: DiagramRelationship
         :return: PlantUML syntax
         """
+        # Determine arrow type based on relationship type
         if rel.type == RelationType.INHERITANCE:
             # Inheritance: hollow triangle arrow
-            return f"{rel.source_id} --|> {rel.target_id}"
-
+            arrow = "--|>"
         elif rel.type == RelationType.COMPOSITION:
             # Composition: filled diamond
-            return f"{rel.source_id} *-- {rel.target_id}"
-
+            arrow = "*--"
         elif rel.type == RelationType.AGGREGATION:
             # Aggregation: hollow diamond
-            return f"{rel.source_id} o-- {rel.target_id}"
-
+            arrow = "o--"
         elif rel.type == RelationType.DEPENDENCY:
             # Dependency: dotted arrow
-            return f"{rel.source_id} ..> {rel.target_id}"
-
+            arrow = "..>"
         elif rel.type == RelationType.ASSOCIATION:
-            return f"{rel.source_id} --> {rel.target_id}"
-
+            arrow = "-->"
         else:
             # Default: simple association
-            return f"{rel.source_id} --> {rel.target_id}"
+            arrow = "-->"
+
+        # Build relationship line
+        rel_line = f"{rel.source_id} {arrow} {rel.target_id}"
+
+        # Add stereotypes if present
+        if rel.stereotypes:
+            stereotypes_str = " ".join(f"<<{s}>>" for s in rel.stereotypes)
+            rel_line += f" : {stereotypes_str}"
+
+        return rel_line
 
     def _generate_click_handler(self, handler: DiagramClickHandler) -> str:
         """
