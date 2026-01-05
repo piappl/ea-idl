@@ -96,6 +96,7 @@ class DiagramNote:
 
     text: str
     attached_to: Optional[str] = None  # Node ID, if attached
+    rect_top: int = 0  # Y-position for ordering in sequence diagrams
 
 
 @dataclass

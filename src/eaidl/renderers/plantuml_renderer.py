@@ -151,14 +151,34 @@ class PlantUMLRenderer:
         for participant in desc.participants:
             lines.append(f"participant {participant.id}")
 
-        # Add notes
-        for note in desc.notes:
+        # Output notes in Y-order (higher Y first, which means less negative)
+        # EA coordinate system: larger values = higher on diagram
+        sorted_notes = sorted(desc.notes, key=lambda n: n.rect_top, reverse=True)
+
+        # For proper positioning, we output notes at logical points:
+        # - Notes with Y > max(participant Y) before first message
+        # - Other notes after corresponding messages
+        # Since we don't have message Y-positions here, we use a simple heuristic:
+        # Output notes in their Y-order, interspersed with messages
+
+        note_idx = 0
+
+        # Output notes that should appear at the top (before all messages)
+        # These are notes with higher Y values (less negative) than typical message positions
+        # Simple heuristic: notes with Y > -150 appear before messages
+        early_threshold = -150  # Notes above this Y appear before messages
+
+        while note_idx < len(sorted_notes):
+            note = sorted_notes[note_idx]
+            if note.rect_top < early_threshold:
+                break
             if note.attached_to:
                 note_text = note.text.replace('"', '\\"')
                 lines.append(f"note right of {note.attached_to}: {repr(note_text)}")
             elif desc.participants:
                 note_text = note.text.replace('"', '\\"')
                 lines.append(f"note over {desc.participants[0].id}: {repr(note_text)}")
+            note_idx += 1
 
         # Add messages (not in fragments)
         for message in desc.messages:
@@ -173,6 +193,17 @@ class PlantUMLRenderer:
                 msg_line = self._generate_sequence_message_syntax(message)
                 lines.append(msg_line)
             lines.append("end")
+
+        # Output remaining notes (those that should appear after messages/fragments)
+        while note_idx < len(sorted_notes):
+            note = sorted_notes[note_idx]
+            if note.attached_to:
+                note_text = note.text.replace('"', '\\"')
+                lines.append(f"note right of {note.attached_to}: {repr(note_text)}")
+            elif desc.participants:
+                note_text = note.text.replace('"', '\\"')
+                lines.append(f"note over {desc.participants[0].id}: {repr(note_text)}")
+            note_idx += 1
 
         lines.append("@enduml")
         return "\n".join(lines)

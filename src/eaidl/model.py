@@ -158,6 +158,8 @@ class ModelInteractionFragment(LocalBaseModel):
     note: Optional[str] = None  # Condition text
     parent_id: Optional[int] = None
     messages: List[int] = []  # Connector IDs of messages in this fragment
+    rect_top: int = 0  # Top Y-coordinate for spatial positioning
+    rect_bottom: int = 0  # Bottom Y-coordinate for spatial positioning
 
 
 class ModelDiagram(LocalBaseModel):
