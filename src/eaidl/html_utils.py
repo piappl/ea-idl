@@ -3,6 +3,7 @@
 import re
 from markdownify import MarkdownConverter
 import markdown
+from bs4 import BeautifulSoup
 
 
 class CleanMarkdownConverter(MarkdownConverter):
@@ -43,6 +44,47 @@ def strip_html(text: str) -> str:
     result = result.strip()
 
     return result
+
+
+def convert_to_ea_html(html: str) -> str:
+    """
+    Convert modern HTML5 tags to EA-compatible HTML format.
+
+    EA uses older HTML tags and expects specific formatting:
+    - <b> instead of <strong>
+    - <i> instead of <em>
+    - No wrapper <html><body> tags
+    - Minimal <p> tags (EA adds its own paragraph handling)
+
+    :param html: HTML string with modern tags
+    :return: EA-compatible HTML string
+    """
+    if not html:
+        return html
+
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Replace <strong> with <b>
+    for tag in soup.find_all("strong"):
+        tag.name = "b"
+
+    # Replace <em> with <i>
+    for tag in soup.find_all("em"):
+        tag.name = "i"
+
+    # Get the HTML string
+    result = str(soup)
+
+    # BeautifulSoup might add wrapper tags, remove them
+    # Remove <html><body> wrappers if present
+    result = re.sub(r"^<html><body>|</body></html>$", "", result)
+
+    # EA doesn't need wrapper <p> tags for simple content
+    # Only unwrap single top-level <p> tags
+    if result.startswith("<p>") and result.endswith("</p>") and result.count("<p>") == 1:
+        result = result[3:-4]
+
+    return result.strip()
 
 
 def format_notes_for_html(text: str) -> str:
