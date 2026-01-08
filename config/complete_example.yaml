@@ -33,6 +33,21 @@ root_packages:
 #   - "idlEnum"
 
 # =============================================================================
+# Empty Union Handling
+# =============================================================================
+# Control how empty and single-element unions are handled
+#
+# Mode 1: Collapse by default (default behavior)
+# - Empty/single unions are removed unless marked with <<keep>> stereotype
+# collapse_empty_unions_by_default: true  # default
+# keep_union_stereotype: "keep"  # stereotype to preserve unions
+#
+# Mode 2: Keep by default
+# - Empty/single unions are preserved unless marked with <<collapse>> stereotype
+# collapse_empty_unions_by_default: false
+# collapse_union_stereotype: "collapse"  # stereotype to remove unions
+
+# =============================================================================
 # Template Selection
 # =============================================================================
 # IDL template to use (see src/eaidl/templates/)
