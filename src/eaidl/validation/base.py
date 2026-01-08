@@ -44,6 +44,11 @@ def validator(func):
                 return func(config, **kwargs)
             except ValueError as err:
                 log.warning(err)
+        elif mod_name(func) in config.validators_inform:
+            try:
+                return func(config, **kwargs)
+            except ValueError as err:
+                log.info(err)
 
         return
 
@@ -51,7 +56,7 @@ def validator(func):
 
 
 def run(module: str, config: Configuration, **kwargs):
-    for item in config.validators_error + config.validators_fail + config.validators_warn:
+    for item in config.validators_error + config.validators_fail + config.validators_warn + config.validators_inform:
         mod, func = item.split(".")
         if mod == module:
             getattr(import_module(f"eaidl.validation.{mod}"), func)(config, **kwargs)

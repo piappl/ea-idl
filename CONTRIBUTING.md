@@ -100,8 +100,14 @@ uv run pytest tests/test_transforms.py::test_flatten_abstract -v
 
 1. Add function to `src/eaidl/validation/{struct,attribute,package}.py`
 2. Use `@validator` decorator
-3. Configure severity in config YAML: `validators_fail`, `validators_error`, or `validators_warn`
+3. Configure severity in config YAML: `validators_fail`, `validators_error`, `validators_warn`, or `validators_inform`
 4. Add test to `tests/test_validators.py`
+
+**Severity levels:**
+- `validators_fail` - Stops generation immediately
+- `validators_error` - Logs as ERROR but continues
+- `validators_warn` - Logs as WARNING (visible by default)
+- `validators_inform` - Logs as INFO (only visible with `--debug`)
 
 ```python
 from eaidl.validation.base import validator
@@ -153,5 +159,5 @@ Do NOT auto-format these files.
 
 1. **Running tests** - Pre-commit hooks run automatically, but always `uv run pytest` before pushing
 2. **Template modifications** - Templates are whitespace-sensitive. Test thoroughly.
-3. **Validator severity** - Use `validators_warn` for non-critical checks, `validators_fail` only for breaking issues
+3. **Validator severity** - Use `validators_inform` for optional checks (spell check, notes), `validators_warn` for non-critical issues, `validators_fail` only for breaking issues
 4. **Abstract class handling** - Test with `tests/test_transforms.py` when modifying inheritance logic

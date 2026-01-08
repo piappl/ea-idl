@@ -182,12 +182,16 @@ class Configuration(BaseModel):
     #: List of validation runs that produce warning
     validators_warn: List[str] = [
         "attribute.name_snake_convention",
-        # "attribute.notes",
         "struct.name_camel_convention",
-        "struct.notes",
         "struct.typedef_has_association",
         "package.stereotypes",
         "package.name_snake_convention",
+    ]
+    #: List of validation runs that produce informational messages
+    validators_inform: List[str] = [
+        # Notes validators
+        # "attribute.notes",
+        "struct.notes",
         "package.notes",
         # Spellchecking validators
         "attribute.notes_spelling",

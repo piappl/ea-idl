@@ -33,7 +33,7 @@ def setup_command(func):
         # Setup logging
         log_handler = logging.StreamHandler()
         log_handler.setFormatter(LogFormatter())
-        logging.basicConfig(level=logging.DEBUG if debug else logging.WARNING, handlers=[log_handler])
+        logging.basicConfig(level=logging.DEBUG if debug else logging.INFO, handlers=[log_handler])
 
         # Load config
         config_obj = load_config(config)
@@ -191,16 +191,9 @@ def packages(config_obj, debug, output, format):
 @click.option("--debug", default=False, is_flag=True, help="Enable debug.")
 @click.option("--output", default="./_docs", help="Output directory for HTML documentation.")
 @click.option("--no-diagrams", is_flag=True, help="Skip diagram generation.")
-def docs(config, debug, output, no_diagrams):
+@setup_command
+def docs(config_obj, debug, output, no_diagrams):
     """Generate interactive HTML documentation from EA model."""
-    log_handler = logging.StreamHandler()
-    log_handler.setFormatter(LogFormatter())
-    logging.basicConfig(level=logging.DEBUG if debug else logging.INFO, handlers=[log_handler])
-
-    config_obj = load_config(config)
-    if debug:
-        log.debug(json.dumps(config_obj.model_dump(), indent=4))
-
     parser = ModelParser(config_obj)
     model = parser.load()
 
