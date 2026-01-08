@@ -204,18 +204,15 @@
         <div class="card-body">
             <ul class="list-unstyled">
                 <li><strong>→</strong> Association</li>
-                <li><strong>⬥→</strong> Composition</li>
                 <li><strong>▷</strong> Inheritance</li>
-                <li><strong>⋯→</strong> Dependency</li>
+                <li><strong>+</strong> Public attribute</li>
                 <li><strong>+*</strong> Inherited attribute (from parent class)</li>
             </ul>
-
-            <h6 class="mt-3">Note</h6>
-            <p class="small text-muted mb-0">
-                Relationship labels and class stereotypes (struct, enum, union, typedef) are not shown in diagrams due to browser rendering limitations.
-                Click on any class to see its full type information, attributes, and relationships.
-                Inherited attributes are marked with an asterisk after the visibility marker (e.g., +*header).
-            </p>
+            <ul class="list-unstyled">
+                <li><strong>&lt;&lt;union&gt;&gt;</strong> link union with its discriminator</li>
+                <li><strong>&lt;&lt;value&gt;&gt;</strong> link flexible enumeration with defined values</li>
+            </ul>
+            
         </div>
     </div>
     {% else %}

@@ -175,6 +175,7 @@ def _filter_empty_unions(roots: List[ModelPackage], current: ModelPackage, confi
             continue
 
         if cls.is_union and (cls.attributes is None or len(cls.attributes) == 0):
+            log.warning("Removing empty union %s::%s", "::".join(cls.namespace), cls.name)
             # This is empty union
             for root in roots:
                 remove_attr(
@@ -183,6 +184,7 @@ def _filter_empty_unions(roots: List[ModelPackage], current: ModelPackage, confi
                 )
             current.classes.remove(cls)
         elif cls.is_union and (cls.attributes is not None and len(cls.attributes) == 1):
+            log.warning("Collapsing one element union %s::%s", "::".join(cls.namespace), cls.name)
             # This is union of one element, two way to go, we can replace with
             # primitive or other class
             for root in roots:
