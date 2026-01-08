@@ -7,6 +7,7 @@ from copy import deepcopy
 from eaidl.model import ModelPackage, ModelClass, ModelAttribute
 from eaidl.config import Configuration
 from eaidl.tree_utils import find_class, find_class_by_namespace
+from eaidl.link_utils import get_inherited_attributes
 
 log = logging.getLogger(__name__)
 
@@ -174,7 +175,12 @@ def _filter_empty_unions(roots: List[ModelPackage], current: ModelPackage, confi
         if not should_collapse:
             continue
 
-        if cls.is_union and (cls.attributes is None or len(cls.attributes) == 0):
+        # Get all attributes including inherited ones
+        inherited_attrs = get_inherited_attributes(cls, roots)
+        all_attrs = inherited_attrs + cls.attributes
+        attr_count = len(all_attrs)
+
+        if cls.is_union and attr_count == 0:
             log.warning("Removing empty union %s::%s", "::".join(cls.namespace), cls.name)
             # This is empty union
             for root in roots:
@@ -183,27 +189,28 @@ def _filter_empty_unions(roots: List[ModelPackage], current: ModelPackage, confi
                     lambda a: a.connector is not None and a.connector.end_object_id == cls.object_id,
                 )
             current.classes.remove(cls)
-        elif cls.is_union and (cls.attributes is not None and len(cls.attributes) == 1):
+        elif cls.is_union and attr_count == 1:
             log.warning("Collapsing one element union %s::%s", "::".join(cls.namespace), cls.name)
             # This is union of one element, two way to go, we can replace with
             # primitive or other class
+            single_attr = all_attrs[0]
             for root in roots:
                 attrs = get_attrs(
                     root,
                     lambda a: a.connector is not None and a.connector.end_object_id == cls.object_id,
                 )
-                if cls.attributes[0].connector is None:
+                if single_attr.connector is None:
                     # Primitive
                     for attr in attrs:
-                        attr.type = cls.attributes[0].type
-                        attr.namespace = cls.attributes[0].namespace
+                        attr.type = single_attr.type
+                        attr.namespace = single_attr.namespace
                         attr.connector = None
                 else:
                     for attr in attrs:
-                        attr.type = cls.attributes[0].type
-                        attr.namespace = cls.attributes[0].namespace
+                        attr.type = single_attr.type
+                        attr.namespace = single_attr.namespace
                         old = attr.connector
-                        attr.connector = cls.attributes[0].connector
+                        attr.connector = single_attr.connector
                         attr.connector.connector_id = old.connector_id  # type: ignore
                         attr.connector.start_object_id = old.start_object_id  # type: ignore
             current.classes.remove(cls)
