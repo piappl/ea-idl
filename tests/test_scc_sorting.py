@@ -3,15 +3,15 @@ from eaidl.sorting import topological_sort_classes
 
 
 def test_scc_topological_sorting():
-    # Nodes (Typedef) -> Node (Union) [HARD]
-    # Node (Union) -> Nodes (Typedef) [SOFT]
+    # Nodes (Typedef sequence<>) -> Node (Union) [SOFT - typedef with sequence<>]
+    # Node (Union) -> Nodes (Typedef) [SOFT - union members are always soft]
 
     nodes_typedef = ModelClass(
         object_id=1,
         name="Nodes",
         is_typedef=True,
         parent_type="sequence<Node>",
-        depends_on=[2],  # Hard dependency on Node
+        depends_on=[2],  # Soft dependency on Node (typedef with sequence<>)
     )
 
     node_union = ModelClass(
@@ -27,16 +27,31 @@ def test_scc_topological_sorting():
 
     classes = [nodes_typedef, node_union]
 
-    # Node should come first because it has in-degree 0 (its incoming edge from Nodes is HARD,
-    # but its outgoing edge to Nodes is SOFT and thus ignored in the SCC).
-    # Wait, Nodes has in-degree 1 (Hard edge from Node is... no!
-    # Node -> Nodes is SOFT. Nodes -> Node is HARD.
-    # So Node has in-degree 0 (soft edge from Nodes ignored? No!
+    # Both edges are SOFT and within the same SCC, so they're both ignored:
     # Logic is: if dep_id in scc and is_soft(cls, dep_id): ignore.
-    # src=Node, dep_id=Nodes. is_soft(Node, Nodes) is True. So edge ignored.
-    # src=Nodes, dep_id=Node. is_soft(Nodes, Node) is False. So edge KEPT.
-    # Result: in_degree(Node) = 0. in_degree(Nodes) = 1.
-    # Node pops first. SUCCESS.
+    # src=Nodes, dep_id=Node. is_soft(Nodes, Node) is True (typedef sequence<>). Edge ignored.
+    # src=Node, dep_id=Nodes. is_soft(Node, Nodes) is True (union). Edge ignored.
+    # Result: Both have in-degree 0, so sorting falls back to object_id order.
+    # Nodes (object_id=1) comes before Node (object_id=2).
     sorted_classes = topological_sort_classes(classes, scc_map)
 
-    assert [c.name for c in sorted_classes] == ["Node", "Nodes"]
+    assert [c.name for c in sorted_classes] == ["Nodes", "Node"]
+
+
+def test_typedef_direct_reference_is_hard_dependency():
+    """Test that typedef without sequence<> creates a hard dependency (not circular)."""
+    # MyString (Typedef) -> string [primitive, ignored]
+    # This is a simple typedef, no circular dependency
+
+    my_string_typedef = ModelClass(
+        object_id=1,
+        name="MyString",
+        is_typedef=True,
+        parent_type="string",  # Direct type reference, not sequence<>
+        depends_on=[],  # No dependencies on other classes
+    )
+
+    classes = [my_string_typedef]
+    sorted_classes = topological_sort_classes(classes, scc_map={})
+
+    assert [c.name for c in sorted_classes] == ["MyString"]

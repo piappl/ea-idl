@@ -1,8 +1,16 @@
-"""HTML utilities for processing note content from Enterprise Architect."""
+"""HTML utilities for processing note content from Enterprise Architect.
+
+This module provides utilities for bidirectional HTML processing:
+- strip_html(): EA HTML → Markdown (for export to DOCX)
+- convert_to_ea_html(): Modern HTML → EA HTML (for import from DOCX)
+- format_notes_for_html(): EA HTML → Display HTML (for documentation)
+"""
 
 import re
+from typing import Dict
 from markdownify import MarkdownConverter
 import markdown
+from bs4 import BeautifulSoup
 
 
 class CleanMarkdownConverter(MarkdownConverter):
@@ -43,6 +51,56 @@ def strip_html(text: str) -> str:
     result = result.strip()
 
     return result
+
+
+def _replace_tags(soup: BeautifulSoup, tag_mapping: Dict[str, str]) -> None:
+    """
+    Replace HTML tags in BeautifulSoup object according to mapping.
+
+    Helper to consolidate tag replacement logic.
+
+    :param soup: BeautifulSoup object to modify
+    :param tag_mapping: Dictionary mapping old tag names to new tag names
+    """
+    for old_tag, new_tag in tag_mapping.items():
+        for tag in soup.find_all(old_tag):
+            tag.name = new_tag
+
+
+def convert_to_ea_html(html: str) -> str:
+    """
+    Convert modern HTML5 tags to EA-compatible HTML format.
+
+    EA uses older HTML tags and expects specific formatting:
+    - <b> instead of <strong>
+    - <i> instead of <em>
+    - No wrapper <html><body> tags
+    - Minimal <p> tags (EA adds its own paragraph handling)
+
+    :param html: HTML string with modern tags
+    :return: EA-compatible HTML string
+    """
+    if not html:
+        return html
+
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Replace modern HTML5 tags with EA-compatible tags
+    _replace_tags(soup, {"strong": "b", "em": "i"})
+
+    # Get the HTML string
+    result = str(soup)
+
+    # BeautifulSoup might add wrapper tags, remove them
+    # Remove <html><body> wrappers if present
+    result = re.sub(r"^<html><body>|</body></html>$", "", result)
+
+    # EA doesn't need wrapper <p> tags for simple content
+    # Only unwrap single top-level <p> tags
+    if result.startswith("<p>") and result.endswith("</p>") and result.count("<p>") == 1:
+        result = result[3:-4]
+
+    return result.strip()
 
 
 def format_notes_for_html(text: str) -> str:

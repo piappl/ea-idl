@@ -13,7 +13,7 @@
     {% endif %}
 {% endif %}
 {% if value.value_type == "str" %}
-@{{key | trim}}({{value.value | trim}})
+@{{key | trim}}({{value.value | escape_idl_string | trim}})
 {% elif value.value_type == "none" %}
 @{{key | trim}}
 {% else %}

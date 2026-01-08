@@ -26,7 +26,7 @@ module core {
             /**
                 ISO timestamp
             */
-            @ext::pattern("([0-9]{4}-[0-9]{2}-[0-9]{2})T([0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?)(Z|[\+-][0-9]{2}:[0-9]{2})")
+            @ext::pattern("([0-9]{4}-[0-9]{2}-[0-9]{2})T([0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?)(Z|[\\+-][0-9]{2}:[0-9]{2})")
             typedef string Time;
             @min(-40)
             @ext::exclusiveMaximum(100)
@@ -103,12 +103,13 @@ module core {
             Note about nationality.
         */
         typedef string Nationality[3];
-        @ext::pattern("([0-9]{4}-[0-9]{2}-[0-9]{2})T([0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?)(Z|[\+-][0-9]{2}:[0-9]{2})")
+        @ext::pattern("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
         typedef string GUID;
         typedef octet GUIDBytes[16];
     }; /* message */
     module recursion {
         struct Node;
+        typedef sequence<Node> Children;
     }; /* recursion */
     module data {
         union IdentifierOrName switch (core::data::IdentifierOrNameTypeEnum) {
@@ -236,6 +237,7 @@ module core {
             core::common::types::Identifier id;
             @optional
             sequence<core::recursion::Node> children;
+            core::recursion::Children other_children;
         };
     }; /* recursion */
 }; /* core */

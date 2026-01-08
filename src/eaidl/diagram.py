@@ -83,9 +83,13 @@ class PackageDiagramGenerator:
     def _sanitize_name(self, name: str) -> str:
         """
         Sanitize package names for PlantUML syntax.
+
+        Delegates to mermaid_utils.sanitize_id with for_plantuml=True
+        to eliminate code duplication.
         """
-        # Replace characters that could break PlantUML syntax
-        return name.replace('"', '\\"').replace("\n", " ")
+        from eaidl.mermaid_utils import sanitize_id
+
+        return sanitize_id(name, for_plantuml=True)
 
     def _get_package_depth(self, pkg: ModelPackage) -> int:
         """

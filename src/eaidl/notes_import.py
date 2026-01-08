@@ -10,7 +10,7 @@ import markdown
 
 from eaidl.config import Configuration
 from eaidl.load import ModelParser, base
-from eaidl.html_utils import strip_html
+from eaidl.html_utils import strip_html, convert_to_ea_html
 from eaidl.notes_export import NoteMetadata
 
 
@@ -110,19 +110,15 @@ class DocxImporter:
                 if para:
                     text = para.text.strip()
 
-                    # Skip empty lines
-                    if not text:
-                        continue
-
-                    # Skip headings and special markers
-                    if para.style.name.startswith("Heading"):
+                    # Skip headings and special markers (but only if they have text)
+                    if text and para.style.name.startswith("Heading"):
                         continue
                     if text.startswith("NOTE START"):
                         continue
                     if text.startswith("─"):  # Separator
                         continue
 
-                    # Collect content
+                    # Collect content (including blank lines for markdown formatting)
                     if current_metadata:
                         current_content_lines.append(text)
 
@@ -312,6 +308,9 @@ class DocxImporter:
 
             # Convert markdown back to HTML
             html_content = markdown.markdown(result.new_content, extensions=["extra", "sane_lists"])
+
+            # Convert to EA-compatible HTML format (<b> instead of <strong>, etc.)
+            html_content = convert_to_ea_html(html_content)
 
             # Update database based on note type
             self._update_note_in_database(result, html_content)

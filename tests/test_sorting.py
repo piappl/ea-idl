@@ -1,7 +1,7 @@
 import pytest
 from typing import List
 
-from eaidl.model import ModelClass, ModelPackage, ModelPackageInfo
+from eaidl.model import ModelClass, ModelPackage, ModelPackageInfo, ModelAttribute
 from eaidl.sorting import topological_sort_classes, topological_sort_packages, CircularDependencyError
 
 
@@ -127,6 +127,51 @@ class TestTopologicalSortClasses:
         classes = [c2, c1]
         sorted_classes = topological_sort_classes(classes)
         assert [c.object_id for c in sorted_classes] == [1, 2]
+
+    def test_typedef_sequence_circular_dependency_allowed(self):
+        """Test that circular dependency via typedef sequence<> is allowed in topological sort."""
+        # Create a struct Node that depends on typedef Children
+        node_struct = ModelClass(
+            name="Node",
+            object_id=1001,
+            is_struct=True,
+            depends_on=[1002],  # Depends on Children typedef
+            attributes=[
+                ModelAttribute(
+                    name="other_children",
+                    type="Children",
+                    is_collection=False,
+                    attribute_id=1,
+                    guid="guid1",
+                    alias="other_children",
+                )
+            ],
+        )
+
+        # Create a typedef Children = sequence<Node> that depends on Node
+        children_typedef = ModelClass(
+            name="Children",
+            object_id=1002,
+            is_typedef=True,
+            depends_on=[1001],  # Depends on Node
+            parent_type="sequence<Node>",  # This makes it a soft dependency
+        )
+
+        # Create SCC map showing they're in the same cycle
+        scc_map = {
+            1001: {1001, 1002},
+            1002: {1001, 1002},
+        }
+
+        # This should NOT raise because typedef with sequence<> is a soft dependency
+        classes = [node_struct, children_typedef]
+        sorted_classes = topological_sort_classes(classes, scc_map=scc_map)
+
+        # Should successfully sort (order depends on which breaks the soft dependency)
+        assert len(sorted_classes) == 2
+        # Both classes should be in the result
+        sorted_ids = {c.object_id for c in sorted_classes}
+        assert sorted_ids == {1001, 1002}
 
 
 class TestTopologicalSortPackages:

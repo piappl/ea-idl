@@ -5,7 +5,7 @@ import logging
 import re
 
 from eaidl.model import ModelPackage
-from eaidl.utils import flatten_packages, find_class
+from eaidl.tree_utils import collect_packages, find_class
 
 log = logging.getLogger(__name__)
 
@@ -95,7 +95,7 @@ def find_type_cycles(packages: List[ModelPackage], check_non_collection_cycles: 
     all_types = {}  # object_id -> ModelClass
 
     # First pass: collect all structs, unions, and typedefs and initialize graphs
-    for pkg in flatten_packages(packages):
+    for pkg in collect_packages(packages):
         for cls in pkg.classes:
             if cls.is_struct or cls.is_union or cls.is_typedef:
                 all_types[cls.object_id] = cls
@@ -208,7 +208,7 @@ def validate_cycles_within_modules(packages: List[ModelPackage], scc_map: Dict[i
         ValueError: If a cycle crosses module boundaries
     """
     all_types = {}
-    for pkg in flatten_packages(packages):
+    for pkg in collect_packages(packages):
         for cls in pkg.classes:
             if cls.is_struct or cls.is_union or cls.is_typedef:
                 all_types[cls.object_id] = cls
@@ -269,7 +269,7 @@ def detect_types_needing_forward_declarations(
     needs_forward_decl = set(scc_map.keys())
 
     # Build map of all types for lookup (needed for logging and marking)
-    all_types = {cls.object_id: cls for pkg in flatten_packages(packages) for cls in pkg.classes}
+    all_types = {cls.object_id: cls for pkg in collect_packages(packages) for cls in pkg.classes}
 
     # All types in any SCC need forward declarations (or are part of a cycle
     # that requires forward declarations of associated structs/unions)
@@ -277,7 +277,7 @@ def detect_types_needing_forward_declarations(
 
     # Also mark types referenced by typedefs as needing forward declarations
     # This ensures typedefs can appear before their referenced type definition
-    for pkg in flatten_packages(packages):
+    for pkg in collect_packages(packages):
         for cls in pkg.classes:
             if cls.is_typedef and cls.parent_type:
                 # Extract the referenced type from parent_type (e.g., "sequence<ArrayExpressionItem>" -> "ArrayExpressionItem")

@@ -88,9 +88,14 @@ def topological_sort_classes(classes: List[ModelClass], scc_map: Dict[int, Set[i
         if src.is_union:
             return True
 
-        # Typedefs are HARD. To define 'typedef sequence<S> T', S must be at least declared.
+        # Typedefs: Check if they use collection types (sequence/map)
+        # For 'typedef sequence<S> T', S only needs to be forward declared (soft dependency)
+        # For 'typedef S T', S needs to be fully defined (hard dependency)
         if src.is_typedef:
-            return False
+            # Check if parent_type uses sequence<> or map<> (collections)
+            if src.parent_type and ("sequence<" in src.parent_type or "map<" in src.parent_type):
+                return True  # Soft - collection types only need forward declaration
+            return False  # Hard - direct typedef needs full definition
 
         # Struct members: soft if ALL attributes of that type are collections
         target_name = target.name

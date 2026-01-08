@@ -710,3 +710,67 @@ def test_typedef_references_union_needs_forward_declaration():
 
     # The union should not be in scc_map (not in a circular dependency)
     assert item_union.object_id not in scc_map
+
+
+def test_typedef_sequence_circular_with_struct():
+    """Test that circular dependency via typedef sequence<> is allowed."""
+    # Create a typedef Children = sequence<Node> (must be created first to set depends_on)
+    children_typedef = ModelClass(
+        name="Children",
+        object_id=5002,
+        is_typedef=True,
+        stereotypes=["idlTypedef"],
+        namespace=["core", "recursion"],
+        parent_type="sequence<Node>",  # References Node
+        depends_on=[5001],  # Depends on Node
+    )
+
+    # Create a struct Node with a field of type Children
+    node_struct = ModelClass(
+        name="Node",
+        object_id=5001,
+        is_struct=True,
+        stereotypes=["struct"],
+        namespace=["core", "recursion"],
+        depends_on=[5002],  # Depends on Children
+        attributes=[
+            ModelAttribute(
+                name="id",
+                type="long",
+                attribute_id=1,
+                guid="guid1",
+                alias="id",
+            ),
+            ModelAttribute(
+                name="other_children",
+                type="Children",
+                is_collection=False,  # Direct reference to typedef
+                namespace=["core", "recursion"],
+                attribute_id=2,
+                guid="guid2",
+                alias="other_children",
+            ),
+        ],
+    )
+
+    # Create package
+    package = ModelPackage(
+        name="recursion",
+        package_id=500,
+        object_id=500,
+        guid="recursion-guid",
+    )
+    package.classes = [node_struct, children_typedef]
+    package.namespace = ["core", "recursion"]
+
+    # This should NOT raise - typedef using sequence<> creates a soft circular dependency
+    needs_forward_decl, scc_map = detect_types_needing_forward_declarations([package])
+
+    # Both should be in the same SCC (circular dependency detected)
+    assert node_struct.object_id in scc_map
+    assert children_typedef.object_id in scc_map
+    assert scc_map[node_struct.object_id] == scc_map[children_typedef.object_id]
+
+    # Both should need forward declarations
+    assert node_struct.object_id in needs_forward_decl
+    assert children_typedef.object_id in needs_forward_decl

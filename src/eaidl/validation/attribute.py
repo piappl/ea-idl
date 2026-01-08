@@ -2,11 +2,17 @@ from eaidl.config import Configuration
 from eaidl.model import ModelAttribute, ModelClass
 from eaidl.utils import is_lower_snake_case
 from .base import validator, RESERVED_NAMES
-from .spellcheck import check_spelling, format_spelling_errors
+from .validators import (
+    get_attribute_context,
+    check_experimental_stereotype,
+    check_notes_exist,
+    create_spelling_validator,
+)
 
 
 def context(attribute: ModelAttribute, cls: ModelClass) -> str:
-    return f"(in {".".join(cls.namespace)}.{cls.name}.{attribute.name}:{attribute.type})"
+    """Get context string for attribute (delegates to validators.get_attribute_context)."""
+    return get_attribute_context(attribute, cls)
 
 
 @validator
@@ -53,8 +59,8 @@ def connector_leads_to_type(config: Configuration, attribute: ModelAttribute, cl
 
 @validator
 def is_experimental(config: Configuration, attribute: ModelAttribute, cls: ModelClass):
-    if "experimental" in attribute.stereotypes:
-        raise ValueError(f"Attribute experimental {context(attribute, cls)}")
+    """Check if attribute has experimental stereotype."""
+    check_experimental_stereotype(attribute.stereotypes, context(attribute, cls), "Attribute")
 
 
 @validator
@@ -105,45 +111,27 @@ def name_snake_convention(config: Configuration, attribute: ModelAttribute, cls:
 
 @validator
 def notes(config: Configuration, attribute: ModelAttribute, cls: ModelClass):
-    if attribute.notes is None or attribute.notes.strip() == "":
-        raise ValueError(f"Attribute name has no description/comment/notes {context(attribute, cls)}")
+    """Check if attribute has notes/documentation."""
+    check_notes_exist(attribute.notes, "Attribute name", context(attribute, cls))
 
 
-@validator
-def notes_spelling(config: Configuration, attribute: ModelAttribute, cls: ModelClass):
-    """Check spelling in attribute notes/documentation."""
-    if not config.spellcheck.enabled or not config.spellcheck.check_notes:
-        return
+# Spelling validators created using factory to eliminate duplication
+_notes_spelling = create_spelling_validator(
+    text_extractor=lambda attribute, cls: attribute.notes,
+    context_extractor=lambda attribute, cls: context(attribute, cls),
+    check_type="notes",
+)
+_notes_spelling.__name__ = "notes_spelling"
+_notes_spelling.__module__ = "eaidl.validation.attribute"
+notes_spelling = validator(_notes_spelling)
+notes_spelling.__doc__ = "Check spelling in attribute notes/documentation."
 
-    if attribute.notes is None or attribute.notes.strip() == "":
-        return  # No notes to check
-
-    errors = check_spelling(
-        text=attribute.notes,
-        language=config.spellcheck.language,
-        min_word_length=config.spellcheck.min_word_length,
-        custom_words=config.spellcheck.custom_words,
-    )
-
-    if errors:
-        raise ValueError(format_spelling_errors(errors, context(attribute, cls)))
-
-
-@validator
-def name_spelling(config: Configuration, attribute: ModelAttribute, cls: ModelClass):
-    """Check spelling in attribute name (parsed from snake_case)."""
-    if not config.spellcheck.enabled or not config.spellcheck.check_identifiers:
-        return
-
-    if attribute.name is None:
-        return
-
-    errors = check_spelling(
-        text=attribute.name,
-        language=config.spellcheck.language,
-        min_word_length=config.spellcheck.min_word_length,
-        custom_words=config.spellcheck.custom_words,
-    )
-
-    if errors:
-        raise ValueError(format_spelling_errors(errors, context(attribute, cls)))
+_name_spelling = create_spelling_validator(
+    text_extractor=lambda attribute, cls: attribute.name,
+    context_extractor=lambda attribute, cls: context(attribute, cls),
+    check_type="identifiers",
+)
+_name_spelling.__name__ = "name_spelling"
+_name_spelling.__module__ = "eaidl.validation.attribute"
+name_spelling = validator(_name_spelling)
+name_spelling.__doc__ = "Check spelling in attribute name (parsed from snake_case)."
