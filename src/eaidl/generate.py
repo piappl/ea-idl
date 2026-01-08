@@ -14,6 +14,34 @@ from eaidl.transforms import (
 log = logging.getLogger(__name__)
 
 
+def escape_idl_string(value: str) -> str:
+    """Escape a string value for use in IDL string literals.
+
+    IDL follows C-style escape sequences where backslashes must be escaped.
+    If the value starts and ends with double quotes (string delimiters stored
+    in the database), only escape content between the quotes, not the delimiters.
+
+    :param value: string to escape
+    :return: escaped string with backslashes escaped
+    """
+    if not isinstance(value, str):
+        return value
+
+    # Check if value starts and ends with quotes (stored delimiters)
+    if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+        # Extract content between quotes, escape it, then add quotes back
+        content = value[1:-1]
+        content = content.replace("\\", "\\\\")
+        # Also escape any inner double quotes if present
+        content = content.replace('"', '\\"')
+        return f'"{content}"'
+    else:
+        # No stored delimiters, escape entire value
+        value = value.replace("\\", "\\\\")
+        value = value.replace('"', '\\"')
+        return value
+
+
 def create_env(config: Optional[Configuration] = None) -> Environment:
     """Create jinja2 environment.
 
@@ -32,6 +60,8 @@ def create_env(config: Optional[Configuration] = None) -> Environment:
         env.globals["config"] = config
         # Add filter for mapping EA types to IDL types
         env.filters["idl_type"] = config.get_idl_type
+    # Add filter for escaping string values in IDL
+    env.filters["escape_idl_string"] = escape_idl_string
     return env
 
 
