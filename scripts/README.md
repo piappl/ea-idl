@@ -39,7 +39,8 @@ winetricks msxml3 msxml6
 
 # Install Python 3.13 32-bit and Enterprise Architect
 wine ~/Downloads/python-3.13.9.exe
-wine ~/Downloads/easetup_x86.exe
+# wine ~/Downloads/easetup_x86.exe
+wine ~/easetupfull_x86.msi
 
 # Install Python packages (adjust path to your Python installation)
 PYTHON_PATH='C:\\users\\${USER}\\AppData\\Local\\Programs\\Python\\Python313-32'
