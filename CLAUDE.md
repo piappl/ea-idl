@@ -31,3 +31,5 @@ v.struct.my_validator(config, cls=my_class)  # ✅ Correct
 **Templates** (`src/eaidl/templates/`) are whitespace-sensitive - don't auto-format
 
 **Tech:** SQLAlchemy 2.0+, Pydantic, Jinja2, Click, Ruff, Python 3.12+
+
+**Development:** Use `uv` for all commands (`uv run pytest`, `uv run pre-commit`, `uv run eaidl`, etc.)
