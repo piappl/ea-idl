@@ -1,4 +1,4 @@
-"""Export EA model notes to DOCX format for editing by non-EA users.
+"""Export EA model notes to YAML format for editing.
 
 This module provides backward compatibility wrappers around the new Pydantic-based architecture.
 """
@@ -6,20 +6,20 @@ This module provides backward compatibility wrappers around the new Pydantic-bas
 # Re-export from new architecture for backward compatibility
 from eaidl.notes_model import NoteMetadata, NotesExport
 from eaidl.notes_core import NotesCollector
-from eaidl.notes_formats import DocxFormatter
+from eaidl.notes_formats import YamlFormatter
 
 
-class DocxExporter:
-    """Exports notes to DOCX format. Wrapper for backward compatibility."""
+class YamlExporter:
+    """Exports notes to YAML format. Wrapper for backward compatibility."""
 
     def __init__(self, notes_export: NotesExport):
         """Initialize with NotesExport (Pydantic model)."""
         self.notes_export = notes_export
 
     def export_to_file(self, output_path: str):
-        """Export to DOCX file using new formatter."""
-        DocxFormatter.export(self.notes_export, output_path)
+        """Export to YAML file using new formatter."""
+        YamlFormatter.export(self.notes_export, output_path)
 
 
 # For backward compatibility, also export these
-__all__ = ["NoteMetadata", "NotesExport", "NotesCollector", "DocxExporter"]
+__all__ = ["NoteMetadata", "NotesExport", "NotesCollector", "YamlExporter"]

@@ -1,13 +1,15 @@
-"""Tests for notes export/import functionality."""
+"""Tests for YAML notes export/import functionality."""
 
 import pytest
 import tempfile
 import os
+import yaml
 
 from eaidl.utils import load_config
 from eaidl.load import ModelParser
-from eaidl.notes_export import NotesCollector, DocxExporter
-from eaidl.notes_import import DocxImporter, ImportStatus
+from eaidl.notes_core import NotesCollector, NotesImporter
+from eaidl.notes_formats import YamlFormatter
+from eaidl.notes_model import ImportStatus
 
 
 @pytest.fixture
@@ -28,8 +30,8 @@ def packages(parser):
     return parser.load()
 
 
-class TestNotesExport:
-    """Test note export functionality."""
+class TestYamlExport:
+    """Test YAML note export functionality."""
 
     def test_collect_all_notes(self, config, packages):
         """Test collecting all notes from model."""
@@ -73,22 +75,28 @@ class TestNotesExport:
             assert note.object_guid.startswith("{")
             assert note.object_guid.endswith("}")
 
-    def test_export_docx(self, config, packages):
-        """Test exporting notes to DOCX file."""
+    def test_export_yaml(self, config, packages):
+        """Test exporting notes to YAML file."""
         collector = NotesCollector(config, packages)
         notes_export = collector.collect_all_notes()
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = os.path.join(tmpdir, "test_notes.docx")
-            exporter = DocxExporter(notes_export)
-            exporter.export_to_file(output_path)
+            output_path = os.path.join(tmpdir, "test_notes.yaml")
+            YamlFormatter.export(notes_export, output_path)
 
             assert os.path.exists(output_path)
             assert os.path.getsize(output_path) > 0
 
+            # Verify it's valid YAML
+            with open(output_path, "r") as f:
+                data = yaml.safe_load(f)
+                assert "metadata" in data
+                assert "notes" in data
+                assert len(data["notes"]) == notes_export.metadata.note_count
 
-class TestNotesImport:
-    """Test note import functionality."""
+
+class TestYamlImport:
+    """Test YAML note import functionality."""
 
     def test_round_trip_unchanged(self, config, parser, packages):
         """Test round-trip export/import with no changes."""
@@ -97,42 +105,40 @@ class TestNotesImport:
         notes_export = collector.collect_all_notes()
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            docx_path = os.path.join(tmpdir, "test_notes.docx")
+            yaml_path = os.path.join(tmpdir, "test_notes.yaml")
 
-            exporter = DocxExporter(notes_export)
-            exporter.export_to_file(docx_path)
+            YamlFormatter.export(notes_export, yaml_path)
 
             # Import
-            importer = DocxImporter(docx_path, config, parser)
-            parsed_notes = importer.parse_document()
+            parsed_notes = YamlFormatter.parse(yaml_path)
 
             # Should parse same number of notes
-            assert len(parsed_notes) == len(notes_export.notes)
+            assert len(parsed_notes) == notes_export.metadata.note_count
 
             # Validate (dry-run)
+            importer = NotesImporter(config, parser)
+            importer = NotesImporter(config, parser)
             summary = importer.validate_and_import(parsed_notes, dry_run=True)
 
             # All notes should be unchanged
-            assert summary.total_notes == len(notes_export.notes)
-            assert summary.skipped_unchanged == len(notes_export.notes)
+            assert summary.total_notes == notes_export.metadata.note_count
+            assert summary.skipped_unchanged == notes_export.metadata.note_count
             assert summary.imported == 0
             assert summary.skipped_checksum == 0
             assert summary.not_found == 0
             assert summary.errors == 0
 
-    def test_parse_document(self, config, parser, packages):
-        """Test parsing DOCX document."""
+    def test_parse_yaml(self, config, parser, packages):
+        """Test parsing YAML document."""
         collector = NotesCollector(config, packages)
         notes_export = collector.collect_all_notes()
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            docx_path = os.path.join(tmpdir, "test_notes.docx")
+            yaml_path = os.path.join(tmpdir, "test_notes.yaml")
 
-            exporter = DocxExporter(notes_export)
-            exporter.export_to_file(docx_path)
+            YamlFormatter.export(notes_export, yaml_path)
 
-            importer = DocxImporter(docx_path, config, parser)
-            parsed_notes = importer.parse_document()
+            parsed_notes = YamlFormatter.parse(yaml_path)
 
             # Check that metadata is preserved
             assert len(parsed_notes) > 0
@@ -150,13 +156,11 @@ class TestNotesImport:
         notes_export = collector.collect_all_notes()
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            docx_path = os.path.join(tmpdir, "test_notes.docx")
+            yaml_path = os.path.join(tmpdir, "test_notes.yaml")
 
-            exporter = DocxExporter(notes_export)
-            exporter.export_to_file(docx_path)
+            YamlFormatter.export(notes_export, yaml_path)
 
-            importer = DocxImporter(docx_path, config, parser)
-            parsed_notes = importer.parse_document()
+            parsed_notes = YamlFormatter.parse(yaml_path)
 
             # Find attribute notes
             attr_notes = [n for n in parsed_notes if n.note_type in ("attribute_main", "attribute_linked")]
@@ -172,20 +176,19 @@ class TestNotesImport:
         notes_export = collector.collect_all_notes()
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            docx_path = os.path.join(tmpdir, "test_notes.docx")
+            yaml_path = os.path.join(tmpdir, "test_notes.yaml")
 
-            exporter = DocxExporter(notes_export)
-            exporter.export_to_file(docx_path)
+            YamlFormatter.export(notes_export, yaml_path)
 
             # Parse and modify a note
-            importer = DocxImporter(docx_path, config, parser)
-            parsed_notes = importer.parse_document()
+            parsed_notes = YamlFormatter.parse(yaml_path)
 
             # Modify first note
             if len(parsed_notes) > 0:
                 parsed_notes[0].content_md = "MODIFIED CONTENT FOR TEST"
 
                 # Validate
+                importer = NotesImporter(config, parser)
                 summary = importer.validate_and_import(parsed_notes, dry_run=True)
 
                 # Should detect the change
@@ -197,20 +200,19 @@ class TestNotesImport:
         notes_export = collector.collect_all_notes()
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            docx_path = os.path.join(tmpdir, "test_notes.docx")
+            yaml_path = os.path.join(tmpdir, "test_notes.yaml")
 
-            exporter = DocxExporter(notes_export)
-            exporter.export_to_file(docx_path)
+            YamlFormatter.export(notes_export, yaml_path)
 
             # Parse notes
-            importer = DocxImporter(docx_path, config, parser)
-            parsed_notes = importer.parse_document()
+            parsed_notes = YamlFormatter.parse(yaml_path)
 
             # Modify checksum to simulate EA change
             if len(parsed_notes) > 0:
                 parsed_notes[0].checksum = "00000000000000000000000000000000"  # Invalid but valid length
 
                 # Validate
+                importer = NotesImporter(config, parser)
                 summary = importer.validate_and_import(parsed_notes, dry_run=True)
 
                 # Should detect checksum mismatch
@@ -222,14 +224,13 @@ class TestNotesImport:
         notes_export = collector.collect_all_notes()
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            docx_path = os.path.join(tmpdir, "test_notes.docx")
+            yaml_path = os.path.join(tmpdir, "test_notes.yaml")
 
-            exporter = DocxExporter(notes_export)
-            exporter.export_to_file(docx_path)
+            YamlFormatter.export(notes_export, yaml_path)
 
-            importer = DocxImporter(docx_path, config, parser)
-            parsed_notes = importer.parse_document()
+            parsed_notes = YamlFormatter.parse(yaml_path)
 
+            importer = NotesImporter(config, parser)
             summary = importer.validate_and_import(parsed_notes, dry_run=True)
 
             # Check summary fields
@@ -248,6 +249,37 @@ class TestNotesImport:
                 assert result.status in ImportStatus
                 assert result.message is not None
 
+    def test_yaml_human_readable(self, config, packages):
+        """Test that exported YAML is human-readable and well-formatted."""
+        collector = NotesCollector(config, packages)
+        notes_export = collector.collect_all_notes()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = os.path.join(tmpdir, "test_notes.yaml")
+            YamlFormatter.export(notes_export, output_path)
+
+            # Read file and check formatting
+            with open(output_path, "r") as f:
+                content = f.read()
+
+                # Check for header comments
+                assert "# EA-IDL Notes Export" in content
+                assert "# EDITING INSTRUCTIONS:" in content
+
+                # Check YAML is valid
+                f.seek(0)
+                data = yaml.safe_load(f)
+
+                # Check structure
+                assert "metadata" in data
+                assert "instructions" in data
+                assert "notes" in data
+
+                # Check metadata
+                assert "export_timestamp" in data["metadata"]
+                assert "root_packages" in data["metadata"]
+                assert "note_count" in data["metadata"]
+
 
 class TestPartialImport:
     """Test partial import functionality (parallel review workflow)."""
@@ -258,13 +290,11 @@ class TestPartialImport:
         notes_export = collector.collect_all_notes()
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            docx_path = os.path.join(tmpdir, "test_notes.docx")
+            yaml_path = os.path.join(tmpdir, "test_notes.yaml")
 
-            exporter = DocxExporter(notes_export)
-            exporter.export_to_file(docx_path)
+            YamlFormatter.export(notes_export, yaml_path)
 
-            importer = DocxImporter(docx_path, config, parser)
-            parsed_notes = importer.parse_document()
+            parsed_notes = YamlFormatter.parse(yaml_path)
 
             if len(parsed_notes) >= 3:
                 # Simulate parallel review scenario:
@@ -276,6 +306,7 @@ class TestPartialImport:
                 parsed_notes[1].checksum = "11111111111111111111111111111111"  # Invalid but valid length
                 # Note 2 unchanged
 
+                importer = NotesImporter(config, parser)
                 summary = importer.validate_and_import(parsed_notes, dry_run=True)
 
                 # Should import note 0, skip note 1, skip note 2

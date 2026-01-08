@@ -226,12 +226,29 @@ def import_schema(config_obj, schema, package, debug):
 
 @click.command()
 @click.option("--config", required=True, help="Configuration file.")
-@click.option("--output", required=True, help="Output DOCX file path.")
+@click.option("--output", required=True, help="Output file path (.yaml or .docx).")
+@click.option(
+    "--format",
+    type=click.Choice(["yaml", "docx"], case_sensitive=False),
+    default=None,
+    help="Output format (auto-detected from file extension if not specified).",
+)
 @click.option("--debug", default=False, is_flag=True, help="Enable debug.")
 @setup_command
-def export_notes(config_obj, debug, output):
-    """Export EA model notes to DOCX format for editing."""
-    from eaidl.notes_export import NotesCollector, DocxExporter
+def export_notes(config_obj, debug, output, format):
+    """Export EA model notes to YAML or DOCX format for editing."""
+    from eaidl.notes_core import NotesCollector
+    from eaidl.notes_formats import YamlFormatter, DocxFormatter
+
+    # Auto-detect format from file extension if not specified
+    if format is None:
+        if output.endswith(".yaml") or output.endswith(".yml"):
+            format = "yaml"
+        elif output.endswith(".docx"):
+            format = "docx"
+        else:
+            click.echo("Error: Cannot detect format from file extension. Use --format to specify yaml or docx.")
+            return
 
     # Load model
     parser = ModelParser(config_obj)
@@ -242,40 +259,62 @@ def export_notes(config_obj, debug, output):
     collector = NotesCollector(config_obj, packages)
     notes_export = collector.collect_all_notes()
 
-    # Export to DOCX
-    click.echo(f"Exporting {len(notes_export.notes)} notes to {output}...")
-    exporter = DocxExporter(notes_export)
-    exporter.export_to_file(output)
+    # Export to chosen format
+    click.echo(f"Exporting {notes_export.metadata.note_count} notes to {output}...")
+    if format == "yaml":
+        YamlFormatter.export(notes_export, output)
+    else:  # docx
+        DocxFormatter.export(notes_export, output)
 
-    click.echo(f"✓ Successfully exported {len(notes_export.notes)} notes to {output}")
+    click.echo(f"✓ Successfully exported {notes_export.metadata.note_count} notes to {output}")
 
 
 @click.command()
 @click.option("--config", required=True, help="Configuration file.")
-@click.option("--input", required=True, help="Input DOCX file path.")
+@click.option("--input", required=True, help="Input file path (.yaml or .docx).")
+@click.option(
+    "--format",
+    type=click.Choice(["yaml", "docx"], case_sensitive=False),
+    default=None,
+    help="Input format (auto-detected from file extension if not specified).",
+)
 @click.option("--dry-run/--no-dry-run", default=True, help="Dry run (no database changes).")
 @click.option("--strict", is_flag=True, help="Fail on any checksum mismatch.")
 @click.option("--report", default=None, help="Save detailed report to file (JSON).")
 @click.option("--debug", default=False, is_flag=True, help="Enable debug.")
 @setup_command
-def import_notes(config_obj, debug, input, dry_run, strict, report):
-    """Import edited notes from DOCX back to EA database."""
-    from eaidl.notes_import import DocxImporter
+def import_notes(config_obj, debug, input, format, dry_run, strict, report):
+    """Import edited notes from YAML or DOCX back to EA database."""
+    from eaidl.notes_core import NotesImporter
+    from eaidl.notes_formats import YamlFormatter, DocxFormatter
     import json
+
+    # Auto-detect format from file extension if not specified
+    if format is None:
+        if input.endswith(".yaml") or input.endswith(".yml"):
+            format = "yaml"
+        elif input.endswith(".docx"):
+            format = "docx"
+        else:
+            click.echo("Error: Cannot detect format from file extension. Use --format to specify yaml or docx.")
+            return
 
     # Load model parser (for database access)
     parser = ModelParser(config_obj)
     parser.load()  # Initialize session
 
-    # Parse DOCX
+    # Parse document
     click.echo(f"Parsing notes from {input}...")
-    importer = DocxImporter(input, config_obj, parser)
-    parsed_notes = importer.parse_document()
+    if format == "yaml":
+        parsed_notes = YamlFormatter.parse(input)
+    else:  # docx
+        parsed_notes = DocxFormatter.parse(input)
     click.echo(f"Parsed {len(parsed_notes)} notes from document")
 
     # Validate and import
     mode = "DRY RUN" if dry_run else "LIVE IMPORT"
     click.echo(f"\n{mode}: Validating and importing notes...")
+    importer = NotesImporter(config_obj, parser)
     summary = importer.validate_and_import(parsed_notes, dry_run=dry_run, strict=strict)
 
     # Print summary
@@ -292,7 +331,7 @@ def import_notes(config_obj, debug, input, dry_run, strict, report):
             "errors": summary.errors,
             "results": [
                 {
-                    "note_type": r.note_type,
+                    "note_type": r.note_type.value,
                     "path": r.path,
                     "status": r.status.value,
                     "message": r.message,
