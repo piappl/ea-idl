@@ -5,7 +5,8 @@ from pathlib import Path
 from functools import wraps
 from eaidl.load import ModelParser
 from eaidl.change import ModelChanger
-from eaidl.utils import load_config, LogFormatter, flatten_packages
+from eaidl.utils import load_config, LogFormatter
+from eaidl.tree_utils import collect_packages
 from eaidl.generate import generate
 from eaidl.diagram import PackageDiagramGenerator
 from eaidl.html_export import export_html
@@ -117,7 +118,7 @@ def diagram(config_obj, debug, output, max_depth, show_empty):
     model = parser.load()
 
     # Flatten all packages for diagram generation
-    all_packages = flatten_packages(model)
+    all_packages = collect_packages(model)
 
     # Generate diagram
     generator = PackageDiagramGenerator(
@@ -152,7 +153,7 @@ def packages(config_obj, debug, output, format):
     model = parser.load()
 
     # Flatten all packages
-    all_packages = flatten_packages(model)
+    all_packages = collect_packages(model)
 
     # Generate output based on format
     if format == "json":

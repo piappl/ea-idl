@@ -9,22 +9,32 @@ import re
 import html
 
 
-def sanitize_id(name: str) -> str:
+def sanitize_id(name: str, for_plantuml: bool = False) -> str:
     """
-    Generate a safe Mermaid identifier from a name.
+    Generate a safe diagram identifier from a name.
 
-    Removes all non-alphanumeric characters except underscores.
-    Ensures the result is a valid Mermaid identifier.
+    For Mermaid (default): Removes all non-alphanumeric characters except underscores.
+    For PlantUML: Only escapes quotes and newlines.
 
-    Examples:
+    Examples (Mermaid):
         "MUV_#1" -> "MUV_1"
         "Data<T>" -> "DataT"
         "my-class" -> "my_class"
         "Class::Name" -> "Class_Name"
 
+    Examples (PlantUML):
+        'My"Class' -> 'My\\"Class'
+        'Line\nBreak' -> 'Line Break'
+
     :param name: Original name
-    :return: Safe identifier (alphanumeric + underscore only)
+    :param for_plantuml: If True, use PlantUML sanitization; otherwise use Mermaid
+    :return: Safe identifier
     """
+    if for_plantuml:
+        # PlantUML only needs quote escaping and newline removal
+        return name.replace('"', '\\"').replace("\n", " ")
+
+    # Mermaid sanitization (default)
     # Replace common separators with underscore
     safe = name.replace("::", "_")
     safe = safe.replace("-", "_")

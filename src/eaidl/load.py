@@ -3,8 +3,8 @@ from eaidl.utils import (
     get_prop,
     enum_name_from_union_attr,
     try_cast,
-    find_class_by_id,
 )
+from eaidl.tree_utils import find_class_by_id
 from eaidl.config import Configuration
 from eaidl.html_utils import strip_html
 from eaidl.recursion import detect_types_needing_forward_declarations

@@ -1,84 +1,33 @@
-# CLAUDE.md - AI Assistant Context
+# CLAUDE.md - AI Assistant Quick Reference
 
-## Project
+EA-IDL converts Enterprise Architect database models to IDL format. Standalone CLI tool.
 
-EA-IDL converts Enterprise Architect database models to IDL format. Standalone CLI tool, runs in CI pipelines.
+## Documentation Index
 
-## Documentation
+| File | Purpose |
+|------|---------|
+| [README.md](./README.md) | Installation, commands, usage |
+| [STRUCTURE.md](./STRUCTURE.md) | Architecture, modules, abstract class flattening |
+| [MODEL.md](./MODEL.md) | EA modeling conventions, stereotypes |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | Development workflow, validators, testing |
+| [scripts/README.md](./scripts/README.md) | Diagram export scripts |
 
-- **[README.md](./README.md)** - Quick start, installation, usage
-- **[STRUCTURE.md](./STRUCTURE.md)** - Architecture, data flow, modules
-- **[MODEL.md](./MODEL.md)** - EA modeling conventions, stereotypes, naming
-- **[CONTRIBUTING.md](./CONTRIBUTING.md)** - Development workflow, standards, common tasks
-- **[scripts/README.md](./scripts/README.md)** - EA diagram export (COM API, Wine setup)
+## Essential Info for AI Assistants
 
-## Quick Reference
+**Test database:** `tests/data/nafv4.qea`
 
-### Commands
-
-```bash
-uv run pytest                                # Run tests
-uv run eaidl run --config config/sqlite.yaml # Generate IDL
-uv run eaidl docs --config config/sqlite.yaml --output ./docs  # Generate HTML docs
-```
-
-### Key Files
-
-- `src/eaidl/load.py` - Database loading (ModelParser class)
-- `src/eaidl/transforms.py` - Transformations (abstract class flattening)
-- `src/eaidl/validation/` - Validation framework
-- `src/eaidl/html_export.py` - HTML documentation generator
-- `tests/data/nafv4.qea` - Test database
-
-### Critical Features
-
-**Abstract Class Flattening** (`transforms.py::flatten_abstract_classes()`)
-- IDL doesn't support abstract classes
-- Copies attributes from abstract parents to concrete children
-- Core transformation - test thoroughly when modifying
-
-**Validators** - Use `@validator` decorator, wraps to accept `**kwargs`
+**Tree utilities** (use these instead of custom recursion):
 ```python
-# In tests, use keyword arguments:
-v.struct.my_validator(config, cls=my_class)  # ✅ Correct
-v.struct.my_validator(config, my_class)       # ❌ Wrong
-```
-
-**Templates** - `src/eaidl/templates/` are whitespace-sensitive, excluded from formatting
-
-### Utilities
-
-**Tree Search** (`utils.py`)
-```python
-from eaidl.utils import find_class, find_class_by_id
+from eaidl.tree_utils import find_class, find_class_by_id, traverse_packages
 cls = find_class(packages, lambda c: c.name == "Message")
-cls = find_class_by_id(packages, 123)
+traverse_packages(packages, class_visitor=my_function)
 ```
 
-**Model Helpers** (`model.py`)
+**Validators** require `**kwargs` (see [CONTRIBUTING.md](./CONTRIBUTING.md)):
 ```python
-namespace = cls.full_name  # "root::data::Message"
-if cls.has_stereotype("interface"): ...
-if cls.is_enum_type(config): ...
+v.struct.my_validator(config, cls=my_class)  # ✅ Correct
 ```
 
-### Spellchecking
+**Templates** (`src/eaidl/templates/`) are whitespace-sensitive - don't auto-format
 
-Implemented in `validation/spellcheck.py`. Enabled by default, warnings only.
-
-```yaml
-spellcheck:
-  enabled: true
-  check_notes: true
-  check_identifiers: true
-  custom_words: [seq, lobw, hibw, nafv4]
-```
-
-## Tech Stack
-
-- SQLAlchemy 2.0+ (ORM with automap)
-- Pydantic (validation)
-- Jinja2 (templating)
-- Click (CLI)
-- Ruff (linting/formatting)
-- Python 3.12+ (target: 3.13)
+**Tech:** SQLAlchemy 2.0+, Pydantic, Jinja2, Click, Ruff, Python 3.12+

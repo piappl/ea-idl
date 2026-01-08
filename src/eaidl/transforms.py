@@ -6,7 +6,7 @@ from copy import deepcopy
 
 from eaidl.model import ModelPackage, ModelClass, ModelAttribute
 from eaidl.config import Configuration
-from eaidl.utils import find_class
+from eaidl.tree_utils import find_class, find_class_by_namespace
 
 log = logging.getLogger(__name__)
 
@@ -56,16 +56,26 @@ def attr_by_name(cls: ModelClass, name: str) -> ModelAttribute:
     raise AttributeError(f"Attribute {name} not found on class {cls.name}")
 
 
-def _convert_map_stereotype(
-    root: List[ModelPackage],
-    current: ModelPackage,
+def convert_map_stereotype(
+    packages: List[ModelPackage],
     config: Configuration,
 ) -> None:
-    for cls in current.classes:
+    """Walks through model and adds stuff needed for using maps.
+
+    Uses tree traversal to process all classes and mark map attributes.
+    Refactored to use traverse_packages from tree_utils to eliminate duplication.
+
+    :param packages: Root packages to process
+    :param config: Configuration
+    """
+    from eaidl.tree_utils import traverse_packages
+
+    def process_class(cls: ModelClass, pkg: ModelPackage) -> None:
+        """Process each class to identify and configure map attributes."""
         for attr in cls.attributes:
             if attr.connector is not None:
                 # It can be none for primitive types
-                dest = find_class(root, lambda c: c.object_id == attr.connector.end_object_id)  # type: ignore
+                dest = find_class(packages, lambda c: c.object_id == attr.connector.end_object_id)  # type: ignore
                 if dest is None:
                     raise AttributeError(
                         f"End not found for attribute {'::'.join(attr.namespace)}::{cls.name}.{attr.name}"
@@ -80,24 +90,17 @@ def _convert_map_stereotype(
                     if v.type is not None:
                         attr.map_value_type = "::".join(v.namespace + [v.type])
 
-    for pkg in current.packages:
-        _convert_map_stereotype(root, pkg, config)
-
-
-def convert_map_stereotype(
-    packages: List[ModelPackage],
-    config: Configuration,
-) -> None:
-    """Walks through model and adds stuff needed for using maps.
-
-    :param root: model root package
-    :param config: configuration
-    """
-    for package in packages:
-        _convert_map_stereotype(packages, package, config)
+    # Use generic tree traversal instead of custom recursion
+    traverse_packages(packages, class_visitor=process_class)
 
 
 def _filter_stereotypes(root: ModelPackage, current: ModelPackage, config: Configuration) -> None:
+    """Filter classes/attributes/packages with unwanted stereotypes.
+
+    Note: This function uses custom recursion instead of traverse_packages because
+    it modifies the tree structure (removes classes and packages), which requires
+    iterating over copies ([:]) and removing from parent collections.
+    """
     if config.filter_stereotypes is None:
         return
     for filter in config.filter_stereotypes:
@@ -150,6 +153,12 @@ def filter_stereotypes(
 
 
 def _filter_empty_unions(roots: List[ModelPackage], current: ModelPackage, config: Configuration) -> None:
+    """Filter empty or single-element unions from the model.
+
+    Note: This function uses custom recursion instead of traverse_packages because
+    it modifies the tree structure (removes classes), which requires iterating over
+    copies ([:]) and removing from parent collections.
+    """
     for cls in current.classes[:]:
         if config.keep_union_stereotype in cls.stereotypes:
             continue
@@ -375,14 +384,8 @@ def filter_unused_classes(
     return unused
 
 
-def find_class_by_namespace(roots: List[ModelPackage], namespace: List[str]) -> Optional[ModelClass]:
-    """Find a class given its full namespace path.
-
-    :param roots: root packages to search
-    :param namespace: namespace path, e.g., ["core", "data", "MessageHeader"]
-    :return: ModelClass if found, None otherwise
-    """
-    return find_class(roots, lambda c: c.namespace == namespace[:-1] and c.name == namespace[-1])
+# find_class_by_namespace is now imported from eaidl.tree_utils (see imports above)
+# This eliminates code duplication
 
 
 def _remove_classes(pkg: ModelPackage, predicate: Callable[[ModelClass], bool]) -> None:

@@ -1,6 +1,13 @@
-"""HTML utilities for processing note content from Enterprise Architect."""
+"""HTML utilities for processing note content from Enterprise Architect.
+
+This module provides utilities for bidirectional HTML processing:
+- strip_html(): EA HTML → Markdown (for export to DOCX)
+- convert_to_ea_html(): Modern HTML → EA HTML (for import from DOCX)
+- format_notes_for_html(): EA HTML → Display HTML (for documentation)
+"""
 
 import re
+from typing import Dict
 from markdownify import MarkdownConverter
 import markdown
 from bs4 import BeautifulSoup
@@ -46,6 +53,20 @@ def strip_html(text: str) -> str:
     return result
 
 
+def _replace_tags(soup: BeautifulSoup, tag_mapping: Dict[str, str]) -> None:
+    """
+    Replace HTML tags in BeautifulSoup object according to mapping.
+
+    Helper to consolidate tag replacement logic.
+
+    :param soup: BeautifulSoup object to modify
+    :param tag_mapping: Dictionary mapping old tag names to new tag names
+    """
+    for old_tag, new_tag in tag_mapping.items():
+        for tag in soup.find_all(old_tag):
+            tag.name = new_tag
+
+
 def convert_to_ea_html(html: str) -> str:
     """
     Convert modern HTML5 tags to EA-compatible HTML format.
@@ -64,13 +85,8 @@ def convert_to_ea_html(html: str) -> str:
 
     soup = BeautifulSoup(html, "html.parser")
 
-    # Replace <strong> with <b>
-    for tag in soup.find_all("strong"):
-        tag.name = "b"
-
-    # Replace <em> with <i>
-    for tag in soup.find_all("em"):
-        tag.name = "i"
+    # Replace modern HTML5 tags with EA-compatible tags
+    _replace_tags(soup, {"strong": "b", "em": "i"})
 
     # Get the HTML string
     result = str(soup)

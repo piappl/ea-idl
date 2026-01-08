@@ -7,6 +7,7 @@ pages in the HTML documentation hierarchy.
 
 from typing import List, Optional, Dict
 from eaidl.model import ModelAttribute, ModelClass, ModelPackage
+from eaidl.tree_utils import find_class_by_name
 
 
 def get_relative_path(from_namespace: List[str], to_namespace: List[str]) -> str:
@@ -58,6 +59,48 @@ def get_namespace_depth(namespace: List[str]) -> int:
     return len(namespace)
 
 
+def _build_relative_link(
+    from_namespace: List[str], to_type: Optional[str], to_namespace: List[str], filename: str
+) -> str:
+    """
+    Build a relative link from current namespace to a target location.
+
+    This helper consolidates the common path calculation logic used by
+    all link generation functions, eliminating code duplication.
+
+    :param from_namespace: Current page's namespace
+    :param to_type: Target directory type ("classes", "packages", or None for root)
+    :param to_namespace: Target namespace path
+    :param filename: Target filename
+    :return: Relative URL
+    """
+    # Calculate depth: how many "../" we need to get to root
+    if len(from_namespace) == 0:
+        # At root index.html - no ups needed
+        depth = 0
+    else:
+        # At packages/{namespace}/ or classes/{namespace}/ - need to go up
+        depth = len(from_namespace) + 1  # +1 for packages/ or classes/ directory
+
+    # Build path to root
+    to_root = "/".join([".."] * depth)
+
+    # Build complete path
+    if to_type is None:
+        # Link to root index.html
+        if to_root:
+            return f"{to_root}/index.html"
+        else:
+            return "index.html"
+    else:
+        # Link to file within a type directory (classes/ or packages/)
+        if to_root:
+            path_parts = [to_root, to_type] + to_namespace + [filename]
+        else:
+            path_parts = [to_type] + to_namespace + [filename]
+        return "/".join(path_parts)
+
+
 def generate_class_link(
     from_namespace: List[str], to_namespace: List[str], class_name: str, from_page_type: str = "package"
 ) -> str:
@@ -75,25 +118,7 @@ def generate_class_link(
     :param from_page_type: Type of page we're linking from ('package', 'class', 'diagram')
     :return: Relative URL to class page
     """
-    # Calculate path from current namespace to root
-    # If from_namespace is empty, we're at the root index.html (no directory nesting)
-    # Otherwise, add 1 for packages/ or classes/ directory
-    if len(from_namespace) == 0:
-        # At root index.html - no ups needed
-        depth = 0
-    else:
-        # At packages/{namespace}/ or classes/{namespace}/ - need to go up
-        depth = len(from_namespace) + 1  # +1 for packages/ or classes/ directory
-
-    to_root = "/".join([".."] * depth)
-
-    # Build path from root to target class
-    if to_root:
-        class_path_parts = [to_root, "classes"] + to_namespace + [f"{class_name}.html"]
-    else:
-        class_path_parts = ["classes"] + to_namespace + [f"{class_name}.html"]
-
-    return "/".join(class_path_parts)
+    return _build_relative_link(from_namespace, "classes", to_namespace, f"{class_name}.html")
 
 
 def generate_package_link(from_namespace: List[str], to_namespace: List[str]) -> str:
@@ -104,25 +129,7 @@ def generate_package_link(from_namespace: List[str], to_namespace: List[str]) ->
     :param to_namespace: Target package's namespace
     :return: Relative URL to package index page
     """
-    # Calculate path from current namespace to root
-    # If from_namespace is empty, we're at the root index.html (no directory nesting)
-    # Otherwise, add 1 for packages/ directory
-    if len(from_namespace) == 0:
-        # At root index.html - no ups needed
-        depth = 0
-    else:
-        # At packages/{namespace}/ - need to go up
-        depth = len(from_namespace) + 1  # +1 for packages/ directory
-
-    to_root = "/".join([".."] * depth)
-
-    # Build path from root to target package
-    if to_root:
-        package_path_parts = [to_root, "packages"] + to_namespace + ["index.html"]
-    else:
-        package_path_parts = ["packages"] + to_namespace + ["index.html"]
-
-    return "/".join(package_path_parts)
+    return _build_relative_link(from_namespace, "packages", to_namespace, "index.html")
 
 
 def generate_diagram_link(from_namespace: List[str], to_namespace: List[str]) -> str:
@@ -133,25 +140,7 @@ def generate_diagram_link(from_namespace: List[str], to_namespace: List[str]) ->
     :param to_namespace: Target package's namespace
     :return: Relative URL to diagram page
     """
-    # Calculate path from current namespace to root
-    # If from_namespace is empty, we're at the root index.html (no directory nesting)
-    # Otherwise, add 1 for packages/ directory
-    if len(from_namespace) == 0:
-        # At root index.html - no ups needed
-        depth = 0
-    else:
-        # At packages/{namespace}/ - need to go up
-        depth = len(from_namespace) + 1  # +1 for packages/ directory
-
-    to_root = "/".join([".."] * depth)
-
-    # Build path from root to target diagram
-    if to_root:
-        diagram_path_parts = [to_root, "packages"] + to_namespace + ["diagram.html"]
-    else:
-        diagram_path_parts = ["packages"] + to_namespace + ["diagram.html"]
-
-    return "/".join(diagram_path_parts)
+    return _build_relative_link(from_namespace, "packages", to_namespace, "diagram.html")
 
 
 def generate_index_link(from_namespace: List[str]) -> str:
@@ -161,16 +150,7 @@ def generate_index_link(from_namespace: List[str]) -> str:
     :param from_namespace: Current page's namespace
     :return: Relative URL to index.html
     """
-    # If from_namespace is empty, we're already at the root index.html
-    # Otherwise, pages are at packages/{namespace}/ or classes/{namespace}/
-    if len(from_namespace) == 0:
-        # At root index.html - link to self
-        return "index.html"
-    else:
-        # At packages/{namespace}/ or classes/{namespace}/ - need to go up
-        depth = len(from_namespace) + 1  # +1 for packages/ or classes/ directory
-        to_root = "/".join([".."] * depth)
-        return f"{to_root}/index.html"
+    return _build_relative_link(from_namespace, None, [], "index.html")
 
 
 def resolve_type_reference(
@@ -243,39 +223,8 @@ def resolve_type_reference(
     }
 
 
-def find_class_by_name(
-    packages: List[ModelPackage], class_name: str, namespace: Optional[List[str]] = None
-) -> Optional[ModelClass]:
-    """
-    Find a class by name across all packages.
-
-    :param packages: List of all model packages
-    :param class_name: Class name to find
-    :param namespace: Optional namespace to narrow search
-    :return: ModelClass if found, None otherwise
-    """
-
-    def search_package(pkg: ModelPackage) -> Optional[ModelClass]:
-        # Search classes in this package
-        for cls in pkg.classes:
-            if cls.name == class_name:
-                if namespace is None or cls.namespace == namespace:
-                    return cls
-
-        # Search nested packages
-        for nested in pkg.packages:
-            result = search_package(nested)
-            if result:
-                return result
-
-        return None
-
-    for pkg in packages:
-        result = search_package(pkg)
-        if result:
-            return result
-
-    return None
+# find_class_by_name is now imported from eaidl.tree_utils (see imports above)
+# This eliminates code duplication - the function is implemented in tree_utils.py
 
 
 def get_inherited_attributes(cls: ModelClass, all_packages: List[ModelPackage]) -> List[ModelAttribute]:

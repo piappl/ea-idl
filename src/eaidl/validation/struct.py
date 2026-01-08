@@ -2,11 +2,17 @@ from eaidl.config import Configuration
 from eaidl.model import ModelClass
 from eaidl.utils import is_camel_case
 from .base import validator, RESERVED_NAMES
-from .spellcheck import check_spelling, format_spelling_errors
+from .validators import (
+    get_class_context,
+    check_experimental_stereotype,
+    check_notes_exist,
+    create_spelling_validator,
+)
 
 
 def context(cls: ModelClass) -> str:
-    return f"(in {".".join(cls.namespace)}.{cls.name})"
+    """Get context string for class (delegates to validators.get_class_context)."""
+    return get_class_context(cls)
 
 
 @validator
@@ -23,8 +29,8 @@ def name_camel_convention(config: Configuration, cls: ModelClass):
 
 @validator
 def is_experimental(config: Configuration, cls: ModelClass):
-    if "experimental" in cls.stereotypes:
-        raise ValueError(f"Class experimental {context(cls)}")
+    """Check if class has experimental stereotype."""
+    check_experimental_stereotype(cls.stereotypes, context(cls), "Class")
 
 
 @validator
@@ -69,8 +75,8 @@ def enum_prefix(config: Configuration, cls: ModelClass):
 
 @validator
 def notes(config: Configuration, cls: ModelClass):
-    if cls.notes is None or cls.notes.strip() == "":
-        raise ValueError(f"Class '{cls.name}' has no description/comment/notes {context(cls)}")
+    """Check if class has notes/documentation."""
+    check_notes_exist(cls.notes, f"Class '{cls.name}'", context(cls))
 
 
 @validator
@@ -98,69 +104,33 @@ def enum_attributes(config: Configuration, cls: ModelClass):
         )
 
 
-@validator
-def notes_spelling(config: Configuration, cls: ModelClass):
-    """Check spelling in class notes/documentation."""
-    if not config.spellcheck.enabled or not config.spellcheck.check_notes:
-        return
+# Spelling validators created using factory to eliminate duplication
+_notes_spelling = create_spelling_validator(
+    text_extractor=lambda cls: cls.notes, context_extractor=lambda cls: context(cls), check_type="notes"
+)
+_notes_spelling.__name__ = "notes_spelling"
+_notes_spelling.__module__ = "eaidl.validation.struct"
+notes_spelling = validator(_notes_spelling)
+notes_spelling.__doc__ = "Check spelling in class notes/documentation."
 
-    if cls.notes is None or cls.notes.strip() == "":
-        return  # No notes to check
+_name_spelling = create_spelling_validator(
+    text_extractor=lambda cls: cls.name, context_extractor=lambda cls: context(cls), check_type="identifiers"
+)
+_name_spelling.__name__ = "name_spelling"
+_name_spelling.__module__ = "eaidl.validation.struct"
+name_spelling = validator(_name_spelling)
+name_spelling.__doc__ = "Check spelling in class name (parsed from PascalCase)."
 
-    errors = check_spelling(
-        text=cls.notes,
-        language=config.spellcheck.language,
-        min_word_length=config.spellcheck.min_word_length,
-        custom_words=config.spellcheck.custom_words,
-    )
-
-    if errors:
-        raise ValueError(format_spelling_errors(errors, context(cls)))
-
-
-@validator
-def name_spelling(config: Configuration, cls: ModelClass):
-    """Check spelling in class name (parsed from PascalCase)."""
-    if not config.spellcheck.enabled or not config.spellcheck.check_identifiers:
-        return
-
-    if cls.name is None:
-        return
-
-    errors = check_spelling(
-        text=cls.name,
-        language=config.spellcheck.language,
-        min_word_length=config.spellcheck.min_word_length,
-        custom_words=config.spellcheck.custom_words,
-    )
-
-    if errors:
-        raise ValueError(format_spelling_errors(errors, context(cls)))
-
-
-@validator
-def linked_notes_spelling(config: Configuration, cls: ModelClass):
-    """Check spelling in linked notes (notes connected via NoteLink)."""
-    if not config.spellcheck.enabled or not config.spellcheck.check_notes:
-        return
-
-    if not cls.linked_notes:
-        return  # No linked notes to check
-
-    for idx, note in enumerate(cls.linked_notes):
-        if not note or not note.content or not note.content.strip():
-            continue
-
-        errors = check_spelling(
-            text=note.content,
-            language=config.spellcheck.language,
-            min_word_length=config.spellcheck.min_word_length,
-            custom_words=config.spellcheck.custom_words,
-        )
-
-        if errors:
-            ctx = f"{context(cls)} - linked note #{idx + 1}"
-            raise ValueError(format_spelling_errors(errors, ctx))
+_linked_notes_spelling = create_spelling_validator(
+    text_extractor=lambda cls: cls.linked_notes,
+    context_extractor=lambda cls: context(cls),
+    check_type="notes",
+    note_description="linked note",
+)
+_linked_notes_spelling.__name__ = "linked_notes_spelling"
+_linked_notes_spelling.__module__ = "eaidl.validation.struct"
+linked_notes_spelling = validator(_linked_notes_spelling)
+linked_notes_spelling.__doc__ = "Check spelling in linked notes (notes connected via NoteLink)."
 
 
 @validator

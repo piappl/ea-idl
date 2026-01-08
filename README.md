@@ -74,40 +74,18 @@ uv run eaidl import-notes --config config/sqlite.yaml --input notes.docx   # Imp
 
 ## Export and Import Notes for External Review
 
-The `export-notes` and `import-notes` commands enable collaborative documentation review workflows. Export model notes to DOCX format for editing by non-EA users, then safely import changes back to the database.
-
-### Export Notes to DOCX
+Export model notes to DOCX for non-EA users to edit, then import changes back:
 
 ```sh
-# Export all notes from the EA model
+# Export all notes to DOCX (hierarchical: packages/classes/attributes)
 uv run eaidl export-notes --config config/sqlite.yaml --output notes.docx
-```
 
-This creates a DOCX file with:
-- **Hierarchical structure**: Packages → Classes → Attributes
-- **All note types**: Main notes, linked notes, and unlinked notes
-- **Metadata tables**: For round-trip validation (checksums, IDs, paths)
-- **Markdown content**: Editable text that reviewers can modify
-
-### Import Edited Notes
-
-```sh
-# Dry-run import (default, no database changes)
+# Import changes (dry-run by default, use --no-dry-run to commit)
 uv run eaidl import-notes --config config/sqlite.yaml --input notes.docx
-
-# Live import (commits changes to database)
-uv run eaidl import-notes --config config/sqlite.yaml --input notes.docx --no-dry-run
-
-# Strict mode (fail on any checksum mismatch)
-uv run eaidl import-notes --config config/sqlite.yaml --input notes.docx --strict
-
-# Save detailed JSON report
-uv run eaidl import-notes --config config/sqlite.yaml --input notes.docx --report import_report.json
+uv run eaidl import-notes --config config/sqlite.yaml --input notes.docx --no-dry-run  # Live
 ```
 
-### Parallel Review Workflow
-
-The import process supports **partial imports** - only notes with matching checksums are updated. This enables parallel review workflows.
+The export includes metadata for validation. Import supports **partial updates** (checksum-matched) for parallel editing workflows. Use `--strict` to fail on mismatches, `--report` for JSON output.
 
 ### using uvx
 
