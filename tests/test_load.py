@@ -34,11 +34,11 @@ def test_reflect():
     # If this fails, just check the file and fix numbers here.
     contents = {
         "t_package": 10,
-        "t_object": 48,
-        "t_attribute": 40,
-        "t_connector": 42,
-        "t_objectproperties": 85,
-        "t_xref": 63,
+        "t_object": 50,  # Updated: added Node and Children classes to recursion package
+        "t_attribute": 41,  # Updated: Node struct has attributes (id, other_children)
+        "t_connector": 43,  # Updated: new connectors for Node and Children
+        "t_objectproperties": 87,  # Updated: properties for Node and Children
+        "t_xref": 65,  # Updated: cross-references for Node and Children
     }
 
     for key, value in contents.items():
