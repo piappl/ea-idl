@@ -1264,3 +1264,112 @@ class TestTransformsEdgeCases:
         # Nothing should change
         assert len(pkg.classes) == 1
         assert pkg.classes[0].name == "Concrete"
+
+
+def test_filter_empty_unions_with_keep_stereotype() -> None:
+    """Test that <<keep>> stereotype preserves empty unions when collapse_by_default=True."""
+    config = Configuration(
+        template="idl_just_defs.jinja2",
+        collapse_empty_unions_by_default=True,
+        keep_union_stereotype="keep",
+    )
+
+    # Create an empty union with <<keep>> stereotype
+    pkg = ModelPackage(name="root", package_id=0, object_id=0, guid=str(uuid.uuid4()))
+    empty_union = ModelClass(
+        name="EmptyUnion",
+        stereotypes=[config.stereotypes.idl_union, "keep"],
+        object_id=1,
+        namespace=["root"],
+        is_union=True,
+        parent=pkg,
+        attributes=[],
+    )
+    pkg.classes = [empty_union]
+
+    filter_empty_unions([pkg], config)
+
+    # Union should be preserved due to <<keep>> stereotype
+    assert len(pkg.classes) == 1
+    assert pkg.classes[0].name == "EmptyUnion"
+
+
+def test_filter_empty_unions_collapse_by_default() -> None:
+    """Test that empty unions are collapsed by default when collapse_by_default=True."""
+    config = Configuration(
+        template="idl_just_defs.jinja2",
+        collapse_empty_unions_by_default=True,
+    )
+
+    # Create an empty union without <<keep>> stereotype
+    pkg = ModelPackage(name="root", package_id=0, object_id=0, guid=str(uuid.uuid4()))
+    empty_union = ModelClass(
+        name="EmptyUnion",
+        stereotypes=[config.stereotypes.idl_union],
+        object_id=1,
+        namespace=["root"],
+        is_union=True,
+        parent=pkg,
+        attributes=[],
+    )
+    pkg.classes = [empty_union]
+
+    filter_empty_unions([pkg], config)
+
+    # Union should be removed (collapsed)
+    assert len(pkg.classes) == 0
+
+
+def test_filter_empty_unions_keep_by_default() -> None:
+    """Test that empty unions are kept by default when collapse_by_default=False."""
+    config = Configuration(
+        template="idl_just_defs.jinja2",
+        collapse_empty_unions_by_default=False,
+        collapse_union_stereotype="collapse",
+    )
+
+    # Create an empty union without <<collapse>> stereotype
+    pkg = ModelPackage(name="root", package_id=0, object_id=0, guid=str(uuid.uuid4()))
+    empty_union = ModelClass(
+        name="EmptyUnion",
+        stereotypes=[config.stereotypes.idl_union],
+        object_id=1,
+        namespace=["root"],
+        is_union=True,
+        parent=pkg,
+        attributes=[],
+    )
+    pkg.classes = [empty_union]
+
+    filter_empty_unions([pkg], config)
+
+    # Union should be preserved (kept by default)
+    assert len(pkg.classes) == 1
+    assert pkg.classes[0].name == "EmptyUnion"
+
+
+def test_filter_empty_unions_with_collapse_stereotype() -> None:
+    """Test that <<collapse>> stereotype removes empty unions when collapse_by_default=False."""
+    config = Configuration(
+        template="idl_just_defs.jinja2",
+        collapse_empty_unions_by_default=False,
+        collapse_union_stereotype="collapse",
+    )
+
+    # Create an empty union with <<collapse>> stereotype
+    pkg = ModelPackage(name="root", package_id=0, object_id=0, guid=str(uuid.uuid4()))
+    empty_union = ModelClass(
+        name="EmptyUnion",
+        stereotypes=[config.stereotypes.idl_union, "collapse"],
+        object_id=1,
+        namespace=["root"],
+        is_union=True,
+        parent=pkg,
+        attributes=[],
+    )
+    pkg.classes = [empty_union]
+
+    filter_empty_unions([pkg], config)
+
+    # Union should be removed due to <<collapse>> stereotype
+    assert len(pkg.classes) == 0

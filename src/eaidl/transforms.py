@@ -155,13 +155,25 @@ def filter_stereotypes(
 def _filter_empty_unions(roots: List[ModelPackage], current: ModelPackage, config: Configuration) -> None:
     """Filter empty or single-element unions from the model.
 
+    Behavior depends on config.collapse_empty_unions_by_default:
+    - If True (default): collapse empty unions unless <<keep>> stereotype is present
+    - If False: keep empty unions unless <<collapse>> stereotype is present
+
     Note: This function uses custom recursion instead of traverse_packages because
     it modifies the tree structure (removes classes), which requires iterating over
     copies ([:]) and removing from parent collections.
     """
     for cls in current.classes[:]:
-        if config.keep_union_stereotype in cls.stereotypes:
+        # Determine if we should collapse this union based on configuration and stereotypes
+        should_collapse = config.collapse_empty_unions_by_default
+        if config.collapse_empty_unions_by_default and config.keep_union_stereotype in cls.stereotypes:
+            should_collapse = False
+        elif not config.collapse_empty_unions_by_default and config.collapse_union_stereotype in cls.stereotypes:
+            should_collapse = True
+
+        if not should_collapse:
             continue
+
         if cls.is_union and (cls.attributes is None or len(cls.attributes) == 0):
             # This is empty union
             for root in roots:
@@ -203,11 +215,14 @@ def filter_empty_unions(
 ) -> None:
     """Filter out empty unions and simplify single-element unions.
 
-    Empty unions are removed along with all attributes referencing them.
-    Single-element unions are replaced by their single attribute type.
+    Behavior is controlled by config.collapse_empty_unions_by_default:
+    - If True (default): Empty unions are removed unless marked with keep_union_stereotype
+    - If False: Empty unions are kept unless marked with collapse_union_stereotype
+
+    Single-element unions are replaced by their single attribute type (respects same logic).
 
     :param packages: Root packages to process
-    :param config: Configuration with keep_union_stereotype to preserve specific unions
+    :param config: Configuration with collapse settings and stereotype names
     """
     for package in packages:
         _filter_empty_unions(packages, package, config)

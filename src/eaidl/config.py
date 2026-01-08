@@ -99,8 +99,13 @@ class Configuration(BaseModel):
     enable_maps: bool = True
     #: List of stereotypes to filter out
     filter_stereotypes: Optional[List[str]] = None
-    #: Stereotype used to keep unions when we filter_stereotypes
+    #: If True, collapse empty unions by default and use keep_union_stereotype to preserve them
+    #: If False, keep empty unions by default and use collapse_union_stereotype to remove them
+    collapse_empty_unions_by_default: bool = True
+    #: Stereotype used to keep unions when collapse_empty_unions_by_default is True
     keep_union_stereotype: Optional[str] = "keep"
+    #: Stereotype used to collapse unions when collapse_empty_unions_by_default is False
+    collapse_union_stereotype: Optional[str] = "collapse"
     #: Prefix reserved attributes, if None, don't prefix. Otherwise prefix.
     prefix_attributes_reserved: Optional[str] = "_"
     #: List of packages to ignore

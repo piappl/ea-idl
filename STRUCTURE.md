@@ -146,6 +146,53 @@ MessageHeader (concrete)
 - `flatten_abstract_classes: bool = True` (default, enabled)
 - Set to `False` in config to disable flattening
 
+#### Empty Union Filtering
+The `filter_empty_unions()` transformation handles empty and single-element unions:
+
+**What it does:**
+1. Empty unions (no attributes) are removed along with all references to them
+2. Single-element unions are replaced by their single attribute type
+3. Behavior is controlled by configuration and stereotypes
+
+**Two modes of operation:**
+
+**Mode 1: Collapse by default** (default behavior)
+- Empty/single unions are removed unless marked with `<<keep>>` stereotype
+- Configuration:
+  ```python
+  collapse_empty_unions_by_default: bool = True  # default
+  keep_union_stereotype: str = "keep"  # stereotype to preserve unions
+  ```
+
+**Mode 2: Keep by default**
+- Empty/single unions are preserved unless marked with `<<collapse>>` stereotype
+- Configuration:
+  ```python
+  collapse_empty_unions_by_default: bool = False
+  collapse_union_stereotype: str = "collapse"  # stereotype to remove unions
+  ```
+
+**Example (collapse by default):**
+```python
+# Input model:
+EmptyUnion (union)
+  └─ (no attributes)
+
+StructWithUnion
+  └─ field: EmptyUnion
+
+# After filtering (default):
+StructWithUnion
+  └─ (field removed)
+
+# With <<keep>> stereotype:
+EmptyUnion (union) <<keep>>
+  └─ (no attributes)
+
+StructWithUnion
+  └─ field: EmptyUnion  (preserved)
+```
+
 ### 6. Template System (templates/)
 Jinja2-based templating:
 - Main: idl.jinja2
