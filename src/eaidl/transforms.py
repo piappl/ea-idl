@@ -412,17 +412,23 @@ def filter_unused_classes(
 # This eliminates code duplication
 
 
-def _remove_classes(pkg: ModelPackage, predicate: Callable[[ModelClass], bool]) -> None:
+def _remove_classes(pkg: ModelPackage, predicate: Callable[[ModelClass], bool]) -> int:
     """Remove classes matching predicate from package tree (recursively).
 
     :param pkg: package to process
     :param predicate: function to test if class should be removed
+    :return: Number of removed classes
     """
+    removed_count: int = 0
     for cls in pkg.classes[:]:
         if predicate(cls):
             pkg.classes.remove(cls)
+            log.info("Removing class %s", "::".join(cls.namespace + [cls.name]))
+            removed_count += 1
     for sub_pkg in pkg.packages:
-        _remove_classes(sub_pkg, predicate)
+        removed_count += _remove_classes(sub_pkg, predicate)
+
+    return removed_count
 
 
 def _collect_abstract_attributes(
@@ -543,20 +549,14 @@ def flatten_abstract_classes(roots: List[ModelPackage]) -> List[ModelPackage]:
 
     # Step 3: Remove all abstract classes from the tree
     abstract_count = 0
+    log.info("Removing abstract classes")
+
+    def is_abstract(cls: ModelClass) -> bool:
+        return cls.is_abstract
+
     for root in roots:
-
-        def is_abstract(cls: ModelClass) -> bool:
-            return cls.is_abstract is True
-
-        def count_removed(pkg: ModelPackage) -> None:
-            nonlocal abstract_count
-            removed = [cls for cls in pkg.classes if is_abstract(cls)]
-            abstract_count += len(removed)
-            for cls in removed:
-                log.info(f"Removing abstract class {'::'.join(cls.namespace + [cls.name])}")
-            _remove_classes(pkg, is_abstract)
-
-        count_removed(root)
+        abstract_count += _remove_classes(root, is_abstract)
+    log.info("Removed %d abstract classes", abstract_count)
 
     log.info(f"Flattened {abstract_count} abstract classes")
     return roots
