@@ -111,7 +111,9 @@ uv run eaidl docs --config config/sqlite.yaml --output ./docs --debug
 
 ```sh
 cd scripts
-./export_diagrams.sh --model /home/${USER}/git/4817/ea-idl/tests/data/nafv4.qea  --output /tmp
+# export WINEPREFIX=~/.wine32
+# export WINEARCH=win32
+./export_diagrams.sh --model ${PWD}/../tests/data/nafv4.qea  --output /tmp
 # rm -r ../docs/images/{data,message}
 cp -r /tmp/Model/core/* ../docs/images
 ```

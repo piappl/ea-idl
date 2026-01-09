@@ -128,7 +128,7 @@ union IdentifierOrName switch (core::data::IdentifierOrNameTypeEnum) {
     case core::data::IdentifierOrNameTypeEnum_NAME:
         core::data::types::Name name;
 };
-  ```
+```
 
 Unions are also special when put togethere with `filter_stereotypes` option. This union normally get generated like this:
 
@@ -157,6 +157,16 @@ This is done to reduce nesting of generated outputs.
 sequence<core::data::types::TemperatureMeasurement, 5> body;
 ```
 
+## Recursion
+
+Recursive structures are allowed in same package.
+To use in class in class itself it needs to be wrapped in sequence.
+
+![Recursive structures](./docs/images/recursion/recursion.png)
+
+Sequences can be also in typedefs.
+
+
 ## Abstract
 
 Classes can be abstract. Those inheriting those will take fields, but abstract class will not show in output.
@@ -171,7 +181,7 @@ struct MessageHeader {
 };
 ```
 
-## mapping
+## Mapping
 
 | Model name            | IDL name         | custom | comment                                                                            |
 | --------------------- | ---------------- | ------ | ---------------------------------------------------------------------------------- |

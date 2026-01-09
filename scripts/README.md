@@ -51,6 +51,11 @@ wine "${PYTHON_PATH}\\Scripts\\pywin32_postinstall.exe" -install -silent
 
 **Note**: Install your MDG (e.g., NAFv4) in EA after installation.
 
+```sh
+WINEPREFIX=/home/mmacias/.wine32 WINEARCH=win32  wine 'C:\\\Program Files\\\Sparx Systems\\\EA\\\EA.exe'
+```
+
+
 #### Test Installation
 
 ```sh
