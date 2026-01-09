@@ -100,6 +100,17 @@ spellcheck:
     - lobw
     - hibw
     - nafv4
+allowed_abbreviations:
+  - "MCM"      # e.g., MCMContact
+  - "URI"      # e.g., URI, URIParser
+  - "CQL"      # e.g., CQL2ExpressionTypeEnum
+  - "URL"      # e.g., URLParser, HTTPSURLConnection
+  - "HTTP"     # e.g., HTTPRequest
+  - "HTTPS"    # e.g., HTTPSConnection
+  - "XML"      # e.g., XMLParser, ParserXML
+  - "JSON"     # e.g., JSONEncoder
+  - "API"      # e.g., APIClient
+  - "ID"       # e.g., UserID
 
 # =============================================================================
 # Output Options
