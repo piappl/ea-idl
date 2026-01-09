@@ -87,6 +87,9 @@ class Configuration(BaseModel):
     spellcheck: ConfigurationSpellcheck = ConfigurationSpellcheck()
     diagrams: DiagramConfiguration = DiagramConfiguration()
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
+    #: List of allowed abbreviations/acronyms in class/package names (e.g., ["MCM", "URI", "CQL"])
+    #: These will be treated as valid in camelCase naming convention
+    allowed_abbreviations: List[str] = []
     #: Database connection string, see https://docs.sqlalchemy.org/en/20/core/connections.html
     database_url: str = "sqlite+pysqlite:///tests/data/nafv4.qea"
     #: Globally unique identifier (GUID) or name of root package that we want to generate for.

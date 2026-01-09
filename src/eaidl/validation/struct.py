@@ -23,7 +23,7 @@ def name_for_reserved_worlds(config: Configuration, cls: ModelClass) -> None:
 
 @validator
 def name_camel_convention(config: Configuration, cls: ModelClass):
-    if not is_camel_case(cls.name):
+    if not is_camel_case(cls.name, config.allowed_abbreviations):
         raise ValueError(f"Class name has wrong case, expected camel case {context(cls)}")
 
 

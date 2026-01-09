@@ -53,6 +53,36 @@ def test_is_camel_case(value, expected) -> None:
 
 
 @pytest.mark.parametrize(
+    "value,abbreviations,expected",
+    [
+        # Without abbreviations, these should fail
+        ("MCMContact", None, False),
+        ("URI", None, False),
+        ("CQL2ExpressionTypeEnum", None, False),
+        # With abbreviations, these should pass
+        ("MCMContact", ["MCM"], True),
+        ("URI", ["URI"], True),
+        ("CQL2ExpressionTypeEnum", ["CQL"], True),
+        # Mixed cases
+        ("URLParser", ["URL"], True),
+        ("HTTPSConnection", ["HTTPS"], True),
+        ("XMLHttpRequest", ["XML", "HTTP"], True),
+        # Edge cases
+        ("XMLParser", ["XML"], True),
+        ("ParserXML", ["XML"], True),
+        ("XML", ["XML"], True),
+        # Should still fail even with abbreviations if not camel case
+        ("mCMContact", ["MCM"], False),
+        ("MCM_Contact", ["MCM"], False),
+        # Multiple abbreviations in one name
+        ("HTTPSURLParser", ["HTTPS", "URL"], True),
+    ],
+)
+def test_is_camel_case_with_abbreviations(value, abbreviations, expected) -> None:
+    assert is_camel_case(value, abbreviations) == expected
+
+
+@pytest.mark.parametrize(
     "value,expected",
     [
         ("", False),

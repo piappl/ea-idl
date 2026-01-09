@@ -87,6 +87,28 @@ class TestStructValidators:
         with pytest.raises(ValueError, match="wrong case"):
             v.struct.name_camel_convention(config, cls=cls)
 
+    def test_camel_case_with_abbreviations(self):
+        """Test validation passes for class names with allowed abbreviations."""
+        # Without abbreviations, these should fail
+        config = Configuration(validators_fail=["struct.name_camel_convention"])
+
+        cls_mcm = m_class(name="MCMContact")
+        with pytest.raises(ValueError, match="wrong case"):
+            v.struct.name_camel_convention(config, cls=cls_mcm)
+
+        cls_uri = m_class(name="URI")
+        with pytest.raises(ValueError, match="wrong case"):
+            v.struct.name_camel_convention(config, cls=cls_uri)
+
+        # With abbreviations, these should pass
+        config_with_abbrev = Configuration(
+            validators_fail=["struct.name_camel_convention"], allowed_abbreviations=["MCM", "URI", "CQL"]
+        )
+
+        v.struct.name_camel_convention(config_with_abbrev, cls=cls_mcm)
+        v.struct.name_camel_convention(config_with_abbrev, cls=cls_uri)
+        v.struct.name_camel_convention(config_with_abbrev, cls=m_class(name="CQL2ExpressionTypeEnum"))
+
     def test_experimental_stereotype(self):
         """Test validation fails for experimental classes."""
         config = Configuration(validators_fail=["struct.is_experimental"])

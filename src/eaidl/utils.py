@@ -85,7 +85,31 @@ SNAKE_CASE_RE = re.compile(r"^[a-zA-Z]+(_[a-zA-Z0-9]+)*$")
 LOWER_SNAKE_CASE_RE = re.compile(r"^[a-z]+(_[a-z0-9]+)*$")
 
 
-def is_camel_case(val: str) -> bool:
+def is_camel_case(val: str, allowed_abbreviations: list[str] | None = None) -> bool:
+    """Check if a string is in PascalCase/CamelCase format.
+
+    :param val: String to check
+    :param allowed_abbreviations: List of allowed abbreviations (e.g., ["MCM", "URI", "CQL"])
+    :return: True if string matches PascalCase convention
+    """
+    if allowed_abbreviations:
+        # Sort abbreviations by length (longest first) to avoid partial replacements
+        sorted_abbrevs = sorted(allowed_abbreviations, key=len, reverse=True)
+
+        # Replace each abbreviation with a placeholder that matches camel case
+        # We use "Xxx" as placeholder since it's valid PascalCase
+        temp_val = val
+        replacements = []
+        for abbrev in sorted_abbrevs:
+            # Check if abbreviation appears in the string
+            if abbrev in temp_val:
+                placeholder = f"X{'x' * (len(abbrev) - 1)}"
+                temp_val = temp_val.replace(abbrev, placeholder)
+                replacements.append((abbrev, placeholder))
+
+        # Check if the modified string is camel case
+        return bool(re.match(CAMEL_CASE_RE, temp_val))
+
     return bool(re.match(CAMEL_CASE_RE, val))
 
 
