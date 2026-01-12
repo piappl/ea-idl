@@ -128,7 +128,19 @@ def _filter_stereotypes(root: ModelPackage, current: ModelPackage, config: Confi
                             + "."
                             + attr.name
                         )
-                        cls.attributes.remove(attr)
+                        log.warning(
+                            "Removing %s %s %s from %s",
+                            attr.name,
+                            attr.stereotypes,
+                            filter,
+                            "::".join(cls.namespace + [cls.name]),
+                        )
+                        try:
+                            cls.attributes.remove(attr)
+                        except ValueError:
+                            # When we have more than one stereotype to remove...
+                            pass
+
     for pkg in current.packages[:]:
         for filter in config.filter_stereotypes:
             if filter in pkg.stereotypes:
