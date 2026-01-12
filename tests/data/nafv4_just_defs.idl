@@ -159,7 +159,7 @@ module core {
             Linked note:
             Note about nationality.
         */
-        typedef string Nationality[3];
+        typedef char Nationality[3];
         @ext::pattern("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
         typedef string GUID;
         typedef octet GUIDBytes[16];
