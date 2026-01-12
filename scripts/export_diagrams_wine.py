@@ -32,6 +32,8 @@ import os
 import platform
 import re
 import sys
+import yaml
+import copy
 import time
 import win32com.client
 from pathlib import Path
@@ -461,7 +463,13 @@ Examples:
 
         # Create output directory
         Path(args.output).mkdir(parents=True, exist_ok=True)
-
+        meta = []
+        for item in all_diagrams:
+            diagram = copy.copy(item)
+            del diagram["diagram"]  # win32 com object....
+            meta.append(diagram)
+        with open(Path(args.output) / "diagrams.yaml", "w") as file:
+            yaml.dump(meta, file, sort_keys=False)
         exported_count = 0
         for i, diagram_info in enumerate(filtered_diagrams, 1):
             # Show full package hierarchy path
