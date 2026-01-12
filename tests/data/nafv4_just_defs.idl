@@ -84,7 +84,7 @@ module core {
                 Linked note:
                 Various combinations of optional and multiplicity.
             */
-            sequence<core::common::types::Identifier> _sequence;
+            sequence<core::common::types::Identifier> sequence_regular;
             /**
                 Linked note:
                 Various combinations of optional and multiplicity.
