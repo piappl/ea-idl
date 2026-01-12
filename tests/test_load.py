@@ -50,7 +50,9 @@ def test_reflect():
 
 
 def test_load():
-    parser = ModelParser(Configuration())
+    config = Configuration()
+    config.reserved_words_action = "allow"
+    parser = ModelParser(config)
     packages = parser.load()
     # Core is default
     assert packages[1].name == "core"
@@ -96,6 +98,8 @@ def test_get_stereotypes() -> None:
 
 def test_get_properties() -> None:
     config = Configuration()
+    config.reserved_words_action = "allow"
+    config.reserved_words_action = "allow"
     parser = ModelParser(config)
     props = parser.get_custom_properties(MEASUREMENT_GUID)
     inspect(props)
@@ -105,6 +109,8 @@ def test_get_properties() -> None:
 
 def test_get_namespace() -> None:
     config = Configuration()
+    config.reserved_words_action = "allow"
+    config.reserved_words_action = "allow"
     parser = ModelParser(config)
     parser.load()
     # Those two are outside od core
@@ -134,6 +140,8 @@ def test_get_namespace() -> None:
 def test_linked_notes() -> None:
     """Test loading notes linked to classes via NoteLink connectors."""
     config = Configuration()
+    config.reserved_words_action = "allow"
+    config.reserved_words_action = "allow"
     parser = ModelParser(config)
     packages = parser.load()
 
@@ -156,6 +164,8 @@ def test_linked_notes() -> None:
 def test_unlinked_notes() -> None:
     """Test loading notes that are not linked to any object."""
     config = Configuration()
+    config.reserved_words_action = "allow"
+    config.reserved_words_action = "allow"
     parser = ModelParser(config)
     packages = parser.load()
 
@@ -177,6 +187,8 @@ def test_unlinked_notes() -> None:
 def test_notes_always_loaded() -> None:
     """Test that notes are always loaded (for spell checking) regardless of output settings."""
     config = Configuration()
+    config.reserved_words_action = "allow"
+    config.reserved_words_action = "allow"
     # Notes output is disabled by default, but notes are still loaded
     assert config.output_linked_notes is False
     assert config.output_unlinked_notes is False

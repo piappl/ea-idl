@@ -20,6 +20,8 @@ def test_config(test_db_path):
     config = Configuration()
     config.database_url = f"sqlite+pysqlite:///{test_db_path.as_posix()}"
     config.root_packages = ["{753A4DFC-7876-4b00-BB5A-6274AD3817C3}"]
+    # Allow reserved words in tests to avoid breaking existing test data
+    config.reserved_words_action = "allow"
     return config
 
 

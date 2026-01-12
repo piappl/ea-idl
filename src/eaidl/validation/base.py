@@ -62,46 +62,8 @@ def run(module: str, config: Configuration, **kwargs):
             getattr(import_module(f"eaidl.validation.{mod}"), func)(config, **kwargs)
 
 
-RESERVED_NAMES = [
-    # From python keywords
-    # import keyword
-    # print(keyword.kwlist)
-    "False",
-    "None",
-    "True",
-    "and",
-    "as",
-    "assert",
-    "async",
-    "await",
-    "break",
-    "class",
-    "continue",
-    "def",
-    "del",
-    "elif",
-    "else",
-    "except",
-    "finally",
-    "for",
-    "from",
-    "global",
-    "if",
-    "import",
-    "in",
-    "is",
-    "lambda",
-    "nonlocal",
-    "not",
-    "or",
-    "pass",
-    "raise",
-    "return",
-    "try",
-    "while",
-    "with",
-    "yield",
-    # IDL
+# IDL keywords - these WILL break IDL compilation
+IDL_RESERVED_WORDS = [
     "abstract",
     "any",
     "attribute",
@@ -151,3 +113,82 @@ RESERVED_NAMES = [
     "wchar",
     "wstring",
 ]
+
+# Words that may cause issues in Python, Protobuf, or other generated code
+DANGER_WORDS = [
+    # Python keywords
+    # import keyword
+    # print(keyword.kwlist)
+    "False",
+    "None",
+    "True",
+    "and",
+    "as",
+    "assert",
+    "async",
+    "await",
+    "break",
+    "class",
+    "continue",
+    "def",
+    "del",
+    "elif",
+    "else",
+    "except",
+    "finally",
+    "for",
+    "from",
+    "global",
+    "if",
+    "import",
+    "is",
+    "lambda",
+    "nonlocal",
+    "not",
+    "or",
+    "pass",
+    "raise",
+    "return",
+    "try",
+    "while",
+    "with",
+    "yield",
+    # Protobuf reserved words
+    "message",
+    "service",
+    "rpc",
+    "option",
+    "package",
+    "required",
+    "optional",
+    "repeated",
+    "reserved",
+    "oneof",
+    "map",
+    "extensions",
+    "extend",
+    "group",
+    "syntax",
+]
+
+
+def apply_prefix_with_case(name: str, prefix: str, is_class: bool = False) -> str:
+    """Apply prefix respecting naming conventions.
+
+    Args:
+        name: Original name
+        prefix: Prefix to apply (e.g., "idl_")
+        is_class: True for classes (PascalCase), False for attributes (snake_case)
+
+    Returns:
+        Prefixed name with proper case convention
+    """
+    if is_class:
+        # Classes use PascalCase: "struct" -> "IdlStruct"
+        # Capitalize first letter of prefix, keep name capitalized
+        prefix_pascal = prefix.strip("_").capitalize()
+        name_pascal = name[0].upper() + name[1:] if name else name
+        return prefix_pascal + name_pascal
+    else:
+        # Attributes use snake_case: "struct" -> "idl_struct"
+        return prefix + name

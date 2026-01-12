@@ -27,23 +27,30 @@ def m_class(name: str = "cls", object_id: int = 0, **kwargs) -> ModelClass:
     return ModelClass(**{**defaults, **kwargs})
 
 
-def test_attribute_name_for_reserved_worlds() -> None:
-    with pytest.raises(ValueError):
-        v.attribute.name_for_reserved_worlds(
-            Configuration(validators_fail=["attribute.name_for_reserved_worlds"]),
-            attribute=m_attr(name="from"),
+def test_attribute_name_is_reserved_word() -> None:
+    """Test that IDL reserved words in attribute names fail validation."""
+    with pytest.raises(ValueError, match="IDL reserved word"):
+        v.attribute.name_is_reserved_word(
+            Configuration(reserved_words_action="fail", validators_fail=["attribute.name_is_reserved_word"]),
+            attribute=m_attr(name="struct"),
             cls=m_class(),
         )
     # This will not run test, validators are disabled
-    v.attribute.name_for_reserved_worlds(
+    v.attribute.name_is_reserved_word(
         Configuration(validators_fail=[]),
-        attribute=m_attr(name="from"),
+        attribute=m_attr(name="struct"),
+        cls=m_class(),
+    )
+    # With prefix action, validation should pass (prefixing happens in load phase)
+    v.attribute.name_is_reserved_word(
+        Configuration(reserved_words_action="prefix", validators_fail=["attribute.name_is_reserved_word"]),
+        attribute=m_attr(name="struct"),
         cls=m_class(),
     )
     # Correct output
-    v.attribute.name_for_reserved_worlds(
+    v.attribute.name_is_reserved_word(
         Configuration(validators_fail=[]),
-        attribute=m_attr(name="from_a"),
+        attribute=m_attr(name="valid_name"),
         cls=m_class(),
     )
 
@@ -72,12 +79,12 @@ class TestStructValidators:
     """Test edge cases for struct validators."""
 
     def test_reserved_word_in_class_name(self):
-        """Test validation fails for reserved words in class names."""
-        config = Configuration(validators_fail=["struct.name_for_reserved_worlds"])
-        cls = m_class(name="struct")  # Reserved word
+        """Test validation fails for IDL reserved words in class names."""
+        config = Configuration(reserved_words_action="fail", validators_fail=["struct.name_is_reserved_word"])
+        cls = m_class(name="struct")  # IDL reserved word
 
-        with pytest.raises(ValueError, match="reserved"):
-            v.struct.name_for_reserved_worlds(config, cls=cls)
+        with pytest.raises(ValueError, match="IDL reserved word"):
+            v.struct.name_is_reserved_word(config, cls=cls)
 
     def test_incorrect_camel_case(self):
         """Test validation fails on incorrect naming convention."""
@@ -466,3 +473,126 @@ class TestTypedefValidators:
 
         # Should not raise - validator only applies to typedefs
         v.struct.typedef_has_association(config, cls=cls)
+
+
+class TestReservedWordsRefactoring:
+    """Test the refactored reserved words handling."""
+
+    def test_class_reserved_word_fails(self):
+        """Test that IDL reserved words in class names fail when action is 'fail'."""
+        config = Configuration(reserved_words_action="fail", validators_fail=["struct.name_is_reserved_word"])
+        cls = m_class(name="struct")
+        with pytest.raises(ValueError, match="IDL reserved word"):
+            v.struct.name_is_reserved_word(config, cls=cls)
+
+    def test_class_reserved_word_with_prefix_action_passes(self):
+        """Test that reserved words pass validation when action is 'prefix'."""
+        config = Configuration(reserved_words_action="prefix", validators_fail=["struct.name_is_reserved_word"])
+        cls = m_class(name="struct")
+        # Should not raise - prefixing happens in load phase
+        v.struct.name_is_reserved_word(config, cls=cls)
+
+    def test_class_reserved_word_with_allow_action_passes(self):
+        """Test that reserved words pass validation when action is 'allow'."""
+        config = Configuration(reserved_words_action="allow", validators_fail=["struct.name_is_reserved_word"])
+        cls = m_class(name="struct")
+        # Should not raise
+        v.struct.name_is_reserved_word(config, cls=cls)
+
+    def test_attribute_reserved_word_fails(self):
+        """Test that IDL reserved words in attribute names fail when action is 'fail'."""
+        config = Configuration(reserved_words_action="fail", validators_fail=["attribute.name_is_reserved_word"])
+        attr = m_attr(name="interface")
+        cls = m_class()
+        with pytest.raises(ValueError, match="IDL reserved word"):
+            v.attribute.name_is_reserved_word(config, attribute=attr, cls=cls)
+
+    def test_class_danger_word_warns(self):
+        """Test that danger words trigger warnings for classes."""
+        config = Configuration(danger_words_action="warn", validators_warn=["struct.name_is_danger_word"])
+        cls = m_class(name="class")  # Python keyword
+        # Should not raise when in warn list - just logs warning
+        v.struct.name_is_danger_word(config, cls=cls)
+
+    def test_class_danger_word_fails(self):
+        """Test that danger words can fail validation when action is 'fail'."""
+        config = Configuration(danger_words_action="fail", validators_fail=["struct.name_is_danger_word"])
+        cls = m_class(name="import")  # Python keyword
+        with pytest.raises(ValueError, match="may cause issues"):
+            v.struct.name_is_danger_word(config, cls=cls)
+
+    def test_class_danger_word_with_allow_action_passes(self):
+        """Test that danger words pass when action is 'allow'."""
+        config = Configuration(danger_words_action="allow", validators_warn=["struct.name_is_danger_word"])
+        cls = m_class(name="class")
+        # Should not raise
+        v.struct.name_is_danger_word(config, cls=cls)
+
+    def test_attribute_danger_word_warns(self):
+        """Test that danger words trigger warnings for attributes."""
+        config = Configuration(danger_words_action="warn", validators_warn=["attribute.name_is_danger_word"])
+        attr = m_attr(name="class")  # Python keyword
+        cls = m_class()
+        # Should not raise when in warn list - just logs warning
+        v.attribute.name_is_danger_word(config, attribute=attr, cls=cls)
+
+    def test_custom_reserved_words_list(self):
+        """Test using a custom list of reserved words."""
+        config = Configuration(
+            reserved_words=["custom", "forbidden"],
+            reserved_words_action="fail",
+            validators_fail=["struct.name_is_reserved_word"],
+        )
+        # Custom word should fail
+        cls_custom = m_class(name="custom")
+        with pytest.raises(ValueError, match="IDL reserved word"):
+            v.struct.name_is_reserved_word(config, cls=cls_custom)
+
+        # Standard IDL word should pass (not in custom list)
+        cls_struct = m_class(name="struct")
+        v.struct.name_is_reserved_word(config, cls=cls_struct)
+
+    def test_custom_danger_words_list(self):
+        """Test using a custom list of danger words."""
+        config = Configuration(
+            danger_words=["dangerous", "unsafe"],
+            danger_words_action="warn",
+            validators_warn=["attribute.name_is_danger_word"],
+        )
+        # Custom danger word should warn (not raise)
+        attr_danger = m_attr(name="dangerous")
+        cls = m_class()
+        v.attribute.name_is_danger_word(config, attribute=attr_danger, cls=cls)
+
+        # Python keyword should pass (not in custom list)
+        attr_class = m_attr(name="class")
+        v.attribute.name_is_danger_word(config, attribute=attr_class, cls=cls)
+
+
+class TestPrefixFunctionality:
+    """Test the apply_prefix_with_case function."""
+
+    def test_prefix_attribute_snake_case(self):
+        """Test that attributes get snake_case prefix."""
+        from eaidl.validation.base import apply_prefix_with_case
+
+        assert apply_prefix_with_case("struct", "idl_", is_class=False) == "idl_struct"
+        assert apply_prefix_with_case("interface", "idl_", is_class=False) == "idl_interface"
+        assert apply_prefix_with_case("default", "idl_", is_class=False) == "idl_default"
+
+    def test_prefix_class_pascal_case(self):
+        """Test that classes get PascalCase prefix."""
+        from eaidl.validation.base import apply_prefix_with_case
+
+        assert apply_prefix_with_case("struct", "idl_", is_class=True) == "IdlStruct"
+        assert apply_prefix_with_case("interface", "idl_", is_class=True) == "IdlInterface"
+        assert apply_prefix_with_case("Union", "idl_", is_class=True) == "IdlUnion"
+
+    def test_prefix_with_custom_prefix(self):
+        """Test using a custom prefix string."""
+        from eaidl.validation.base import apply_prefix_with_case
+
+        # Custom prefix for attributes
+        assert apply_prefix_with_case("struct", "my_", is_class=False) == "my_struct"
+        # Custom prefix for classes
+        assert apply_prefix_with_case("struct", "my_", is_class=True) == "MyStruct"

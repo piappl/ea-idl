@@ -19,7 +19,7 @@ import uuid
 import copy
 import pydantic
 import hashlib
-from eaidl.validation.base import RESERVED_NAMES
+from eaidl.validation.base import IDL_RESERVED_WORDS, DANGER_WORDS, apply_prefix_with_case
 from collections import deque
 from eaidl.model import (
     ModelAnnotation,
@@ -874,9 +874,20 @@ class ModelParser:
             parent=parent_class,
         )
 
-        # Handle reserved names
-        if self.config.prefix_attributes_reserved and attribute.name in RESERVED_NAMES:
-            attribute.name = self.config.prefix_attributes_reserved + attribute.name
+        # Handle reserved words
+        reserved_words = self.config.reserved_words or IDL_RESERVED_WORDS
+        danger_words = self.config.danger_words or DANGER_WORDS
+
+        if attribute.name in reserved_words:
+            if self.config.reserved_words_action == "prefix":
+                attribute.name = apply_prefix_with_case(
+                    attribute.name, self.config.reserved_words_prefix, is_class=False
+                )
+
+        # Handle danger words
+        if attribute.name in danger_words:
+            if self.config.danger_words_action == "prefix":
+                attribute.name = apply_prefix_with_case(attribute.name, self.config.danger_words_prefix, is_class=False)
 
         attribute.namespace = []
         attribute.stereotypes = self.get_stereotypes(attribute.guid)
@@ -1045,6 +1056,24 @@ class ModelParser:
             object_id=t_object.attr_object_id,
             parent=parent_package,
         )
+
+        # Handle reserved words for class names
+        reserved_words = self.config.reserved_words or IDL_RESERVED_WORDS
+        danger_words = self.config.danger_words or DANGER_WORDS
+
+        if model_class.name in reserved_words:
+            if self.config.reserved_words_action == "prefix":
+                model_class.name = apply_prefix_with_case(
+                    model_class.name, self.config.reserved_words_prefix, is_class=True
+                )
+
+        # Handle danger words for class names
+        if model_class.name in danger_words:
+            if self.config.danger_words_action == "prefix":
+                model_class.name = apply_prefix_with_case(
+                    model_class.name, self.config.danger_words_prefix, is_class=True
+                )
+
         if parent_package is not None:
             model_class.namespace = parent_package.namespace
 

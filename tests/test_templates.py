@@ -14,6 +14,7 @@ import uuid
 def template(template: str) -> Template:
     # Create environment with a default configuration so templates can access config
     config = Configuration()
+    config.reserved_words_action = "allow"
     env = create_env(config)
     return env.get_template(template)
 

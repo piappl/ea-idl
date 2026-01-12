@@ -1,7 +1,7 @@
 from eaidl.config import Configuration
 from eaidl.model import ModelAttribute, ModelClass
 from eaidl.utils import is_lower_snake_case
-from .base import validator, RESERVED_NAMES
+from .base import validator, IDL_RESERVED_WORDS, DANGER_WORDS
 from .validators import (
     get_attribute_context,
     check_experimental_stereotype,
@@ -16,10 +16,26 @@ def context(attribute: ModelAttribute, cls: ModelClass) -> str:
 
 
 @validator
-def name_for_reserved_worlds(config: Configuration, attribute: ModelAttribute, cls: ModelClass) -> None:
-    """Check if parsed attribute name is not a reserved name."""
-    if attribute.name in RESERVED_NAMES:
-        raise ValueError(f"Attribute name '{attribute.name}' is on reserved world list {context(attribute, cls)}")
+def name_is_reserved_word(config: Configuration, attribute: ModelAttribute, cls: ModelClass) -> None:
+    """Check if attribute name is an IDL reserved word."""
+    reserved_words = config.reserved_words or IDL_RESERVED_WORDS
+    if config.reserved_words_action == "fail" and attribute.name in reserved_words:
+        raise ValueError(f"Attribute name '{attribute.name}' is an IDL reserved word {context(attribute, cls)}")
+
+
+@validator
+def name_is_danger_word(config: Configuration, attribute: ModelAttribute, cls: ModelClass) -> None:
+    """Check if attribute name may cause issues in generated code."""
+    danger_words = config.danger_words or DANGER_WORDS
+    if attribute.name in danger_words:
+        if config.danger_words_action == "fail":
+            raise ValueError(
+                f"Attribute name '{attribute.name}' may cause issues in generated code {context(attribute, cls)}"
+            )
+        elif config.danger_words_action == "warn":
+            raise ValueError(
+                f"Attribute name '{attribute.name}' may cause issues in Python/Protobuf code {context(attribute, cls)}"
+            )
 
 
 @validator

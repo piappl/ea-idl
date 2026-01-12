@@ -109,8 +109,18 @@ class Configuration(BaseModel):
     keep_union_stereotype: Optional[str] = "keep"
     #: Stereotype used to collapse unions when collapse_empty_unions_by_default is False
     collapse_union_stereotype: Optional[str] = "collapse"
-    #: Prefix reserved attributes, if None, don't prefix. Otherwise prefix.
-    prefix_attributes_reserved: Optional[str] = "_"
+    #: How to handle IDL reserved words: "fail" (stop), "prefix" (rename), "allow" (ignore)
+    reserved_words_action: Literal["fail", "prefix", "allow"] = "fail"
+    #: Prefix to use when reserved_words_action="prefix" (e.g., "idl_")
+    reserved_words_prefix: str = "idl_"
+    #: How to handle danger words: "fail" (stop), "warn" (log warning), "allow" (ignore)
+    danger_words_action: Literal["fail", "warn", "allow"] = "warn"
+    #: Prefix to use when danger_words_action="prefix" (e.g., "idl_")
+    danger_words_prefix: str = "idl_"
+    #: Custom list of reserved words (uses IDL_RESERVED_WORDS if empty)
+    reserved_words: List[str] = []
+    #: Custom list of danger words (uses DANGER_WORDS if empty)
+    danger_words: List[str] = []
     #: List of packages to ignore
     ignore_packages: List[str] = []
     #: Name of minimum amount of items annotation
@@ -170,9 +180,9 @@ class Configuration(BaseModel):
     }
     #: List of validation runs fail generation
     validators_fail: List[str] = [
-        "attribute.name_for_reserved_worlds",
+        "attribute.name_is_reserved_word",
         "attribute.primitive_type_mapped",
-        "struct.name_for_reserved_worlds",
+        "struct.name_is_reserved_word",
         "struct.stereotypes",
         "struct.enum_prefix",
     ]
@@ -189,7 +199,9 @@ class Configuration(BaseModel):
     ]
     #: List of validation runs that produce warning
     validators_warn: List[str] = [
+        "attribute.name_is_danger_word",
         "attribute.name_snake_convention",
+        "struct.name_is_danger_word",
         "struct.name_camel_convention",
         "struct.typedef_has_association",
         "package.stereotypes",

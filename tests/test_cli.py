@@ -19,6 +19,7 @@ def temp_config(tmp_path, test_db_path):
     config.write_text(f"""database_url: "sqlite+pysqlite:///{test_db_path.as_posix()}"
 root_packages:
   - "{{753A4DFC-7876-4b00-BB5A-6274AD3817C3}}"
+reserved_words_action: "allow"
 """)
     return config
 

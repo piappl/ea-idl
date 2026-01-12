@@ -1,7 +1,7 @@
 from eaidl.config import Configuration
 from eaidl.model import ModelClass
 from eaidl.utils import is_camel_case
-from .base import validator, RESERVED_NAMES
+from .base import validator, IDL_RESERVED_WORDS, DANGER_WORDS
 from .validators import (
     get_class_context,
     check_experimental_stereotype,
@@ -16,9 +16,22 @@ def context(cls: ModelClass) -> str:
 
 
 @validator
-def name_for_reserved_worlds(config: Configuration, cls: ModelClass) -> None:
-    if cls.name in RESERVED_NAMES:
-        raise ValueError(f"Class name is on reserved world list {context(cls)}")
+def name_is_reserved_word(config: Configuration, cls: ModelClass) -> None:
+    """Check if class name is an IDL reserved word."""
+    reserved_words = config.reserved_words or IDL_RESERVED_WORDS
+    if config.reserved_words_action == "fail" and cls.name in reserved_words:
+        raise ValueError(f"Class name '{cls.name}' is an IDL reserved word {context(cls)}")
+
+
+@validator
+def name_is_danger_word(config: Configuration, cls: ModelClass) -> None:
+    """Check if class name may cause issues in generated code."""
+    danger_words = config.danger_words or DANGER_WORDS
+    if cls.name in danger_words:
+        if config.danger_words_action == "fail":
+            raise ValueError(f"Class name '{cls.name}' may cause issues in generated code {context(cls)}")
+        elif config.danger_words_action == "warn":
+            raise ValueError(f"Class name '{cls.name}' may cause issues in Python/Protobuf code {context(cls)}")
 
 
 @validator
