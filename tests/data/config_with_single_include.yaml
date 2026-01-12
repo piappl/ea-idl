@@ -1,0 +1,2 @@
+# Config using single include
+!include config_base.yaml

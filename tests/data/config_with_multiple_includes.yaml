@@ -1,0 +1,2 @@
+# Config using multiple includes (merged in order)
+!include [config_base.yaml, config_override.yaml]

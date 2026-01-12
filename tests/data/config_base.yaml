@@ -1,0 +1,15 @@
+# Base configuration for include testing
+database_url: sqlite:///tests/data/nafv4.qea
+root_packages:
+  - core
+  - shared
+template: idl.jinja2
+
+spellcheck:
+  enabled: true
+  check_notes: true
+  min_word_length: 3
+
+diagrams:
+  renderer: mermaid
+  max_attributes_displayed: 10

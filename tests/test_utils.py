@@ -173,3 +173,51 @@ def test_get_prop() -> None:
         )
         == "-1"
     )
+
+
+def test_yaml_include_single_file() -> None:
+    """Test YAML include with a single file."""
+    path = Path(__file__).parent / "data" / "config_with_single_include.yaml"
+    config = load_config(path)
+    # Should load the base config
+    assert config.database_url == "sqlite:///tests/data/nafv4.qea"
+    assert config.root_packages == ["core", "shared"]
+    assert config.template == "idl.jinja2"
+    assert config.spellcheck.enabled is True
+    assert config.spellcheck.check_notes is True
+    assert config.diagrams.renderer == "mermaid"
+
+
+def test_yaml_include_multiple_files() -> None:
+    """Test YAML include with multiple files (deep merge)."""
+    path = Path(__file__).parent / "data" / "config_with_multiple_includes.yaml"
+    config = load_config(path)
+    # Should merge base and override
+    assert config.database_url == "sqlite:///tests/data/nafv4.qea"
+    # Override should win
+    assert config.root_packages == ["custom"]
+    assert config.template == "idl_just_defs.jinja2"
+    # Spellcheck should be deep merged
+    assert config.spellcheck.enabled is True  # from base
+    assert config.spellcheck.check_notes is False  # from override
+    assert config.spellcheck.custom_words == ["foo", "bar"]  # from override
+    # Diagrams should be deep merged
+    assert config.diagrams.renderer == "plantuml"  # from override
+    assert config.diagrams.max_attributes_displayed == 10  # from base
+
+
+def test_yaml_include_with_inline_override() -> None:
+    """Test YAML include for partial config sections."""
+    path = Path(__file__).parent / "data" / "config_with_inline_override.yaml"
+    config = load_config(path)
+    # Direct values from main config
+    assert config.database_url == "sqlite:///tests/data/nafv4.qea"
+    assert config.root_packages == ["core"]
+    assert config.template == "custom_template.jinja2"
+    assert config.enable_maps is False
+    # Spellcheck section included from separate file
+    assert config.spellcheck.enabled is True
+    assert config.spellcheck.check_notes is False
+    assert config.spellcheck.check_identifiers is True
+    assert config.spellcheck.min_word_length == 5
+    assert config.spellcheck.custom_words == ["test", "example"]
