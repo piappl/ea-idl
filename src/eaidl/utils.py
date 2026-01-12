@@ -6,6 +6,7 @@ from pathlib import Path
 from eaidl.config import Configuration, JSON
 from typing import Any
 import re
+from collections.abc import Mapping
 
 
 def to_bool(val: bool | int | float | str) -> bool:
@@ -57,12 +58,107 @@ def get_prop(value: str, key: str) -> str:
     return match.groups("")[0]
 
 
+def deep_merge(base: dict, update: dict) -> dict:
+    """Deep merge two dictionaries, with update values taking precedence.
+
+    Lists are replaced entirely (not merged), consistent with how most config systems work.
+
+    :param base: Base dictionary
+    :param update: Dictionary with updates to merge in
+    :return: Merged dictionary
+    """
+    result = base.copy()
+    for key, value in update.items():
+        if key in result and isinstance(result[key], Mapping) and isinstance(value, Mapping):
+            result[key] = deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+class IncludeLoader(yaml.SafeLoader):
+    """Custom YAML loader that supports !include directive.
+
+    Supports both single file and list of files:
+        config: !include other.yaml
+        configs: !include [base.yaml, overrides.yaml]
+
+    Included paths are resolved relative to the including file.
+    Multiple included files are deep-merged in order.
+    """
+
+    def __init__(self, stream):
+        """Initialize loader and track the directory of the current file."""
+        self._root = Path(stream.name).parent if hasattr(stream, "name") else Path.cwd()
+        super().__init__(stream)
+
+
+def include_constructor(loader: IncludeLoader, node: yaml.Node) -> Any:
+    """Construct included YAML content.
+
+    Handles both scalar (single file) and sequence (multiple files) includes.
+
+    :param loader: YAML loader instance
+    :param node: YAML node to process
+    :return: Loaded and merged content
+    """
+    if isinstance(node, yaml.ScalarNode):
+        # Single file include
+        include_path = loader.construct_scalar(node)
+        return _load_include_file(loader._root / include_path)
+    elif isinstance(node, yaml.SequenceNode):
+        # Multiple file includes - deep merge in order
+        files = loader.construct_sequence(node)
+        result = {}
+        for file_path in files:
+            included = _load_include_file(loader._root / file_path)
+            if isinstance(included, dict) and isinstance(result, dict):
+                result = deep_merge(result, included)
+            else:
+                # Non-dict values: last one wins
+                result = included
+        return result
+    else:
+        raise yaml.constructor.ConstructorError(
+            None, None, f"expected scalar or sequence node, but found {node.id}", node.start_mark
+        )
+
+
+def _load_include_file(path: Path) -> Any:
+    """Load a file to be included.
+
+    :param path: Path to file to load
+    :return: Loaded content
+    """
+    with open(path, encoding="UTF-8") as file:
+        if path.suffix in [".yaml", ".yml"]:
+            return yaml.load(file, IncludeLoader)
+        else:
+            return json.load(file)
+
+
+# Register the !include constructor
+IncludeLoader.add_constructor("!include", include_constructor)
+
+
 def load_config_file(path: str | Path) -> JSON:
+    """Load a configuration file (YAML or JSON).
+
+    YAML files support !include directive for composing configs:
+        # Single file
+        base: !include base.yaml
+
+        # Multiple files (deep merged in order)
+        combined: !include [base.yaml, overrides.yaml]
+
+    :param path: Path to configuration file
+    :return: Loaded configuration data
+    """
     if isinstance(path, str):
         path = Path(path)
     with open(path, encoding="UTF-8") as file:
         if path.suffix in [".yaml", ".yml"]:
-            loaded = yaml.safe_load(file)
+            loaded = yaml.load(file, IncludeLoader)
         else:
             loaded = json.load(file)
     return loaded

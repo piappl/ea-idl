@@ -1,0 +1,8 @@
+# Config using partial includes
+database_url: sqlite:///tests/data/nafv4.qea
+root_packages:
+  - core
+template: custom_template.jinja2
+enable_maps: false
+# Include just the spellcheck section
+spellcheck: !include config_spellcheck_only.yaml

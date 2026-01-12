@@ -1,0 +1,14 @@
+# Override configuration for include testing
+template: idl_just_defs.jinja2
+root_packages:
+  - custom
+
+spellcheck:
+  check_notes: false
+  custom_words:
+    - foo
+    - bar
+
+diagrams:
+  renderer: plantuml
+  plantuml_server_url: http://localhost:10005/

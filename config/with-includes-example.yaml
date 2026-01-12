@@ -1,0 +1,24 @@
+# Example configuration using includes
+# This demonstrates how to compose configuration from multiple files
+
+# Database and core settings
+database_url: sqlite+pysqlite:///tests/data/nafv4.qea
+root_packages:
+  - "{753A4DFC-7876-4b00-BB5A-6274AD3817C3}"
+
+# Template selection
+template: idl.jinja2
+
+# Include shared spellcheck configuration
+spellcheck: !include shared-spellcheck.yaml
+
+# Diagram settings (inline)
+diagrams:
+  renderer: mermaid
+  max_attributes_displayed: 15
+
+# Validation settings
+allowed_abbreviations:
+  - "MCM"
+  - "URI"
+  - "API"

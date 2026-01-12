@@ -1,0 +1,8 @@
+# Just spellcheck config
+enabled: true
+check_notes: false
+check_identifiers: true
+min_word_length: 5
+custom_words:
+  - test
+  - example

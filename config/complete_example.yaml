@@ -2,6 +2,24 @@
 #
 # This file demonstrates all available configuration options, including
 # the new diagram renderer settings introduced in version 0.2.0.
+#
+# =============================================================================
+# YAML Includes (Composition)
+# =============================================================================
+# You can split configuration across multiple files using !include:
+#
+# Single file include (replaces entire config):
+#   !include base.yaml
+#
+# Multiple file deep merge (later files override earlier ones):
+#   !include [base.yaml, overrides.yaml]
+#
+# Partial section include:
+#   spellcheck: !include spellcheck-config.yaml
+#   diagrams: !include diagram-config.yaml
+#
+# Paths are resolved relative to the including file.
+# =============================================================================
 
 # =============================================================================
 # Database Connection
