@@ -250,6 +250,49 @@ class TestLoadErrors:
         assert "core" in package_names
         assert "L7" in package_names
 
+    def test_nonexistent_database_file(self):
+        """Test error when database file doesn't exist."""
+        config = Configuration()
+        config.database_url = "sqlite+pysqlite:///nonexistent/path/to/database.qea"
+        with pytest.raises(ConnectionError, match="Cannot connect to database"):
+            ModelParser(config)
+
+    def test_empty_database_file(self, tmp_path):
+        """Test error when database file is empty (no tables)."""
+        # Create an empty SQLite database (need to connect to create the file)
+        empty_db = tmp_path / "empty.qea"
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import Session
+
+        engine = create_engine(f"sqlite+pysqlite:///{empty_db}")
+        with Session(engine) as session:
+            # Just connect to create the file, don't create any tables
+            session.execute(text("SELECT 1"))
+        engine.dispose()
+
+        config = Configuration()
+        config.database_url = f"sqlite+pysqlite:///{empty_db}"
+        with pytest.raises(ValueError, match="Database has no tables"):
+            ModelParser(config)
+
+    def test_wrong_database_schema(self, tmp_path):
+        """Test error when database has tables but not EA schema."""
+        # Create a SQLite database with different tables
+        wrong_db = tmp_path / "wrong_schema.db"
+        from sqlalchemy import create_engine, text
+        from sqlalchemy.orm import Session
+
+        engine = create_engine(f"sqlite+pysqlite:///{wrong_db}")
+        with Session(engine) as session:
+            session.execute(text("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"))
+            session.commit()
+        engine.dispose()
+
+        config = Configuration()
+        config.database_url = f"sqlite+pysqlite:///{wrong_db}"
+        with pytest.raises(ValueError, match="missing required Enterprise Architect tables"):
+            ModelParser(config)
+
 
 class TestLoadEdgeCases:
     """Test edge cases in model loading."""

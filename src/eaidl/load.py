@@ -78,8 +78,69 @@ class ModelParser:
         # Top level packages for all trees
         self.root_package_guids: List[str] = []
 
+        self._validate_database_connection()
         base.prepare(autoload_with=self.engine)
+        self._validate_database_schema()
         self.session = Session(self.engine)
+
+    def _validate_database_connection(self) -> None:
+        """Validate that the database can be connected to and has tables."""
+        try:
+            with self.engine.connect() as conn:
+                # Test that we can actually connect
+                conn.execute(sqlalchemy.text("SELECT 1"))
+        except Exception as e:
+            # Extract file path from database URL for better error messages
+            db_path = self._extract_db_path()
+            raise ConnectionError(
+                f"Cannot connect to database: {self.config.database_url}\n"
+                f"  File path: {db_path}\n"
+                f"  Error: {e}\n"
+                f"  Hint: Check that the file exists and is a valid SQLite database."
+            ) from e
+
+    def _validate_database_schema(self) -> None:
+        """Validate that the database has the expected Enterprise Architect schema."""
+        # Use SQLAlchemy inspector to check actual database tables
+        # (not base.classes which persists from previous connections)
+        inspector = sqlalchemy.inspect(self.engine)
+        available_tables = inspector.get_table_names()
+
+        # Check for required EA tables
+        required_tables = ["t_package", "t_object", "t_attribute", "t_connector"]
+
+        if not available_tables:
+            db_path = self._extract_db_path()
+            raise ValueError(
+                f"Database has no tables: {self.config.database_url}\n"
+                f"  File path: {db_path}\n"
+                f"  Hint: The database file may be empty or not an Enterprise Architect database.\n"
+                f"  EA databases are SQLite files with .qea or .eap extension."
+            )
+
+        missing_tables = [t for t in required_tables if t not in available_tables]
+        if missing_tables:
+            db_path = self._extract_db_path()
+            raise ValueError(
+                f"Database is missing required Enterprise Architect tables: {missing_tables}\n"
+                f"  File path: {db_path}\n"
+                f"  Available tables: {available_tables[:10]}{'...' if len(available_tables) > 10 else ''}\n"
+                f"  Hint: This doesn't appear to be a valid Enterprise Architect database."
+            )
+
+        log.debug("Database schema validated: found %d tables", len(available_tables))
+
+    def _extract_db_path(self) -> str:
+        """Extract the file path from the database URL for error messages."""
+        url = self.config.database_url
+        # Handle sqlite URLs like "sqlite+pysqlite:///path/to/file.qea"
+        if url.startswith("sqlite"):
+            # Remove the dialect prefix
+            if ":///" in url:
+                return url.split(":///", 1)[1]
+            elif "://" in url:
+                return url.split("://", 1)[1]
+        return url
 
     def load(self) -> List[ModelPackage]:
         whole: List[ModelPackage] = []
