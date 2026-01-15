@@ -8,12 +8,15 @@
 {%- set min_items = cls.properties.get('ext::minItems') %}
 {%- set max_items = cls.properties.get('ext::maxItems') %}
 {%- set is_fixed_array = min_items and max_items and min_items.value == max_items.value %}
+{%- set is_bounded_string = is_fixed_array and cls.parent_type in ['string', 'wstring'] %}
 {{ gen_notes(cls) -}}
 {%- if not is_fixed_array %}
 {{ gen_annotations(cls.properties) -}}
 {%- endif %}
-{%- if is_fixed_array %}
+{%- if is_bounded_string %}
 typedef {{cls.parent_type | idl_type}}<{{max_items.value}}> {{cls.name}};
+{%- elif is_fixed_array %}
+typedef {{cls.parent_type | idl_type}} {{cls.name}}[{{max_items.value}}];
 {%- else %}
 typedef {{cls.parent_type | idl_type}} {{cls.name}};
 {%- endif %}

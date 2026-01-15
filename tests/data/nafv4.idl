@@ -105,7 +105,7 @@ module core {
         typedef string<3> Nationality;
         @ext::pattern("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
         typedef string GUID;
-        typedef octet<16> GUIDBytes;
+        typedef octet GUIDBytes[16];
     }; /* message */
     module recursion {
         struct Node;
