@@ -119,25 +119,111 @@ def open_repository(model_path):
         sys.exit(1)
 
 
-def get_all_diagrams(repo, package=None, package_path=None):
-    """Recursively get all diagrams from a package and its sub-packages.
+def get_element_diagrams(element, element_path, seen_diagram_ids):
+    """Get diagrams from an element (composite diagrams and embedded diagrams).
+
+    Elements like composite states can have child diagrams that are not
+    directly accessible through package.Diagrams. These are accessed via:
+    - element.CompositeDiagram - The linked child diagram for composite elements
+    - element.Diagrams - Collection of diagrams embedded within the element
+
+    Args:
+        element: EA Element object
+        element_path: List representing the path to this element
+        seen_diagram_ids: Set of diagram IDs already collected (to avoid duplicates)
+
+    Returns:
+        List of diagram info dictionaries
+    """
+    diagrams = []
+
+    # Check for CompositeDiagram (child diagram linked to composite elements like states)
+    try:
+        composite_diagram = element.CompositeDiagram
+        if composite_diagram is not None:
+            diagram_id = composite_diagram.DiagramID
+            if diagram_id not in seen_diagram_ids:
+                seen_diagram_ids.add(diagram_id)
+                diagrams.append(
+                    {
+                        "diagram": composite_diagram,
+                        "package_name": element.Name,
+                        "package_path": element_path,
+                        "diagram_name": composite_diagram.Name,
+                        "diagram_id": diagram_id,
+                        "diagram_guid": composite_diagram.DiagramGUID,
+                        "type": composite_diagram.Type,
+                        "source": "CompositeDiagram",
+                    }
+                )
+    except Exception:
+        # Element may not have CompositeDiagram property or it's not accessible
+        pass
+
+    # Check for Diagrams collection (diagrams embedded in the element)
+    try:
+        for i in range(element.Diagrams.Count):
+            diagram = element.Diagrams.GetAt(i)
+            diagram_id = diagram.DiagramID
+            if diagram_id not in seen_diagram_ids:
+                seen_diagram_ids.add(diagram_id)
+                diagrams.append(
+                    {
+                        "diagram": diagram,
+                        "package_name": element.Name,
+                        "package_path": element_path,
+                        "diagram_name": diagram.Name,
+                        "diagram_id": diagram_id,
+                        "diagram_guid": diagram.DiagramGUID,
+                        "type": diagram.Type,
+                        "source": "Element.Diagrams",
+                    }
+                )
+    except Exception:
+        # Element may not have Diagrams collection
+        pass
+
+    # Recursively check nested elements (element.Elements collection)
+    try:
+        for i in range(element.Elements.Count):
+            nested_element = element.Elements.GetAt(i)
+            nested_path = element_path + [nested_element.Name]
+            diagrams.extend(get_element_diagrams(nested_element, nested_path, seen_diagram_ids))
+    except Exception:
+        # Element may not have Elements collection
+        pass
+
+    return diagrams
+
+
+def get_all_diagrams(repo, package=None, package_path=None, seen_diagram_ids=None):
+    """Recursively get all diagrams from a package, its sub-packages, and elements.
+
+    This function collects diagrams from:
+    1. Package.Diagrams - Diagrams directly in packages
+    2. Element.CompositeDiagram - Child diagrams of composite elements (e.g., composite states)
+    3. Element.Diagrams - Diagrams embedded within elements
 
     Args:
         repo: EA Repository object
         package: Current package to process (None to start from root)
         package_path: List of parent package names (for building hierarchy)
+        seen_diagram_ids: Set of diagram IDs already collected (to avoid duplicates)
 
     Returns:
         List of diagram info dictionaries with package hierarchy
     """
     diagrams = []
 
+    if seen_diagram_ids is None:
+        seen_diagram_ids = set()
+
     if package is None:
         # Start from all models
         for i in range(repo.Models.Count):
             model = repo.Models.GetAt(i)
             # Start with model name as the root of the path
-            diagrams.extend(get_all_diagrams(repo, model, package_path=[model.Name]))
+            diagrams.extend(get_all_diagrams(repo, model, package_path=[model.Name], seen_diagram_ids=seen_diagram_ids))
     else:
         # Initialize package_path if not provided
         if package_path is None:
@@ -146,24 +232,36 @@ def get_all_diagrams(repo, package=None, package_path=None):
         # Get diagrams from current package
         for i in range(package.Diagrams.Count):
             diagram = package.Diagrams.GetAt(i)
-            diagrams.append(
-                {
-                    "diagram": diagram,
-                    "package_name": package.Name,  # Immediate package name
-                    "package_path": package_path,  # Full hierarchy as list
-                    "diagram_name": diagram.Name,
-                    "diagram_id": diagram.DiagramID,
-                    "diagram_guid": diagram.DiagramGUID,
-                    "type": diagram.Type,
-                }
-            )
+            diagram_id = diagram.DiagramID
+            if diagram_id not in seen_diagram_ids:
+                seen_diagram_ids.add(diagram_id)
+                diagrams.append(
+                    {
+                        "diagram": diagram,
+                        "package_name": package.Name,  # Immediate package name
+                        "package_path": package_path,  # Full hierarchy as list
+                        "diagram_name": diagram.Name,
+                        "diagram_id": diagram_id,
+                        "diagram_guid": diagram.DiagramGUID,
+                        "type": diagram.Type,
+                        "source": "Package.Diagrams",
+                    }
+                )
+
+        # Get diagrams from elements in this package (composite diagrams, embedded diagrams)
+        for i in range(package.Elements.Count):
+            element = package.Elements.GetAt(i)
+            element_path = package_path + [element.Name]
+            diagrams.extend(get_element_diagrams(element, element_path, seen_diagram_ids))
 
         # Recurse into sub-packages
         for i in range(package.Packages.Count):
             sub_package = package.Packages.GetAt(i)
             # Extend the package path with the sub-package name
             sub_path = package_path + [sub_package.Name]
-            diagrams.extend(get_all_diagrams(repo, sub_package, package_path=sub_path))
+            diagrams.extend(
+                get_all_diagrams(repo, sub_package, package_path=sub_path, seen_diagram_ids=seen_diagram_ids)
+            )
 
     return diagrams
 
@@ -455,9 +553,10 @@ Examples:
             # Show full package hierarchy path
             package_path = d.get("package_path", [d["package_name"]])
             full_path = " > ".join(package_path)
+            source = d.get("source", "Package.Diagrams")
             print(f"  [{full_path}] {d['diagram_name']}")
             print(f"    GUID: {d['diagram_guid']}")
-            print(f"    ID: {d['diagram_id']}, Type: {d['type']}")
+            print(f"    ID: {d['diagram_id']}, Type: {d['type']}, Source: {source}")
     else:
         print(f"\nExporting {len(filtered_diagrams)} diagrams to {args.output}...")
 
