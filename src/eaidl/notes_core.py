@@ -47,16 +47,15 @@ class NotesCollector:
         """Recursively collect notes from package tree."""
         path = f"{parent_path}/{package.name}" if parent_path else package.name
 
-        # Package main note
-        if package.notes:
-            self._add_note(
-                note_type=NoteType.PACKAGE_MAIN,
-                object_id=package.object_id,
-                namespace=package.namespace,
-                object_name=package.name,
-                content_html=package.notes,
-                path=path,
-            )
+        # Package main note (always export, even if empty)
+        self._add_note(
+            note_type=NoteType.PACKAGE_MAIN,
+            object_id=package.object_id,
+            namespace=package.namespace,
+            object_name=package.name,
+            content_html=package.notes,
+            path=path,
+        )
 
         # Package unlinked notes (free-floating notes in package)
         for idx, unlinked_note in enumerate(package.unlinked_notes):
@@ -84,16 +83,15 @@ class NotesCollector:
         """Collect notes from a class and its attributes."""
         path = f"{package_path}/{cls.name}"
 
-        # Class main note
-        if cls.notes:
-            self._add_note(
-                note_type=NoteType.CLASS_MAIN,
-                object_id=cls.object_id,
-                namespace=cls.namespace,
-                object_name=cls.name,
-                content_html=cls.notes,
-                path=path,
-            )
+        # Class main note (always export, even if empty)
+        self._add_note(
+            note_type=NoteType.CLASS_MAIN,
+            object_id=cls.object_id,
+            namespace=cls.namespace,
+            object_name=cls.name,
+            content_html=cls.notes,
+            path=path,
+        )
 
         # Class linked notes
         for idx, linked_note in enumerate(cls.linked_notes):
@@ -117,17 +115,16 @@ class NotesCollector:
         """Collect notes from an attribute."""
         path = f"{class_path}/{attr.name}"
 
-        # Attribute main note
-        if attr.notes:
-            self._add_note(
-                note_type=NoteType.ATTRIBUTE_MAIN,
-                object_id=attr.attribute_id,
-                namespace=parent_namespace,
-                object_name=attr.name,
-                content_html=attr.notes,
-                path=path,
-                object_guid=attr.guid,
-            )
+        # Attribute main note (always export, even if empty)
+        self._add_note(
+            note_type=NoteType.ATTRIBUTE_MAIN,
+            object_id=attr.attribute_id,
+            namespace=parent_namespace,
+            object_name=attr.name,
+            content_html=attr.notes,
+            path=path,
+            object_guid=attr.guid,
+        )
 
         # Attribute linked notes
         for idx, linked_note in enumerate(attr.linked_notes):
@@ -150,7 +147,7 @@ class NotesCollector:
         object_id: int,
         namespace: List[str],
         object_name: str,
-        content_html: str,
+        content_html: Optional[str],
         path: str,
         note_id: Optional[int] = None,
         content_md: Optional[str] = None,
@@ -158,9 +155,12 @@ class NotesCollector:
         object_guid: Optional[str] = None,
     ):
         """Add a note to the collection with metadata."""
+        # Handle None content by treating as empty string
+        if content_html is None:
+            content_html = ""
         # If content_md and checksum not provided, compute them
         if content_md is None:
-            content_md = strip_html(content_html)
+            content_md = strip_html(content_html) or ""
         if checksum is None:
             checksum = hashlib.md5(content_html.encode("utf-8")).hexdigest()
 
@@ -279,29 +279,42 @@ class NotesImporter:
         )
 
     def _get_current_note_html(self, note: NoteMetadata) -> Optional[str]:
-        """Query current note content from EA database."""
+        """Query current note content from EA database.
+
+        Returns:
+            str: The note content (may be empty string if no note)
+            None: If the object was not found in database
+        """
         TObject = base.classes.t_object
         TAttribute = base.classes.t_attribute
 
         if note.note_type == NoteType.PACKAGE_MAIN:
             # Query package note from t_object (package as object)
             obj = self.parser.session.query(TObject).filter(TObject.attr_object_id == note.object_id).scalar()
-            return obj.attr_note if obj else None
+            if obj is None:
+                return None
+            return obj.attr_note or ""
 
         elif note.note_type in (NoteType.PACKAGE_UNLINKED, NoteType.CLASS_LINKED, NoteType.ATTRIBUTE_LINKED):
             # Query linked/unlinked note from t_object
             note_obj = self.parser.session.query(TObject).filter(TObject.attr_object_id == note.note_id).scalar()
-            return note_obj.attr_note if note_obj else None
+            if note_obj is None:
+                return None
+            return note_obj.attr_note or ""
 
         elif note.note_type == NoteType.CLASS_MAIN:
             # Query class note
             obj = self.parser.session.query(TObject).filter(TObject.attr_object_id == note.object_id).scalar()
-            return obj.attr_note if obj else None
+            if obj is None:
+                return None
+            return obj.attr_note or ""
 
         elif note.note_type == NoteType.ATTRIBUTE_MAIN:
             # Query attribute note using GUID (attr_object_id is not unique - it's the parent class ID)
             attr = self.parser.session.query(TAttribute).filter(TAttribute.attr_ea_guid == note.object_guid).scalar()
-            return attr.attr_notes if attr else None
+            if attr is None:
+                return None
+            return attr.attr_notes or ""
 
         return None
 
