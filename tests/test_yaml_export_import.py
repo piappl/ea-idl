@@ -94,6 +94,73 @@ class TestYamlExport:
                 assert "notes" in data
                 assert len(data["notes"]) == notes_export.metadata.note_count
 
+    def test_items_without_notes_are_exported(self, config, packages):
+        """Test that items without notes are exported with empty content.
+
+        This ensures reviewers can see ALL items in the export and add
+        documentation to items that are currently missing notes.
+        """
+        collector = NotesCollector(config, packages)
+        notes_export = collector.collect_all_notes()
+
+        # Find notes with empty content
+        empty_notes = [n for n in notes_export.notes if n.content_md == ""]
+        notes_with_content = [n for n in notes_export.notes if n.content_md != ""]
+
+        # We should have both empty and non-empty notes
+        assert len(empty_notes) > 0, "Expected some items without notes to be exported"
+        assert len(notes_with_content) > 0, "Expected some items with notes to be exported"
+
+        # Empty notes should have valid checksums (checksum of empty string)
+        empty_string_checksum = "d41d8cd98f00b204e9800998ecf8427e"  # MD5 of ""
+        for note in empty_notes:
+            assert note.checksum == empty_string_checksum, f"Empty note {note.path} should have empty string checksum"
+
+    def test_all_classes_and_attributes_exported(self, config, packages):
+        """Test that ALL classes and attributes are exported, not just those with notes."""
+        collector = NotesCollector(config, packages)
+        notes_export = collector.collect_all_notes()
+
+        # Count classes and attributes in the model
+        def count_items(pkgs):
+            total_classes = 0
+            total_attrs = 0
+            for pkg in pkgs:
+                total_classes += len(pkg.classes)
+                for cls in pkg.classes:
+                    total_attrs += len(cls.attributes)
+                child_classes, child_attrs = count_items(pkg.packages)
+                total_classes += child_classes
+                total_attrs += child_attrs
+            return total_classes, total_attrs
+
+        model_classes, model_attrs = count_items(packages)
+
+        # Count exported class and attribute notes
+        class_notes = [n for n in notes_export.notes if n.note_type == "class_main"]
+        attr_notes = [n for n in notes_export.notes if n.note_type == "attribute_main"]
+
+        # Should have a note entry for every class and attribute
+        assert len(class_notes) == model_classes, f"Expected {model_classes} class notes, got {len(class_notes)}"
+        assert len(attr_notes) == model_attrs, f"Expected {model_attrs} attribute notes, got {len(attr_notes)}"
+
+    def test_yaml_contains_empty_content_entries(self, config, packages):
+        """Test that YAML output contains entries with empty content field."""
+        collector = NotesCollector(config, packages)
+        notes_export = collector.collect_all_notes()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = os.path.join(tmpdir, "test_notes.yaml")
+            YamlFormatter.export(notes_export, output_path)
+
+            with open(output_path, "r") as f:
+                data = yaml.safe_load(f)
+
+            # Find notes with empty content in YAML
+            empty_content_notes = [n for n in data["notes"] if n["content"] == ""]
+
+            assert len(empty_content_notes) > 0, "YAML should contain entries with empty content"
+
 
 class TestYamlImport:
     """Test YAML note import functionality."""
