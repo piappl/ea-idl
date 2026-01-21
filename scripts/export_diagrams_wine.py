@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-Export diagrams from Enterprise Architect to SVG and PNG using COM API.
+Export diagrams from Enterprise Architect to image formats using COM API.
+
+Supported formats: PNG, BMP, JPG, GIF, EMF (vector)
 
 This script supports both:
 - Native Windows with Python + pywin32
@@ -28,14 +30,15 @@ Usage:
 """
 
 import argparse
+import copy
 import os
 import platform
 import re
 import sys
-import yaml
-import copy
 import time
+
 import win32com.client
+import yaml
 from pathlib import Path
 
 
@@ -112,6 +115,13 @@ def open_repository(model_path):
 
         print("Repository opened successfully")
         print(f"Models count: {repo.Models.Count}")
+
+        # Try to get EA version info
+        try:
+            version = repo.LibraryVersion
+            print(f"EA Library Version: {version}")
+        except Exception:
+            pass
 
         return repo
     except Exception as e:
@@ -353,7 +363,7 @@ def sanitize_filename(name, max_length=200):
     return safe_name
 
 
-def export_diagram(repo, diagram_info, output_dir, formats=["svg", "png"]):
+def export_diagram(repo, diagram_info, output_dir, formats=["png"]):
     """Export a single diagram to specified formats.
 
     Args:
@@ -384,23 +394,31 @@ def export_diagram(repo, diagram_info, output_dir, formats=["svg", "png"]):
 
     results = []
     for fmt in formats:
-        # Determine file extension and type code
+        # Determine file extension
+        # PutDiagramImageToFile supports:
+        #   Type 0 = EMF/WMF (Windows Metafile)
+        #   Type 1 = follows extension for raster formats: .bmp, .jpg, .gif, .png, .tga
+        # Note: SVG is NOT supported by PutDiagramImageToFile
         fmt_lower = fmt.lower()
-        if fmt_lower == "svg":
-            ext = "svg"
-            file_type_code = 5
-            max_wait = 5
-        elif fmt_lower == "png":
+        if fmt_lower == "png":
             ext = "png"
-            file_type_code = 3
+            file_type_code = 1  # Follow extension
             max_wait = 2
         elif fmt_lower == "bmp":
             ext = "bmp"
-            file_type_code = 0
+            file_type_code = 1  # Follow extension
             max_wait = 2
         elif fmt_lower in ["jpg", "jpeg"]:
             ext = "jpg"
-            file_type_code = 1
+            file_type_code = 1  # Follow extension
+            max_wait = 2
+        elif fmt_lower == "gif":
+            ext = "gif"
+            file_type_code = 1  # Follow extension
+            max_wait = 2
+        elif fmt_lower == "emf":
+            ext = "emf"
+            file_type_code = 0  # Windows Metafile
             max_wait = 2
         else:
             print(f"WARNING: Unsupported format {fmt}, skipping")
@@ -431,7 +449,8 @@ def export_diagram(repo, diagram_info, output_dir, formats=["svg", "png"]):
 
             # Use PutDiagramImageToFile method
             # Signature: PutDiagramImageToFile(DiagramGUID, FileName, FileType)
-            # FileType: 0=BMP, 1=JPEG, 2=GIF, 3=PNG, 5=SVG
+            # FileType: 0=EMF/WMF, 1=follows extension for raster formats only (.bmp, .jpg, .gif, .png, .tga)
+            # Note: SVG is NOT supported by this method
             project.PutDiagramImageToFile(diagram.DiagramGUID, windows_output_path, file_type_code)
 
             # Wait for file to be written
@@ -450,10 +469,7 @@ def export_diagram(repo, diagram_info, output_dir, formats=["svg", "png"]):
                 print(f"  Exported: {output_path} ({file_size} bytes)")
                 results.append(str(output_path))
             else:
-                if file_type_code == 5:  # SVG
-                    print(f"  SKIPPED: {ext.upper()} export may not be supported in this EA version")
-                else:
-                    print(f"  FAILED: {output_path} (waited {waited:.1f}s)")
+                print(f"  FAILED: {output_path} (waited {waited:.1f}s)")
         except Exception as e:
             print(f"  ERROR exporting {diagram_name} as {fmt}:")
             print(f"    {type(e).__name__}: {e}")
@@ -463,7 +479,7 @@ def export_diagram(repo, diagram_info, output_dir, formats=["svg", "png"]):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Export EA diagrams to SVG and PNG via COM API (supports Windows and Linux/Wine)",
+        description="Export EA diagrams to image formats via COM API (supports Windows and Linux/Wine)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -473,8 +489,8 @@ Examples:
   # Linux/Wine - Export all diagrams from a model
   wine python.exe export_diagrams_wine.py --model /path/to/model.qea --output ./diagrams
 
-  # Export only PNG format
-  python export_diagrams_wine.py --model /path/to/model.qea --output ./diagrams --formats png
+  # Export as EMF (vector format)
+  python export_diagrams_wine.py --model /path/to/model.qea --output ./diagrams --formats emf
 
   # Filter by package name
   python export_diagrams_wine.py --model /path/to/model.qea --output ./diagrams --package-filter "Core"
@@ -493,8 +509,8 @@ Examples:
         "--formats",
         nargs="+",
         default=["png"],
-        choices=["svg", "png", "bmp", "jpg"],
-        help="Export formats (default: png). Note: SVG may not be supported in all EA versions.",
+        choices=["png", "bmp", "jpg", "gif", "emf"],
+        help="Export formats (default: png). EMF is vector format (Windows Metafile).",
     )
 
     parser.add_argument(
@@ -569,6 +585,7 @@ Examples:
             meta.append(diagram)
         with open(Path(args.output) / "diagrams.yaml", "w") as file:
             yaml.dump(meta, file, sort_keys=False)
+
         exported_count = 0
         for i, diagram_info in enumerate(filtered_diagrams, 1):
             # Show full package hierarchy path
