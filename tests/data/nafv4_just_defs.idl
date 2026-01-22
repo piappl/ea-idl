@@ -156,10 +156,14 @@ module core {
             Linked note:
             Note about nationality.
         */
-        typedef string<3> Nationality;
+        @ext::maxItems(3)
+        @ext::minItems(3)
+        typedef string Nationality;
         @ext::pattern("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
         typedef string GUID;
-        typedef octet GUIDBytes[16];
+        @ext::maxItems(16)
+        @ext::minItems(16)
+        typedef octet GUIDBytes;
         /**
             Message header
         */

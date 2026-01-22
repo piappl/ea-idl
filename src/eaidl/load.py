@@ -370,7 +370,7 @@ class ModelParser:
         else:
             package.namespace = copy.copy(parent_package.namespace)
             package.namespace.append(package.name)
-        package.notes = t_package_object.attr_note
+        package.notes = strip_html(t_package_object.attr_note, special=True)
         package.stereotypes = self.get_stereotypes(package.guid)
         if parse_children:
             self.package_parse_children(package)
@@ -955,7 +955,7 @@ class ModelParser:
         attribute.is_optional = "optional" in attribute.stereotypes
         attribute.is_ordered = to_bool(t_attribute.attr_isordered)
         attribute.is_static = to_bool(t_attribute.attr_isstatic)
-        attribute.notes = t_attribute.attr_notes
+        attribute.notes = strip_html(t_attribute.attr_notes, special=True)
         attribute.linked_notes = self.get_linked_notes(attribute.attribute_id)
 
         self._parse_attribute_multiplicity(attribute, t_attribute)
@@ -1161,7 +1161,7 @@ class ModelParser:
                 if (m := re.search(r"(?:Parent|Implements)=(.*?);", t_object.attr_genlinks)) is not None
                 else None
             )
-        model_class.notes = t_object.attr_note
+        model_class.notes = strip_html(t_object.attr_note, special=True)
 
     def _parse_generalization(self, model_class: ModelClass) -> None:
         """Parse generalization (inheritance) links."""

@@ -55,7 +55,7 @@ class CleanMarkdownConverter(MarkdownConverter):
         return ""
 
 
-def strip_html(text: str) -> str:
+def strip_html(text: str, special: bool = False) -> str:
     """Convert HTML to markdown, stripping unsupported tags.
 
     Converts EA note HTML to clean markdown format:
@@ -77,6 +77,11 @@ def strip_html(text: str) -> str:
 
     # Normalize Unicode characters (smart quotes, dashes, etc.)
     result = normalize_unicode(result)
+
+    # Some special replacement for sensitive outputs
+    if special:
+        for extra in ["'", '"']:
+            result = result.replace(extra, "_")
 
     # Clean up excessive newlines (more than 2 in a row)
     result = re.sub(r"\n{3,}", "\n\n", result)
