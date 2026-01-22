@@ -3,16 +3,17 @@
 {# Macro for generating attributes. #}
 {% macro gen_attribute(module, cls, attr) %}
 {{ gen_notes(attr) -}}
-{{ gen_annotations(attr.properties, attr ) -}}
-{% if attr.is_collection %}
-{% if attr.upper_bound_number %}
+{% if attr.is_collection and attr.upper_bound_number %}
+{{ gen_annotations(attr.properties, attr, [config.max_items]) -}}
 sequence<{{"::".join(attr.namespace + [attr.type | idl_type])}}, {{attr.upper_bound_number}}> {{attr.name}};
-{% else %}
+{% elif attr.is_collection %}
+{{ gen_annotations(attr.properties, attr) -}}
 sequence<{{"::".join(attr.namespace + [attr.type | idl_type])}}> {{attr.name}};
-{% endif %}
-{% elif attr.is_map%}
+{% elif attr.is_map %}
+{{ gen_annotations(attr.properties, attr) -}}
 map<{{attr.map_key_type | idl_type}}, {{attr.map_value_type | idl_type}}> {{attr.name}};
 {% else %}
+{{ gen_annotations(attr.properties, attr) -}}
 {{"::".join(attr.namespace + [attr.type | idl_type])}} {{attr.name}};
 {% endif %}
 {% endmacro -%}

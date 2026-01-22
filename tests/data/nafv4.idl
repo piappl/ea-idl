@@ -143,7 +143,6 @@ module core {
                 Linked note:
                 Various combinations of optional and multiplicity.
             */
-            @ext::maxItems(5)
             sequence<core::common::types::Identifier, 5> sequence_upper_bound;
             /**
                 Linked note:
@@ -156,7 +155,6 @@ module core {
                 Various combinations of optional and multiplicity.
             */
             @ext::minItems(1)
-            @ext::maxItems(5)
             sequence<core::common::types::Identifier, 5> sequence_bound;
             /**
                 Linked note:
@@ -168,7 +166,6 @@ module core {
                 Linked note:
                 Various combinations of optional and multiplicity.
             */
-            @ext::maxItems(5)
             @optional
             sequence<core::common::types::Identifier, 5> optional_sequence_upper_bound;
         };
@@ -212,7 +209,6 @@ module core {
         @ext::interface
         struct DataMessage: core::message::Message {
             @ext::minItems(1)
-            @ext::maxItems(5)
             sequence<string, 5> body;
             /**
                 This is a sequence

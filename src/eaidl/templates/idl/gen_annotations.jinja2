@@ -1,6 +1,7 @@
 {# Macro for generating annotations, based on properties. #}
-{% macro _gen_annotations(props, attr=None) %}
+{% macro _gen_annotations(props, attr=None, exclude_keys=None) %}
 {% for key, value in props.items() %}
+{% if exclude_keys is none or key not in exclude_keys %}
 {% set rendered_value = value.value %}
 {% if key == "default" and attr is not none and value.value_type != "none" and value.value is defined and value.value %}
     {% if value.value_type == "object" and "::" not in value.value %}
@@ -19,8 +20,9 @@
 {% else %}
 @{{key | trim}}({{rendered_value | trim}})
 {% endif %}
+{% endif %}
 {% endfor %}
 {% endmacro %}
-{% macro gen_annotations(props, attr=None) %}
-{{ _gen_annotations(props, attr)  }}
+{% macro gen_annotations(props, attr=None, exclude_keys=None) %}
+{{ _gen_annotations(props, attr, exclude_keys)  }}
 {%- endmacro %}
