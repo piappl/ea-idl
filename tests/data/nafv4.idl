@@ -41,8 +41,8 @@ module core {
         struct Store;
         struct FlexibleName;
         enum MeasurementTypeEnum {
-            @value(1) MeasurementTypeEnum_TEMPERATURE_MEASUREMENT,
-            @value(0) MeasurementTypeEnum_PRIMITIVE
+            MeasurementTypeEnum_TEMPERATURE_MEASUREMENT,
+            MeasurementTypeEnum_PRIMITIVE
         };
         /**
             Linked note:
@@ -55,17 +55,17 @@ module core {
                 Not that this enum has values set.
                 If not set those will be automatically assigned.
             */
-            @value(3) IdentifierOrNameTypeEnum_NAME,
+            IdentifierOrNameTypeEnum_NAME,
             /**
                 Linked note:
                 Not that this enum has values set.
                 If not set those will be automatically assigned.
             */
-            @value(1) IdentifierOrNameTypeEnum_IDENTIFIER
+            IdentifierOrNameTypeEnum_IDENTIFIER
         };
         enum FlexibleNameValues {
-            @value(1) FlexibleNameValues_ONE_VALUE,
-            @value(5) FlexibleNameValues_OTHER_VALUE
+            FlexibleNameValues_ONE_VALUE,
+            FlexibleNameValues_OTHER_VALUE
         };
     }; /* data */
     /**
@@ -92,8 +92,8 @@ module core {
         struct Message;
         struct DataMessage;
         enum MessageTypeEnum {
-            @value(0) MessageTypeEnum_MEASUREMENT,
-            @value(1) MessageTypeEnum_EMPTY
+            MessageTypeEnum_MEASUREMENT,
+            MessageTypeEnum_EMPTY
         };
         typedef string OptionValue;
         /**

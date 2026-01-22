@@ -242,6 +242,9 @@ class Configuration(BaseModel):
     #: If True, use #ifndef instead of #ifdef for the ext annotations section.
     #: Only applies when ext_ifdef_flag is set.
     ext_ifdef_negate: bool = False
+    #: If True, emit @value annotation on enumeration attributes.
+    #: When False (default), enumeration attributes are output without @value.
+    enum_emit_value: bool = False
 
     def get_idl_type(self, ea_type: str) -> str:
         """Get the IDL type for a given EA type.

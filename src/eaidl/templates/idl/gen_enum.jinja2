@@ -2,10 +2,14 @@
 {% from "idl/gen_annotations.jinja2" import gen_annotations %}
 {# Generate enum entry #}
 {% macro gen_enum_entry_internal(item, index) %}
+{% if config.enum_emit_value %}
 {% if "default" in item.properties and  item.properties["default"].value %}
 @value({{item.properties["default"].value | trim }}) {{item.name}}
 {% else %}
 @value({{index}}) {{item.name}}
+{% endif %}
+{% else %}
+{{item.name}}
 {% endif %}
 {% endmacro %}
 {# Generate enum entry #}

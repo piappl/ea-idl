@@ -11,10 +11,11 @@ from typing import Optional, List
 import uuid
 
 
-def template(template: str) -> Template:
+def template(template: str, config: Optional[Configuration] = None) -> Template:
     # Create environment with a default configuration so templates can access config
-    config = Configuration()
-    config.reserved_words_action = "allow"
+    if config is None:
+        config = Configuration()
+        config.reserved_words_action = "allow"
     env = create_env(config)
     return env.get_template(template)
 
@@ -55,15 +56,15 @@ TYPEDEF_NOTES = """/**
 */
 typedef string ClassName;"""
 ENUM = """enum ClassName {
-    @value(0) one,
-    @value(1) two
+    one,
+    two
 };"""
 ENUM_NOTES = """/**
     An enum.
 */
 enum ClassName {
-    @value(0) one,
-    @value(1) two
+    one,
+    two
 };"""
 ENUM_ATTR_NOTES = """/**
     An enum.
@@ -72,12 +73,12 @@ enum ClassName {
     /**
         An attribute 1.
     */
-    @value(0) one,
+    one,
     /**
         An attribute 2.
         nice.
     */
-    @value(1) two
+    two
 };"""
 STRUCT_DECLARATION = "struct ClassName;"
 STRUCT = """struct ClassName {
@@ -308,6 +309,42 @@ def test_gen_enum_class() -> None:
     assert ret == ENUM_NOTES
     ret = idl.module.gen_class_definition_full(mod, cls)
     assert ret == ENUM_NOTES
+
+
+def test_gen_enum_without_value() -> None:
+    """Test that enum_emit_value=False (default) omits @value annotations."""
+    config = Configuration()
+    config.reserved_words_action = "allow"
+    # Default is enum_emit_value=False
+    idl = template("idl/gen_enum.jinja2", config)
+    cls = m_class()
+    cls.attributes.append(m_attr(name="one"))
+    cls.attributes.append(m_attr(name="two"))
+    cls.is_enum = True
+    ret = idl.module.gen_enum(cls)
+    expected = """enum ClassName {
+    one,
+    two
+};"""
+    assert ret == expected
+
+
+def test_gen_enum_with_value() -> None:
+    """Test that enum_emit_value=True emits @value annotations."""
+    config = Configuration()
+    config.reserved_words_action = "allow"
+    config.enum_emit_value = True
+    idl = template("idl/gen_enum.jinja2", config)
+    cls = m_class()
+    cls.attributes.append(m_attr(name="one"))
+    cls.attributes.append(m_attr(name="two"))
+    cls.is_enum = True
+    ret = idl.module.gen_enum(cls)
+    expected = """enum ClassName {
+    @value(0) one,
+    @value(1) two
+};"""
+    assert ret == expected
 
 
 @pytest.mark.parametrize(
