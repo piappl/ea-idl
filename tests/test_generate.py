@@ -1,10 +1,12 @@
 import re
 import tempfile
 from pathlib import Path
-from eaidl.generate import generate
+from eaidl.generate import generate, render
 from eaidl.load import ModelParser
 from eaidl.utils import Configuration
+from eaidl.model import ModelPackage, ModelPropertyType
 from idl_parser.parser import IDLParser
+import uuid
 
 
 def test_generate() -> None:
@@ -200,3 +202,88 @@ def test_validate_generated_idl_on_the_fly() -> None:
     if errors:
         error_msg = "\n".join(f"  - {err}" for err in errors)
         raise AssertionError(f"Generated IDL validation failed:\n{error_msg}")
+
+
+def test_ext_ifdef_flag_not_set() -> None:
+    """Test that without ext_ifdef_flag, no preprocessor directives are added."""
+    config = Configuration()
+    # Create a simple package with property_types (ext annotations)
+    ext_pkg = ModelPackage(
+        name="ext",
+        package_id=-1,
+        object_id=-1,
+        guid=str(uuid.uuid4()),
+        property_types=[ModelPropertyType(property="maxItems", property_types=["unsigned long value;"])],
+    )
+    idl_output = render(config, [ext_pkg])
+
+    assert "#ifdef" not in idl_output
+    assert "#ifndef" not in idl_output
+    assert "#endif" not in idl_output
+    assert "@annotation maxItems" in idl_output
+
+
+def test_ext_ifdef_flag_set() -> None:
+    """Test that with ext_ifdef_flag set, #ifdef wraps the ext annotations."""
+    config = Configuration()
+    config.ext_ifdef_flag = "USE_EXT_ANNOTATIONS"
+
+    ext_pkg = ModelPackage(
+        name="ext",
+        package_id=-1,
+        object_id=-1,
+        guid=str(uuid.uuid4()),
+        property_types=[ModelPropertyType(property="maxItems", property_types=["unsigned long value;"])],
+    )
+    idl_output = render(config, [ext_pkg])
+
+    assert "#ifdef USE_EXT_ANNOTATIONS" in idl_output
+    assert "#endif /* USE_EXT_ANNOTATIONS */" in idl_output
+    assert "@annotation maxItems" in idl_output
+    # Check order: ifdef should come before annotation
+    ifdef_pos = idl_output.find("#ifdef USE_EXT_ANNOTATIONS")
+    annotation_pos = idl_output.find("@annotation maxItems")
+    endif_pos = idl_output.find("#endif")
+    assert ifdef_pos < annotation_pos < endif_pos
+
+
+def test_ext_ifdef_flag_with_negate() -> None:
+    """Test that with ext_ifdef_negate=True, #ifndef is used instead of #ifdef."""
+    config = Configuration()
+    config.ext_ifdef_flag = "NO_EXT_ANNOTATIONS"
+    config.ext_ifdef_negate = True
+
+    ext_pkg = ModelPackage(
+        name="ext",
+        package_id=-1,
+        object_id=-1,
+        guid=str(uuid.uuid4()),
+        property_types=[ModelPropertyType(property="pattern", property_types=["string value;"])],
+    )
+    idl_output = render(config, [ext_pkg])
+
+    assert "#ifndef NO_EXT_ANNOTATIONS" in idl_output
+    assert "#ifdef" not in idl_output
+    assert "#endif /* NO_EXT_ANNOTATIONS */" in idl_output
+    assert "@annotation pattern" in idl_output
+
+
+def test_ext_ifdef_no_property_types() -> None:
+    """Test that no ifdef is added when there are no property_types."""
+    config = Configuration()
+    config.ext_ifdef_flag = "USE_EXT_ANNOTATIONS"
+
+    # Package with no property_types
+    pkg = ModelPackage(
+        name="core",
+        package_id=1,
+        object_id=1,
+        guid=str(uuid.uuid4()),
+        property_types=[],
+    )
+    idl_output = render(config, [pkg])
+
+    # Should not have any ifdef since there are no property_types
+    assert "#ifdef" not in idl_output
+    assert "#ifndef" not in idl_output
+    assert "#endif" not in idl_output

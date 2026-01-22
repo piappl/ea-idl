@@ -235,6 +235,13 @@ class Configuration(BaseModel):
     output_unlinked_notes: bool = False
     #: Enable recursive struct support (generates forward declarations for circular dependencies)
     allow_recursive_structs: bool = True
+    #: Optional preprocessor flag name to wrap ext annotation definitions.
+    #: If set, the ext annotations section will be wrapped with #ifdef or #ifndef.
+    #: If None (default), no preprocessor directive is added.
+    ext_ifdef_flag: Optional[str] = None
+    #: If True, use #ifndef instead of #ifdef for the ext annotations section.
+    #: Only applies when ext_ifdef_flag is set.
+    ext_ifdef_negate: bool = False
 
     def get_idl_type(self, ea_type: str) -> str:
         """Get the IDL type for a given EA type.
