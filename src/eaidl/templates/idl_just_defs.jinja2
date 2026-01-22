@@ -44,6 +44,14 @@ module {{ module.name }} {
 {% for package in packages %}
 module {{package.name}} {
 {# Generate definitions for our custom annotations. #}
+{% if package.property_types %}
+{% if config.ext_ifdef_flag %}
+{% if config.ext_ifdef_negate %}
+#ifndef {{ config.ext_ifdef_flag }}
+{% else %}
+#ifdef {{ config.ext_ifdef_flag }}
+{% endif %}
+{% endif %}
 {% for property_type in package.property_types recursive %}
 {% set property_note = gen_notes(property_type) %}
 {% if property_note %}
@@ -55,6 +63,10 @@ module {{package.name}} {
 {% endfor %}
     };
 {% endfor %}
+{% if config.ext_ifdef_flag %}
+#endif /* {{ config.ext_ifdef_flag }} */
+{% endif %}
+{% endif %}
 {% for child in package.packages %}
 {{ gen_module_definition(child, loop) | trim | indent(4, true) }}
 {% endfor %}
