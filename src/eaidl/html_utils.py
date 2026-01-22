@@ -4,6 +4,7 @@ This module provides utilities for bidirectional HTML processing:
 - strip_html(): EA HTML → Markdown (for export to DOCX)
 - convert_to_ea_html(): Modern HTML → EA HTML (for import from DOCX)
 - format_notes_for_html(): EA HTML → Display HTML (for documentation)
+- normalize_unicode(): Normalize smart quotes and other Unicode to ASCII
 """
 
 import re
@@ -11,6 +12,35 @@ from typing import Dict
 from markdownify import MarkdownConverter
 import markdown
 from bs4 import BeautifulSoup
+
+
+# Common Unicode character replacements (smart quotes, dashes, etc.)
+UNICODE_REPLACEMENTS = {
+    "\u2018": "'",  # left single quote
+    "\u2019": "'",  # right single quote (apostrophe)
+    "\u201c": '"',  # left double quote
+    "\u201d": '"',  # right double quote
+    "\u2013": "-",  # en dash
+    "\u2014": "--",  # em dash
+    "\u2026": "...",  # horizontal ellipsis
+    "\u00a0": " ",  # non-breaking space
+}
+
+
+def normalize_unicode(text: str) -> str:
+    """Normalize common Unicode characters to ASCII equivalents.
+
+    Converts smart quotes, dashes, and other typographic characters
+    that word processors insert to their plain ASCII equivalents.
+
+    :param text: Text potentially containing Unicode characters
+    :return: Text with normalized ASCII characters
+    """
+    if not text:
+        return text
+    for unicode_char, replacement in UNICODE_REPLACEMENTS.items():
+        text = text.replace(unicode_char, replacement)
+    return text
 
 
 class CleanMarkdownConverter(MarkdownConverter):
@@ -33,6 +63,7 @@ def strip_html(text: str) -> str:
     - Bold/italic (<b>, <i>) become **bold** and *italic*
     - Unknown tags are stripped (content preserved)
     - Script/style tags are completely removed
+    - Smart quotes and other Unicode normalized to ASCII
 
     :param text: Text potentially containing HTML tags
     :return: Markdown formatted text
@@ -43,6 +74,9 @@ def strip_html(text: str) -> str:
     # Convert HTML to markdown
     converter = CleanMarkdownConverter()
     result = converter.convert(text)
+
+    # Normalize Unicode characters (smart quotes, dashes, etc.)
+    result = normalize_unicode(result)
 
     # Clean up excessive newlines (more than 2 in a row)
     result = re.sub(r"\n{3,}", "\n\n", result)

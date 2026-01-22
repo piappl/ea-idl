@@ -1,6 +1,6 @@
 """Tests for HTML utilities."""
 
-from eaidl.html_utils import strip_html
+from eaidl.html_utils import normalize_unicode, strip_html
 
 
 def test_strip_html_simple_text():
@@ -174,3 +174,64 @@ def test_strip_html_unknown_tags():
     # Tags should be stripped
     assert "<custom>" not in result
     assert "<weird>" not in result
+
+
+def test_normalize_unicode_smart_quotes():
+    """Test that smart quotes are converted to ASCII."""
+    text = "Minimum, inclusive, value is '0'"
+    result = normalize_unicode(text)
+    assert result == "Minimum, inclusive, value is '0'"
+
+    text = "Maximum, exclusive, value is '360'"
+    result = normalize_unicode(text)
+    assert result == "Maximum, exclusive, value is '360'"
+
+
+def test_normalize_unicode_double_quotes():
+    """Test that smart double quotes are converted to ASCII."""
+    text = 'He said "hello" to everyone'
+    result = normalize_unicode(text)
+    assert result == 'He said "hello" to everyone'
+
+
+def test_normalize_unicode_dashes():
+    """Test that en-dash and em-dash are converted to ASCII."""
+    # En dash (U+2013)
+    text = "pages 10–20"
+    result = normalize_unicode(text)
+    assert result == "pages 10-20"
+
+    # Em dash (U+2014)
+    text = "word—another word"
+    result = normalize_unicode(text)
+    assert result == "word--another word"
+
+
+def test_normalize_unicode_ellipsis():
+    """Test that horizontal ellipsis is converted to three dots."""
+    text = "To be continued…"
+    result = normalize_unicode(text)
+    assert result == "To be continued..."
+
+
+def test_normalize_unicode_non_breaking_space():
+    """Test that non-breaking space is converted to regular space."""
+    text = "100\u00a0km"
+    result = normalize_unicode(text)
+    assert result == "100 km"
+
+
+def test_normalize_unicode_empty_none():
+    """Test that empty string and None are handled."""
+    assert normalize_unicode("") == ""
+    assert normalize_unicode(None) is None
+
+
+def test_strip_html_normalizes_unicode():
+    """Test that strip_html integrates Unicode normalization."""
+    # Use actual Unicode smart quotes (U+2018 and U+2019)
+    text = "<p>Minimum, inclusive, value is \u20180\u2019</p>"
+    result = strip_html(text)
+    assert "'" in result
+    assert "\u2018" not in result
+    assert "\u2019" not in result
