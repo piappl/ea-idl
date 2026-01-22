@@ -127,6 +127,10 @@ class Configuration(BaseModel):
     min_items: str = "ext::minItems"
     #: Name of maximum amount of items annotation
     max_items: str = "ext::maxItems"
+    #: Name of minimum slength annotation
+    min_length: str = "ext::minLength"
+    #: Name of maximum length annotation
+    max_length: str = "ext::maxLength"
     #: Mapping of EA primitive types to IDL types.
     #: Keys are types as they appear in EA model, values are IDL types to output.
     #: For those types we don't look for connection in attribute.
