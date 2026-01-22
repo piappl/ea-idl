@@ -716,9 +716,9 @@ class JsonSchemaImporter:
 
         # Min/max items for arrays
         if "minItems" in schema:
-            attr.properties["ext::minItems"] = ModelAnnotation(value=schema["minItems"], value_type="int")
+            attr.properties[self.config.min_items] = ModelAnnotation(value=schema["minItems"], value_type="int")
         if "maxItems" in schema:
-            attr.properties["ext::maxItems"] = ModelAnnotation(value=schema["maxItems"], value_type="int")
+            attr.properties[self.config.max_items] = ModelAnnotation(value=schema["maxItems"], value_type="int")
 
         # Pattern for strings
         if "pattern" in schema:

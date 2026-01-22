@@ -5,8 +5,8 @@
     Typedef appears only once, either in declaration or definition section.
 #}
 {% macro gen_typedef(cls) %}
-{%- set min_items = cls.properties.get('ext::minItems') %}
-{%- set max_items = cls.properties.get('ext::maxItems') %}
+{%- set min_items = cls.properties.get(config.min_items) %}
+{%- set max_items = cls.properties.get(config.max_items) %}
 {%- set is_fixed_array = min_items and max_items and min_items.value == max_items.value %}
 {%- set is_bounded_string = is_fixed_array and cls.parent_type in ['string', 'wstring'] %}
 {{ gen_notes(cls) -}}
