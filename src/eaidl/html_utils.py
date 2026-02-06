@@ -75,6 +75,10 @@ def strip_html(text: str, special: bool = False) -> str:
     converter = CleanMarkdownConverter()
     result = converter.convert(text)
 
+    # Unescape markdown-escaped characters (markdownify escapes _ and * to
+    # preserve literal text in markdown, but we want plain text)
+    result = result.replace("\\_", "_").replace("\\*", "*")
+
     # Normalize Unicode characters (smart quotes, dashes, etc.)
     result = normalize_unicode(result)
 
@@ -159,10 +163,6 @@ def format_notes_for_html(text: str) -> str:
 
     # First convert HTML to markdown (strips unsafe content)
     markdown_text = strip_html(text)
-
-    # Unescape escaped markdown characters (markdownify escapes them to preserve literal text)
-    # We want to treat them as markdown syntax instead
-    markdown_text = markdown_text.replace("\\*", "*").replace("\\_", "_")
 
     # Fix common issues from EA HTML -> Markdown conversion
     # Ensure proper spacing before lists (both * and numbered)
