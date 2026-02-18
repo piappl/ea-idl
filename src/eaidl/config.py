@@ -30,6 +30,8 @@ class AnnotationType(BaseModel):
     idl_types: List[str] = []
     #: Description, to comment out non IDL default attributes.
     notes: str = ""
+    #: Alternative names that map to this annotation (e.g., EA tag names before renaming)
+    aliases: List[str] = []
 
 
 class ConfigurationStereotypes(BaseModel):
@@ -249,6 +251,19 @@ class Configuration(BaseModel):
     #: If True, emit @value annotation on enumeration attributes.
     #: When False (default), enumeration attributes are output without @value.
     enum_emit_value: bool = False
+
+    def find_annotation(self, name: str) -> tuple[str, AnnotationType] | None:
+        """Find an annotation by direct key match or alias.
+
+        :param name: EA tag name to look up
+        :return: (config_key, annotation_type) or None
+        """
+        if name in self.annotations:
+            return (name, self.annotations[name])
+        for key, annotation in self.annotations.items():
+            if name in annotation.aliases:
+                return (key, annotation)
+        return None
 
     def get_idl_type(self, ea_type: str) -> str:
         """Get the IDL type for a given EA type.
