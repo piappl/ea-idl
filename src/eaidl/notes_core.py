@@ -293,7 +293,8 @@ class NotesImporter:
             obj = self.parser.session.query(TObject).filter(TObject.attr_object_id == note.object_id).scalar()
             if obj is None:
                 return None
-            return obj.attr_note or ""
+            # Apply strip_html to match how ModelParser stores notes
+            return strip_html(obj.attr_note or "", special=True)
 
         elif note.note_type in (NoteType.PACKAGE_UNLINKED, NoteType.CLASS_LINKED, NoteType.ATTRIBUTE_LINKED):
             # Query linked/unlinked note from t_object
@@ -307,14 +308,16 @@ class NotesImporter:
             obj = self.parser.session.query(TObject).filter(TObject.attr_object_id == note.object_id).scalar()
             if obj is None:
                 return None
-            return obj.attr_note or ""
+            # Apply strip_html to match how ModelParser stores notes
+            return strip_html(obj.attr_note or "", special=True)
 
         elif note.note_type == NoteType.ATTRIBUTE_MAIN:
             # Query attribute note using GUID (attr_object_id is not unique - it's the parent class ID)
             attr = self.parser.session.query(TAttribute).filter(TAttribute.attr_ea_guid == note.object_guid).scalar()
             if attr is None:
                 return None
-            return attr.attr_notes or ""
+            # Apply strip_html to match how ModelParser stores notes
+            return strip_html(attr.attr_notes or "", special=True)
 
         return None
 
