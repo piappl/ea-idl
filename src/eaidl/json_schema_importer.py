@@ -266,9 +266,11 @@ class JsonSchemaImporter:
 
         # Process enum values
         enum_values = schema.get("enum", [])
-        for enum_value in enum_values:
+        enum_descriptions = schema.get("x-enum-descriptions", [])
+        for i, enum_value in enumerate(enum_values):
             # Convert to valid enum member name
             member_name = self._to_enum_member_name(name, enum_value)
+            member_notes = enum_descriptions[i] if i < len(enum_descriptions) else None
             attr = ModelAttribute(
                 name=member_name,
                 alias=member_name,
@@ -276,6 +278,7 @@ class JsonSchemaImporter:
                 attribute_id=self.next_attribute_id,
                 guid=self._generate_guid(),
                 parent=cls,
+                notes=member_notes,
             )
             self.next_attribute_id += 1
             cls.attributes.append(attr)
@@ -378,6 +381,7 @@ class JsonSchemaImporter:
                 guid=self._generate_guid(),
                 parent=cls,
                 union_key=union_key,
+                notes=variant.get("description"),
             )
             self.next_attribute_id += 1
             cls.attributes.append(attr)
