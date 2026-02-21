@@ -1115,6 +1115,7 @@ class ModelParser:
         model_class = ModelClass(
             name=t_object.attr_name,
             object_id=t_object.attr_object_id,
+            guid=t_object.attr_ea_guid,
             parent=parent_package,
         )
 

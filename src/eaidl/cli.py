@@ -344,6 +344,36 @@ def import_notes(config_obj, debug, input, format, dry_run, strict, report):
         click.echo(f"\n📄 Detailed report saved to {report}")
 
 
+@click.command()
+@click.option("--config", required=True, help="Configuration file.")
+@click.option("--output", required=True, help="Output file path.")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["yaml", "markdown"], case_sensitive=False),
+    default="yaml",
+    help="Output format (default: yaml).",
+)
+@click.option("--debug", default=False, is_flag=True, help="Enable debug.")
+@setup_command
+def export_model(config_obj, debug, output, output_format):
+    """Export full model structure to YAML or Markdown."""
+    from eaidl.model_export import export_model_yaml, export_model_markdown
+
+    parser = ModelParser(config_obj)
+    model = parser.load()
+
+    if config_obj.flatten_abstract_classes:
+        flatten_abstract_classes(model)
+
+    if output_format == "markdown":
+        export_model_markdown(config_obj, parser, model, output)
+    else:
+        export_model_yaml(config_obj, parser, model, output)
+
+    click.echo(f"Model exported to {output}")
+
+
 cli.add_command(run)
 cli.add_command(change)
 cli.add_command(diagram)
@@ -352,6 +382,7 @@ cli.add_command(docs)
 cli.add_command(import_schema)
 cli.add_command(export_notes)
 cli.add_command(import_notes)
+cli.add_command(export_model)
 
 if __name__ == "__main__":
     cli()

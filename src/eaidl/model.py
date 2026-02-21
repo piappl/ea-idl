@@ -188,6 +188,7 @@ class ModelClass(LocalBaseModel):
     name: str
     parent: Optional["ModelPackage"] = None
     object_id: int
+    guid: Optional[str] = None
     is_abstract: Optional[bool] = None
     alias: Optional[str] = None
     attributes: List["ModelAttribute"] = []
