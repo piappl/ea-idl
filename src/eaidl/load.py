@@ -1093,6 +1093,7 @@ class ModelParser:
             raise ValueError(descr) from error
         model_union.union_enum = "::".join(model_enum.namespace + [model_enum.name])
 
+        matched_enum_names = set()
         for union_attr in model_union.attributes:
             assert union_attr.name is not None
             union_attr_name = enum_name_from_union_attr(model_enum.name, union_attr.name)
@@ -1104,8 +1105,27 @@ class ModelParser:
             if enum_attr is None:
                 error = f"Not found union member {union_attr_name}"
                 raise ValueError(error)
+            matched_enum_names.add(enum_attr.name)
+            if set(union_attr.stereotypes) != set(enum_attr.stereotypes):
+                log.warning(
+                    "Union '%s' attribute '%s' has stereotypes %s " "but enum member '%s' has %s",
+                    model_union.name,
+                    union_attr.name,
+                    union_attr.stereotypes,
+                    enum_attr.name,
+                    enum_attr.stereotypes,
+                )
             union_attr.union_key = enum_attr.name
             union_attr.union_namespace = model_enum.namespace
+
+        unmatched = [attr.name for attr in model_enum.attributes if attr.name not in matched_enum_names]
+        if unmatched:
+            log.warning(
+                "Union '%s' does not cover all values from discriminator enum '%s'. " "Unmatched enum values: %s",
+                model_union.name,
+                model_enum.name,
+                ", ".join(unmatched),
+            )
 
     def class_parse(self, parent_package: Optional[ModelPackage], t_object) -> ModelClass:
         """Parse EA object into ModelClass.
