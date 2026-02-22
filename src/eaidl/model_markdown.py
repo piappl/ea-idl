@@ -1,10 +1,19 @@
 """Render a model export dict (from ModelExporter.export()) as Markdown."""
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
-def render_markdown(data: Dict[str, Any]) -> str:
-    """Render full model export dict to a markdown string."""
+def render_markdown(
+    data: Dict[str, Any],
+    diagrams_dir: Optional[str] = None,
+    diagram_paths: Optional[Dict[str, str]] = None,
+) -> str:
+    """Render full model export dict to a markdown string.
+
+    :param data: Model export dict from ModelExporter.export()
+    :param diagrams_dir: Directory containing exported diagram images (relative to output)
+    :param diagram_paths: GUID → relative image path mapping (from diagrams.yaml)
+    """
     lines: List[str] = []
     meta = data.get("metadata", {})
 
@@ -16,12 +25,18 @@ def render_markdown(data: Dict[str, Any]) -> str:
     lines.append("")
 
     for pkg in data.get("packages", []):
-        _render_package(pkg, depth=2, lines=lines)
+        _render_package(pkg, depth=2, lines=lines, diagrams_dir=diagrams_dir, diagram_paths=diagram_paths)
 
     return "\n".join(lines)
 
 
-def _render_package(pkg: Dict[str, Any], depth: int, lines: List[str]) -> None:
+def _render_package(
+    pkg: Dict[str, Any],
+    depth: int,
+    lines: List[str],
+    diagrams_dir: Optional[str] = None,
+    diagram_paths: Optional[Dict[str, str]] = None,
+) -> None:
     heading = "#" * depth
     lines.append(f"{heading} {pkg['name']}")
     lines.append("")
@@ -38,30 +53,67 @@ def _render_package(pkg: Dict[str, Any], depth: int, lines: List[str]) -> None:
 
     diagrams = pkg.get("diagrams")
     if diagrams:
-        _render_diagrams_table(diagrams, depth + 1, lines)
+        _render_diagrams(diagrams, depth + 1, lines, diagrams_dir, diagram_paths)
 
     for cls in pkg.get("classes", []):
         _render_class(cls, depth + 1, lines)
 
     for child in pkg.get("packages", []):
-        _render_package(child, depth + 1, lines)
+        _render_package(child, depth + 1, lines, diagrams_dir=diagrams_dir, diagram_paths=diagram_paths)
 
     lines.append("---")
     lines.append("")
 
 
-def _render_diagrams_table(diagrams: List[Dict[str, Any]], depth: int, lines: List[str]) -> None:
+def _resolve_diagram_path(
+    d: Dict[str, Any], diagrams_dir: str, diagram_paths: Optional[Dict[str, str]]
+) -> Optional[str]:
+    """Resolve image path for a diagram, using GUID mapping if available."""
+    guid = d.get("guid")
+    if diagram_paths and guid and guid in diagram_paths:
+        return f"{diagrams_dir}/{diagram_paths[guid]}.png"
+    # Fallback to file_path from model export
+    path = d.get("file_path")
+    if path:
+        return f"{diagrams_dir}/{path}.png"
+    return None
+
+
+def _render_diagrams(
+    diagrams: List[Dict[str, Any]],
+    depth: int,
+    lines: List[str],
+    diagrams_dir: Optional[str] = None,
+    diagram_paths: Optional[Dict[str, str]] = None,
+) -> None:
     heading = "#" * depth
     lines.append(f"{heading} Diagrams")
     lines.append("")
-    lines.append("| Name | Type | Path |")
-    lines.append("|------|------|------|")
-    for d in diagrams:
-        name = d.get("name", "")
-        dtype = d.get("diagram_type", "")
-        path = d.get("file_path", "")
-        lines.append(f"| {name} | {dtype} | {path} |")
-    lines.append("")
+    if diagrams_dir:
+        for d in diagrams:
+            name = d.get("name", "")
+            notes = d.get("notes")
+            img_path = _resolve_diagram_path(d, diagrams_dir, diagram_paths)
+            lines.append(f"#### {name}")
+            lines.append("")
+            if notes:
+                lines.append(notes.strip())
+                lines.append("")
+            if img_path:
+                lines.append(f"![{name}]({img_path})")
+            else:
+                lines.append(f"*Image not found for diagram: {name}*")
+            lines.append("")
+    else:
+        lines.append("| Name | Type | Path | Notes |")
+        lines.append("|------|------|------|-------|")
+        for d in diagrams:
+            name = d.get("name", "")
+            dtype = d.get("diagram_type", "")
+            path = d.get("file_path", "")
+            notes = (d.get("notes") or "").strip().replace("\n", " ")
+            lines.append(f"| {name} | {dtype} | {path} | {notes} |")
+        lines.append("")
 
 
 def _render_class(cls: Dict[str, Any], depth: int, lines: List[str]) -> None:

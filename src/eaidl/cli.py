@@ -355,8 +355,11 @@ def import_notes(config_obj, debug, input, format, dry_run, strict, report):
     help="Output format (default: yaml).",
 )
 @click.option("--debug", default=False, is_flag=True, help="Enable debug.")
+@click.option(
+    "--diagrams-dir", default=None, help="Directory containing exported diagram images (relative to output file)."
+)
 @setup_command
-def export_model(config_obj, debug, output, output_format):
+def export_model(config_obj, debug, output, output_format, diagrams_dir):
     """Export full model structure to YAML or Markdown."""
     from eaidl.model_export import export_model_yaml, export_model_markdown
 
@@ -367,7 +370,7 @@ def export_model(config_obj, debug, output, output_format):
         flatten_abstract_classes(model)
 
     if output_format == "markdown":
-        export_model_markdown(config_obj, parser, model, output)
+        export_model_markdown(config_obj, parser, model, output, diagrams_dir=diagrams_dir)
     else:
         export_model_yaml(config_obj, parser, model, output)
 

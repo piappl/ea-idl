@@ -3,7 +3,8 @@
 import logging
 import re
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 import pydantic
 import yaml
@@ -21,7 +22,11 @@ log = logging.getLogger(__name__)
 
 
 def sanitize_filename(name: str, max_length: int = 200) -> str:
-    """Convert a name to a safe cross-platform filename component."""
+    """Convert a name to a safe cross-platform filename component.
+
+    Must match the sanitize_filename in scripts/export_diagrams_wine.py
+    so that diagram paths resolve correctly.
+    """
     if not name:
         return "unnamed"
 
@@ -45,7 +50,7 @@ def sanitize_filename(name: str, max_length: int = 200) -> str:
         safe_name = safe_name.replace(old_char, new_char)
 
     safe_name = "".join(char if 32 <= ord(char) < 127 or ord(char) > 127 else "_" for char in safe_name)
-    safe_name = re.sub(r"_+", "_", safe_name).strip(" ._")
+    safe_name = re.sub(r"[\s_]+", "_", safe_name).strip(" ._")
     return safe_name[:max_length] if safe_name else "unnamed"
 
 
@@ -102,7 +107,6 @@ class ModelExporter:
 
     def _export_diagram(self, diagram: ModelDiagram, package: ModelPackage) -> Dict[str, Any]:
         path_components = [sanitize_filename(ns) for ns in package.namespace]
-        path_components.append(sanitize_filename(package.name))
         path_components.append(sanitize_filename(diagram.name))
         file_path = "/".join(path_components)
 
@@ -193,15 +197,48 @@ def export_model_yaml(
     log.info("Model exported to %s", output_path)
 
 
+def _load_diagram_paths(diagrams_dir: str) -> Dict[str, str]:
+    """Load diagrams.yaml from export directory and build GUID → relative path mapping."""
+    diagrams_yaml = Path(diagrams_dir) / "diagrams.yaml"
+    if not diagrams_yaml.exists():
+        log.warning("diagrams.yaml not found in %s, diagram images will use fallback paths", diagrams_dir)
+        return {}
+
+    with open(diagrams_yaml, encoding="utf-8") as f:
+        entries = yaml.safe_load(f) or []
+
+    guid_to_path: Dict[str, str] = {}
+    for entry in entries:
+        guid = entry.get("diagram_guid")
+        if not guid:
+            continue
+        package_path = entry.get("package_path", [])
+        diagram_name = entry.get("diagram_name", "")
+        path_components = [sanitize_filename(p) for p in package_path]
+        path_components.append(sanitize_filename(diagram_name))
+        guid_to_path[guid] = "/".join(path_components)
+
+    return guid_to_path
+
+
 def export_model_markdown(
-    config: Configuration, parser: ModelParser, packages: List[ModelPackage], output_path: str
+    config: Configuration,
+    parser: ModelParser,
+    packages: List[ModelPackage],
+    output_path: str,
+    diagrams_dir: str | None = None,
 ) -> None:
     """Entry point: export model to Markdown file."""
     from eaidl.model_markdown import render_markdown
 
     exporter = ModelExporter(config, parser)
     data = exporter.export(packages)
-    md = render_markdown(data)
+
+    diagram_paths: Optional[Dict[str, str]] = None
+    if diagrams_dir:
+        diagram_paths = _load_diagram_paths(diagrams_dir)
+
+    md = render_markdown(data, diagrams_dir=diagrams_dir, diagram_paths=diagram_paths)
 
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(md)
