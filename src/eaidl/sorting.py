@@ -262,17 +262,28 @@ def topological_sort_packages(
         # Build detailed error message with class-level dependency information
         error_msg = ["Circular dependency detected in packages:", ""]
 
-        # Show which packages are in the cycle
+        def _pkg_label(pkg: ModelPackage) -> str:
+            return pkg.full_namespace if pkg.namespace else pkg.name
+
+        # Show which packages are in the cycle (with full namespace)
         error_msg.append(f"Packages in cycle ({len(remaining_packages)}):")
         for pkg in remaining_packages:
-            error_msg.append(f"  - {pkg.name}")
+            error_msg.append(f"  - {_pkg_label(pkg)}")
         error_msg.append("")
 
         # Build a mapping of class IDs to class names for better error messages
+        # Include classes from ALL packages (not just cycle packages) and recurse
+        # into sub-packages so that nested class references are resolved too
         all_class_id_to_name = {}
-        for pkg in remaining_packages:
+
+        def _collect_class_names(pkg: ModelPackage) -> None:
             for cls in pkg.classes:
                 all_class_id_to_name[cls.object_id] = cls.name
+            for sub_pkg in pkg.packages:
+                _collect_class_names(sub_pkg)
+
+        for pkg in packages:
+            _collect_class_names(pkg)
 
         # Show which classes in each package depend on classes in other packages in the cycle
         error_msg.append("Inter-package dependencies (showing which classes cause the cycle):")
@@ -290,15 +301,15 @@ def topological_sort_packages(
                 if common_dep_ids:
                     # Get the names of classes being depended on
                     dep_class_names = [all_class_id_to_name.get(cid, f"ID:{cid}") for cid in common_dep_ids]
-                    deps_info.append((v_pkg.name, dep_class_names))
+                    deps_info.append((_pkg_label(v_pkg), dep_class_names))
 
             if deps_info:
-                error_msg.append(f"  {u_pkg.name} →")
-                for dep_pkg_name, dep_class_names in deps_info:
+                error_msg.append(f"  {_pkg_label(u_pkg)} →")
+                for dep_pkg_label, dep_class_names in deps_info:
                     dep_class_list = ", ".join(dep_class_names[:5])  # Limit to 5 for readability
                     if len(dep_class_names) > 5:
                         dep_class_list += f" (and {len(dep_class_names) - 5} more)"
-                    error_msg.append(f"    {dep_pkg_name}: {dep_class_list}")
+                    error_msg.append(f"    {dep_pkg_label}: {dep_class_list}")
 
         error_msg.append("")
         error_msg.append("Hint: Reorganize classes to eliminate circular dependencies between packages.")
