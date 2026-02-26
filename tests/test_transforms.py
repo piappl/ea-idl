@@ -8,6 +8,7 @@ from eaidl.transforms import (
     find_unused_classes,
     filter_unused_classes,
     flatten_abstract_classes,
+    resolve_typedef_defaults,
 )
 from eaidl.model import ModelClass, ModelPackage, ModelAttribute, ModelConnection, ModelAnnotation
 from eaidl.config import Configuration
@@ -1373,3 +1374,142 @@ def test_filter_empty_unions_with_collapse_stereotype() -> None:
 
     # Union should be removed due to <<collapse>> stereotype
     assert len(pkg.classes) == 0
+
+
+def test_resolve_typedef_defaults_string_typedef() -> None:
+    """Test that defaults for string typedef attributes are quoted as strings."""
+    config = Configuration(template="idl_just_defs.jinja2")
+
+    pkg = ModelPackage(name="root", package_id=0, object_id=0, guid=str(uuid.uuid4()))
+
+    # Create a string typedef
+    version_typedef = ModelClass(
+        name="Version",
+        stereotypes=[config.stereotypes.idl_typedef],
+        object_id=10,
+        namespace=["root"],
+        is_typedef=True,
+        parent_type="string",
+    )
+
+    # Create a struct with an attribute of that typedef type, with a default
+    struct = ModelClass(
+        name="MyStruct",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=20,
+        namespace=["root"],
+        is_struct=True,
+        attributes=[
+            ModelAttribute(
+                name="schema_version",
+                alias="schema_version",
+                type="Version",
+                attribute_id=1,
+                guid=str(uuid.uuid4()),
+                namespace=["root"],
+                properties={
+                    "default": ModelAnnotation(value="01.00", value_type="object"),
+                },
+            ),
+        ],
+    )
+
+    pkg.classes = [version_typedef, struct]
+
+    resolve_typedef_defaults([pkg], config)
+
+    default_ann = struct.attributes[0].properties["default"]
+    assert default_ann.value_type == "str"
+    assert default_ann.value == '"01.00"'
+
+
+def test_resolve_typedef_defaults_int_typedef() -> None:
+    """Test that defaults for int typedef attributes are resolved to int type."""
+    config = Configuration(template="idl_just_defs.jinja2")
+
+    pkg = ModelPackage(name="root", package_id=0, object_id=0, guid=str(uuid.uuid4()))
+
+    # Create an int typedef
+    counter_typedef = ModelClass(
+        name="Counter",
+        stereotypes=[config.stereotypes.idl_typedef],
+        object_id=10,
+        namespace=["root"],
+        is_typedef=True,
+        parent_type="int",
+    )
+
+    struct = ModelClass(
+        name="MyStruct",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=20,
+        namespace=["root"],
+        is_struct=True,
+        attributes=[
+            ModelAttribute(
+                name="count",
+                alias="count",
+                type="Counter",
+                attribute_id=1,
+                guid=str(uuid.uuid4()),
+                namespace=["root"],
+                properties={
+                    "default": ModelAnnotation(value="42", value_type="object"),
+                },
+            ),
+        ],
+    )
+
+    pkg.classes = [counter_typedef, struct]
+
+    resolve_typedef_defaults([pkg], config)
+
+    default_ann = struct.attributes[0].properties["default"]
+    assert default_ann.value_type == "int"
+    assert default_ann.value == "42"
+
+
+def test_resolve_typedef_defaults_enum_typedef_unchanged() -> None:
+    """Test that defaults for non-primitive typedefs (e.g. enum) are not changed."""
+    config = Configuration(template="idl_just_defs.jinja2")
+
+    pkg = ModelPackage(name="root", package_id=0, object_id=0, guid=str(uuid.uuid4()))
+
+    # Create a typedef that references a non-primitive type (not in primitive_types)
+    custom_typedef = ModelClass(
+        name="MyType",
+        stereotypes=[config.stereotypes.idl_typedef],
+        object_id=10,
+        namespace=["root"],
+        is_typedef=True,
+        parent_type="SomeEnum",
+    )
+
+    struct = ModelClass(
+        name="MyStruct",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=20,
+        namespace=["root"],
+        is_struct=True,
+        attributes=[
+            ModelAttribute(
+                name="my_field",
+                alias="my_field",
+                type="MyType",
+                attribute_id=1,
+                guid=str(uuid.uuid4()),
+                namespace=["root"],
+                properties={
+                    "default": ModelAnnotation(value="SOME_VALUE", value_type="object"),
+                },
+            ),
+        ],
+    )
+
+    pkg.classes = [custom_typedef, struct]
+
+    resolve_typedef_defaults([pkg], config)
+
+    default_ann = struct.attributes[0].properties["default"]
+    assert default_ann.value_type == "object"
+    assert default_ann.value == "SOME_VALUE"

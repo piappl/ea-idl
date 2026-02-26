@@ -9,6 +9,7 @@ from eaidl.transforms import (
     filter_empty_unions,
     filter_unused_classes,
     flatten_abstract_classes,
+    resolve_typedef_defaults,
 )
 
 log = logging.getLogger(__name__)
@@ -88,5 +89,9 @@ def generate(config: Configuration, packages: List[ModelPackage]) -> str:
     # Note: Cycle detection and forward declaration marking now happens
     # during load time (in ModelParser.package_parse_children) to allow
     # topological sorting to proceed with valid circular dependencies.
+
+    # Resolve default values for string typedef attributes so they are
+    # not rendered as qualified object references
+    resolve_typedef_defaults(packages, config)
 
     return render(config, packages)
