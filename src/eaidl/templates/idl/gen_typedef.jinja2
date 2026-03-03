@@ -11,7 +11,7 @@
 {%- set is_bounded_string = max_length and cls.parent_type in ['string', 'wstring', 'str'] %}
 {{ gen_notes(cls) -}}
 {%- if is_bounded_string %}
-{{ gen_annotations(cls.properties, None, [config.max_length]) -}}
+{{ gen_annotations(cls.properties) -}}
 typedef {{cls.parent_type | idl_type}}<{{max_length.value}}> {{cls.name}};
 {%- elif is_fixed_array %}
 {{ gen_annotations(cls.properties, None, [config.min_length, config.max_length]) -}}
