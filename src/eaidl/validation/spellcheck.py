@@ -63,33 +63,6 @@ TECHNICAL_TERMS = {
     "connector",
     "cardinality",
     "multiplicity",
-    # Common abbreviations (lowercase versions)
-    "uuid",
-    "guid",
-    "api",
-    "url",
-    "http",
-    "https",
-    "xml",
-    "json",
-    "sql",
-    "db",
-    "id",
-    "pk",
-    "fk",
-    "dto",
-    "cfg",
-    "tmp",
-    "attr",
-    "idl",
-    "qea",
-    # Common data terms
-    "timestamp",
-    "iso",
-    "utc",
-    # Measurement and units
-    "uint",
-    "int",
 }
 
 

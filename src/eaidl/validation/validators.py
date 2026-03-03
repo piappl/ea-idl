@@ -148,13 +148,16 @@ def create_spelling_validator(
             texts_to_check.append(text)
             contexts.append(context_extractor(**kwargs))
 
+        # Merge allowed_abbreviations into custom words for spellchecking
+        all_custom_words = list(config.spellcheck.custom_words) + [a.lower() for a in config.allowed_abbreviations]
+
         # Check spelling for each text
         for text_item, context_str in zip(texts_to_check, contexts):
             errors = check_spelling(
                 text=text_item,
                 language=config.spellcheck.language,
                 min_word_length=config.spellcheck.min_word_length,
-                custom_words=config.spellcheck.custom_words,
+                custom_words=all_custom_words,
                 backend=config.spellcheck.backend,
             )
 

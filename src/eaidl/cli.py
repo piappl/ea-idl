@@ -397,6 +397,7 @@ def spellcheck(config_obj, debug):
     model = parser.load()
 
     sc = config_obj.spellcheck
+    all_custom_words = list(sc.custom_words) + [a.lower() for a in config_obj.allowed_abbreviations]
     issues = []
 
     def check_and_collect(qualified_name: str, check_type: str, text: str):
@@ -407,7 +408,7 @@ def spellcheck(config_obj, debug):
             text=text,
             language=sc.language,
             min_word_length=sc.min_word_length,
-            custom_words=sc.custom_words,
+            custom_words=all_custom_words,
             backend=sc.backend,
         )
         for err in errors:

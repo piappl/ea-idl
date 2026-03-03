@@ -136,20 +136,27 @@ def test_check_spelling_suggestions():
 
 
 def test_check_spelling_technical_terms():
-    """Test that technical terms are allowed."""
-    text = "struct with enum and typedef for uuid and guid"
+    """Test that IDL technical terms (hardcoded) are allowed."""
+    text = "struct with enum and typedef and stereotype"
     errors = check_spelling(text)
-    # All these are technical terms, should have no errors
     assert len(errors) == 0
 
 
 def test_check_spelling_custom_terms():
-    """Test that technical terms from TECHNICAL_TERMS are allowed."""
-    # Test all technical terms
-    for term in ["struct", "union", "enum", "typedef", "stereotype", "uuid", "guid", "json", "xml"]:
+    """Test that hardcoded TECHNICAL_TERMS are allowed."""
+    for term in ["struct", "union", "enum", "typedef", "stereotype", "cardinality"]:
         text = f"This uses {term} here"
         errors = check_spelling(text)
-        # Should not flag the technical term
+        error_words = [e["word"] for e in errors]
+        assert term not in error_words
+
+
+def test_check_spelling_abbreviations_via_custom_words():
+    """Test that abbreviations are allowed when passed as custom_words."""
+    abbreviations = ["uuid", "guid", "json", "xml"]
+    for term in abbreviations:
+        text = f"This uses {term} here"
+        errors = check_spelling(text, custom_words=abbreviations)
         error_words = [e["word"] for e in errors]
         assert term not in error_words
 

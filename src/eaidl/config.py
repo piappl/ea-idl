@@ -91,9 +91,33 @@ class Configuration(BaseModel):
     spellcheck: ConfigurationSpellcheck = ConfigurationSpellcheck()
     diagrams: DiagramConfiguration = DiagramConfiguration()
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
-    #: List of allowed abbreviations/acronyms in class/package names (e.g., ["MCM", "URI", "CQL"])
-    #: These will be treated as valid in camelCase naming convention
-    allowed_abbreviations: List[str] = []
+    #: List of allowed abbreviations/acronyms (e.g., ["MCM", "URI", "CQL"])
+    #: Used for camelCase naming convention AND added to spellcheck dictionary
+    allowed_abbreviations: List[str] = [
+        "UUID",
+        "GUID",
+        "API",
+        "URL",
+        "HTTP",
+        "HTTPS",
+        "XML",
+        "JSON",
+        "SQL",
+        "DB",
+        "ID",
+        "PK",
+        "FK",
+        "DTO",
+        "CFG",
+        "TMP",
+        "ATTR",
+        "IDL",
+        "QEA",
+        "ISO",
+        "UTC",
+        "UINT",
+        "INT",
+    ]
     #: Database connection string, see https://docs.sqlalchemy.org/en/20/core/connections.html
     database_url: str = "sqlite+pysqlite:///tests/data/nafv4.qea"
     #: Globally unique identifier (GUID) or name of root package that we want to generate for.
