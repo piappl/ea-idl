@@ -377,6 +377,94 @@ def export_model(config_obj, debug, output, output_format, diagrams_dir):
     click.echo(f"Model exported to {output}")
 
 
+@click.command()
+@click.option("--config", default="config.yaml", help="Configuration file.")
+@click.option("--debug", default=False, is_flag=True, help="Enable debug.")
+@setup_command
+def spellcheck(config_obj, debug):
+    """Generate a spelling report for the EA model."""
+    from eaidl.validation.spellcheck import check_spelling, reset_backend
+    from eaidl.tree_utils import traverse_packages
+
+    if not config_obj.spellcheck.enabled:
+        click.echo("Spellcheck is disabled in configuration")
+        return
+
+    # Reset backend to ensure clean state
+    reset_backend()
+
+    parser = ModelParser(config_obj)
+    model = parser.load()
+
+    sc = config_obj.spellcheck
+    issues = []
+
+    def check_and_collect(qualified_name: str, check_type: str, text: str):
+        """Check text and collect issues."""
+        if not text or not text.strip():
+            return
+        errors = check_spelling(
+            text=text,
+            language=sc.language,
+            min_word_length=sc.min_word_length,
+            custom_words=sc.custom_words,
+            backend=sc.backend,
+        )
+        for err in errors:
+            suggestions = err.get("suggestions", [])
+            sugg_str = ", ".join(suggestions[:3]) if suggestions else "?"
+            issues.append(
+                {
+                    "path": qualified_name,
+                    "check_type": check_type,
+                    "word": err["word"],
+                    "suggestions": sugg_str,
+                }
+            )
+
+    def visit_package(pkg):
+        ns = "::".join(pkg.namespace + [pkg.name]) if pkg.namespace else pkg.name
+        if sc.check_identifiers:
+            check_and_collect(ns, "name", pkg.name)
+        if sc.check_notes:
+            check_and_collect(ns, "notes", pkg.notes)
+
+    def visit_class(cls, pkg):
+        ns = "::".join(cls.namespace + [cls.name])
+        if sc.check_identifiers:
+            check_and_collect(ns, "name", cls.name)
+        if sc.check_notes:
+            check_and_collect(ns, "notes", cls.notes)
+
+        # Check attributes
+        for attr in cls.attributes:
+            attr_path = f"{ns}.{attr.name}"
+            if sc.check_identifiers:
+                check_and_collect(attr_path, "name", attr.name)
+            if sc.check_notes:
+                check_and_collect(attr_path, "notes", attr.notes)
+
+    traverse_packages(model, package_visitor=visit_package, class_visitor=visit_class)
+
+    if not issues:
+        click.echo("No spelling issues found")
+        return
+
+    # Calculate column widths for alignment
+    max_path = max(len(i["path"]) for i in issues)
+    max_word = max(len(i["word"]) for i in issues)
+
+    for i in issues:
+        path_col = i["path"].ljust(max_path)
+        type_col = f"[{i['check_type']}]".ljust(7)  # [name] or [notes]
+        word_col = i["word"].ljust(max_word)
+        click.echo(f"  {path_col}  {type_col}  {word_col}  \u2192 {i['suggestions']}")
+
+    # Count unique items with issues
+    unique_items = len(set(i["path"] for i in issues))
+    click.echo(f"\nFound {len(issues)} spelling issue(s) across {unique_items} item(s)")
+
+
 cli.add_command(run)
 cli.add_command(change)
 cli.add_command(diagram)
@@ -386,6 +474,7 @@ cli.add_command(import_schema)
 cli.add_command(export_notes)
 cli.add_command(import_notes)
 cli.add_command(export_model)
+cli.add_command(spellcheck)
 
 if __name__ == "__main__":
     cli()
