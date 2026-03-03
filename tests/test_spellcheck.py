@@ -585,3 +585,19 @@ def test_validator_uses_enchant_backend():
     cls = m_class(name="ColourPicker")
     with pytest.raises(ValueError, match="colour"):
         struct.name_spelling(config, cls=cls)
+
+
+# ============================================================================
+# CLI spellcheck command tests
+# ============================================================================
+
+
+def test_spellcheck_report_cli(tmp_path):
+    """Test the spellcheck CLI command runs without error."""
+    from click.testing import CliRunner
+    from eaidl.cli import spellcheck
+
+    runner = CliRunner()
+    result = runner.invoke(spellcheck, ["--config", "config/complete_example.yaml"])
+    # Should run without crashing - we just verify it doesn't error
+    assert result.exit_code == 0, f"CLI failed with output:\n{result.output}"
