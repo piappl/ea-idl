@@ -454,6 +454,19 @@ def test_check_spelling_contractions():
     assert "can't" not in error_words
 
 
+def test_extract_words_screaming_snake_case():
+    """Test that SCREAMING_SNAKE_CASE parts from enum values are extracted."""
+    text = "NavalVesselTypeEnum_OILER_REPLENISHMENT_SMALL_NAVAL"
+    words = extract_words(text, min_word_length=3)
+    # All-caps parts from underscore splitting should be included (they're words, not acronyms)
+    assert "oiler" in words
+    assert "replenishment" in words
+    assert "naval" in words
+    # Mixed-case parts should also be extracted
+    assert "vessel" in words
+    assert "type" in words
+
+
 def test_extract_words_with_numbers_in_identifiers():
     """Test that identifiers with numbers are split correctly."""
     text = "Using CQL2Expression and HTTP2Server"
