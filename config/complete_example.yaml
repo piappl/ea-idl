@@ -112,6 +112,17 @@ spellcheck:
   enabled: true
   check_notes: true
   check_identifiers: true
+  # Spellcheck backend: "pyspellchecker" (default) or "enchant"
+  # backend: pyspellchecker
+  #
+  # For strict US English (flags "colour", "centre", etc.):
+  # backend: enchant
+  # language: en_US
+  #
+  # The enchant backend requires:
+  #   pip install eaidl[enchant]
+  #   System: apt install libenchant-2-dev hunspell-en-us (Linux)
+  #           brew install enchant (macOS)
   # Add custom words to dictionary
   custom_words:
     - seq

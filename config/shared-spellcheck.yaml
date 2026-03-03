@@ -7,6 +7,12 @@ check_identifiers: true
 min_word_length: 3
 language: en
 
+# Spellcheck backend: "pyspellchecker" (default) or "enchant"
+# The enchant backend requires: pip install eaidl[enchant] + system libenchant-2
+# Use "enchant" with language: en_US for strict US English checking
+# backend: enchant
+# language: en_US
+
 # Project-specific terminology
 custom_words:
   - idl

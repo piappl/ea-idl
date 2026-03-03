@@ -2,13 +2,12 @@
 
 import logging
 import re
-from typing import List, Set, Optional, Dict
-from spellchecker import SpellChecker
+from typing import List, Set, Optional, Dict, Protocol, runtime_checkable
 
 log = logging.getLogger(__name__)
 
-# Singleton spellchecker instance (lazy initialized)
-_spellchecker_instance: Optional[SpellChecker] = None
+# Singleton backend instance (lazy initialized)
+_backend_instance: Optional["SpellBackend"] = None
 _custom_words: Set[str] = set()
 
 # Built-in technical terms (always allowed)
@@ -94,16 +93,101 @@ TECHNICAL_TERMS = {
 }
 
 
-def get_spellchecker(language: str = "en", custom_words: List[str] = None) -> SpellChecker:
-    """Get or create singleton spellchecker instance."""
-    global _spellchecker_instance, _custom_words
+@runtime_checkable
+class SpellBackend(Protocol):
+    """Protocol for spellcheck backends."""
 
-    if _spellchecker_instance is None:
-        log.debug("Initializing spellchecker (language: %s)", language)
-        _spellchecker_instance = SpellChecker(language=language)
+    def check(self, word: str) -> bool:
+        """Return True if the word is correctly spelled."""
+        ...
+
+    def suggest(self, word: str) -> List[str]:
+        """Return spelling suggestions for a word."""
+        ...
+
+    def add_words(self, words: Set[str]) -> None:
+        """Add custom words to the dictionary."""
+        ...
+
+    def unknown(self, words: List[str]) -> Set[str]:
+        """Return the set of words not recognized by the spellchecker."""
+        ...
+
+
+class PySpellCheckerBackend:
+    """Backend using pyspellchecker library."""
+
+    def __init__(self, language: str = "en"):
+        from spellchecker import SpellChecker
+
+        self._checker = SpellChecker(language=language)
+
+    def check(self, word: str) -> bool:
+        return len(self._checker.unknown([word])) == 0
+
+    def suggest(self, word: str) -> List[str]:
+        candidates = self._checker.candidates(word)
+        return list(candidates)[:5] if candidates else []
+
+    def add_words(self, words: Set[str]) -> None:
+        self._checker.word_frequency.load_words(words)
+
+    def unknown(self, words: List[str]) -> Set[str]:
+        return self._checker.unknown(words)
+
+
+class EnchantBackend:
+    """Backend using pyenchant library (supports en_US, en_GB, etc.)."""
+
+    def __init__(self, language: str = "en_US"):
+        try:
+            import enchant
+        except ImportError:
+            raise ImportError(
+                "pyenchant is required for the 'enchant' backend. "
+                "Install it with: pip install eaidl[enchant]\n"
+                "System dependency: libenchant-2-dev (apt) or enchant (brew)"
+            )
+        self._dict = enchant.Dict(language)
+        self._custom_words: Set[str] = set()
+
+    def check(self, word: str) -> bool:
+        return word.lower() in self._custom_words or self._dict.check(word)
+
+    def suggest(self, word: str) -> List[str]:
+        return self._dict.suggest(word)[:5]
+
+    def add_words(self, words: Set[str]) -> None:
+        self._custom_words.update(w.lower() for w in words)
+
+    def unknown(self, words: List[str]) -> Set[str]:
+        return {w for w in words if not self.check(w)}
+
+
+def get_backend(backend: str = "pyspellchecker", language: str = "en", custom_words: List[str] = None) -> SpellBackend:
+    """Get or create singleton spellcheck backend instance."""
+    global _backend_instance, _custom_words
+
+    if _backend_instance is not None:
+        current_type = "enchant" if isinstance(_backend_instance, EnchantBackend) else "pyspellchecker"
+        if backend != current_type:
+            log.warning(
+                "Spellcheck backend already initialized as '%s', ignoring request for '%s'. "
+                "Call reset_backend() first to switch backends.",
+                current_type,
+                backend,
+            )
+
+    if _backend_instance is None:
+        log.debug("Initializing spellcheck backend=%s (language: %s)", backend, language)
+
+        if backend == "enchant":
+            _backend_instance = EnchantBackend(language=language)
+        else:
+            _backend_instance = PySpellCheckerBackend(language=language)
 
         # Add built-in technical terms
-        _spellchecker_instance.word_frequency.load_words(TECHNICAL_TERMS)
+        _backend_instance.add_words(TECHNICAL_TERMS)
         _custom_words.update(TECHNICAL_TERMS)
         log.debug("Loaded %d built-in technical terms", len(TECHNICAL_TERMS))
 
@@ -111,21 +195,33 @@ def get_spellchecker(language: str = "en", custom_words: List[str] = None) -> Sp
     if custom_words:
         new_custom = {w.lower() for w in custom_words if w} - _custom_words
         if new_custom:
-            _spellchecker_instance.word_frequency.load_words(new_custom)
+            _backend_instance.add_words(new_custom)
             _custom_words.update(new_custom)
             log.debug("Loaded %d custom words from configuration", len(new_custom))
 
-    return _spellchecker_instance
+    return _backend_instance
+
+
+def get_spellchecker(language: str = "en", custom_words: List[str] = None) -> "SpellBackend":
+    """Legacy wrapper — delegates to get_backend with pyspellchecker."""
+    return get_backend(backend="pyspellchecker", language=language, custom_words=custom_words)
+
+
+def reset_backend() -> None:
+    """Reset the singleton backend instance. Used for testing."""
+    global _backend_instance, _custom_words
+    _backend_instance = None
+    _custom_words = set()
 
 
 def add_learned_words(words: Set[str]) -> None:
     """Add words learned from the model to the spellchecker."""
-    global _spellchecker_instance, _custom_words
+    global _backend_instance, _custom_words
 
-    if _spellchecker_instance is not None:
+    if _backend_instance is not None:
         new_words = {w.lower() for w in words if w} - _custom_words
         if new_words:
-            _spellchecker_instance.word_frequency.load_words(new_words)
+            _backend_instance.add_words(new_words)
             _custom_words.update(new_words)
             log.debug("Auto-learned %d words from model", len(new_words))
 
@@ -226,16 +322,20 @@ def extract_words(text: str, min_word_length: int = 3, ignore_patterns: List[str
 
 
 def check_spelling(
-    text: str, language: str = "en", min_word_length: int = 3, custom_words: List[str] = None
+    text: str,
+    language: str = "en",
+    min_word_length: int = 3,
+    custom_words: List[str] = None,
+    backend: str = "pyspellchecker",
 ) -> List[Dict[str, any]]:
-    """
-    Check spelling in text and return list of errors.
+    """Check spelling in text and return list of errors.
 
     Args:
         text: Text to check
         language: Language code (default: "en")
         min_word_length: Minimum word length to check (default: 3)
         custom_words: Additional custom words to allow (default: None)
+        backend: Spellcheck backend to use (default: "pyspellchecker")
 
     Returns:
         List of dicts with keys: 'word', 'suggestions'
@@ -243,14 +343,14 @@ def check_spelling(
     if not text or not text.strip():
         return []
 
-    spellchecker = get_spellchecker(language, custom_words)
+    checker = get_backend(backend, language, custom_words)
     words = extract_words(text, min_word_length)
 
     if not words:
         return []
 
     # Find misspelled words
-    misspelled = spellchecker.unknown(words)
+    misspelled = checker.unknown(words)
 
     if not misspelled:
         return []
@@ -261,8 +361,8 @@ def check_spelling(
     for word in misspelled:
         if word not in seen:
             seen.add(word)
-            suggestions = spellchecker.candidates(word)
-            errors.append({"word": word, "suggestions": list(suggestions)[:5] if suggestions else []})
+            suggestions = checker.suggest(word)
+            errors.append({"word": word, "suggestions": suggestions})
 
     return errors
 

@@ -69,6 +69,8 @@ class ConfigurationSpellcheck(BaseModel):
     auto_learn_from_model: bool = True
     #: Language code for spellchecker (default: en)
     language: str = "en"
+    #: Spellcheck backend: "pyspellchecker" (default, no system deps) or "enchant" (requires libenchant2, supports en_US/en_GB)
+    backend: Literal["pyspellchecker", "enchant"] = "pyspellchecker"
 
 
 class DiagramConfiguration(BaseModel):

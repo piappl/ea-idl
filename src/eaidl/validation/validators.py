@@ -155,6 +155,7 @@ def create_spelling_validator(
                 language=config.spellcheck.language,
                 min_word_length=config.spellcheck.min_word_length,
                 custom_words=config.spellcheck.custom_words,
+                backend=config.spellcheck.backend,
             )
 
             if errors:

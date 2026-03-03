@@ -8,8 +8,24 @@ from eaidl.validation.spellcheck import (
     split_identifier,
     check_spelling,
     format_spelling_errors,
+    reset_backend,
 )
 from eaidl.validation import attribute, struct, package
+
+try:
+    import enchant  # noqa: F401
+
+    HAS_ENCHANT = True
+except ImportError:
+    HAS_ENCHANT = False
+
+
+@pytest.fixture(autouse=True)
+def clean_spellcheck_singleton():
+    """Reset spellcheck singleton between tests."""
+    reset_backend()
+    yield
+    reset_backend()
 
 
 def test_split_identifier_camelCase():
@@ -458,3 +474,114 @@ def test_check_spelling_technical_identifiers_with_numbers():
     assert "cql2expression" not in error_words
     # Individual parts like "cql" might be flagged, but that's expected
     # (can be added to custom_words if needed)
+
+
+# ============================================================================
+# Config backend tests
+# ============================================================================
+
+
+def test_config_backend_default():
+    """Test that default spellcheck backend is pyspellchecker."""
+    config = ConfigurationSpellcheck()
+    assert config.backend == "pyspellchecker"
+
+
+def test_config_backend_enchant():
+    """Test that enchant backend can be configured."""
+    config = ConfigurationSpellcheck(backend="enchant")
+    assert config.backend == "enchant"
+
+
+def test_config_backend_invalid():
+    """Test that invalid backend raises validation error."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        ConfigurationSpellcheck(backend="invalid")
+
+
+# ============================================================================
+# Enchant backend tests
+# ============================================================================
+
+
+@pytest.mark.skipif(not HAS_ENCHANT, reason="pyenchant not installed")
+class TestEnchantBackend:
+    """Tests for the enchant backend."""
+
+    def test_enchant_backend_check_correct(self):
+        """Test that correctly spelled US English words pass."""
+        from eaidl.validation.spellcheck import EnchantBackend
+
+        backend = EnchantBackend(language="en_US")
+        assert backend.check("color") is True
+        assert backend.check("center") is True
+
+    def test_enchant_backend_rejects_british(self):
+        """Test that British spellings are flagged."""
+        from eaidl.validation.spellcheck import EnchantBackend
+
+        backend = EnchantBackend(language="en_US")
+        assert backend.check("colour") is False
+        assert backend.check("centre") is False
+
+    def test_enchant_backend_suggestions(self):
+        """Test that suggestions are returned for misspelled words."""
+        from eaidl.validation.spellcheck import EnchantBackend
+
+        backend = EnchantBackend(language="en_US")
+        suggestions = backend.suggest("colour")
+        assert "color" in suggestions
+
+    def test_enchant_backend_custom_words(self):
+        """Test that custom words are accepted after being added."""
+        from eaidl.validation.spellcheck import EnchantBackend
+
+        backend = EnchantBackend(language="en_US")
+        assert backend.check("nafv4") is False
+        backend.add_words({"nafv4"})
+        assert backend.check("nafv4") is True
+
+    def test_enchant_backend_unknown(self):
+        """Test unknown() returns set of unrecognized words."""
+        from eaidl.validation.spellcheck import EnchantBackend
+
+        backend = EnchantBackend(language="en_US")
+        result = backend.unknown(["color", "colour", "center", "centre"])
+        assert "colour" in result
+        assert "centre" in result
+        assert "color" not in result
+        assert "center" not in result
+
+    def test_check_spelling_with_enchant_backend(self):
+        """Test full check_spelling flow with enchant backend."""
+        from eaidl.validation.spellcheck import reset_backend, check_spelling
+
+        reset_backend()
+        errors = check_spelling(
+            "The colour of the centre",
+            language="en_US",
+            backend="enchant",
+        )
+        error_words = [e["word"] for e in errors]
+        assert "colour" in error_words
+        assert "centre" in error_words
+        reset_backend()
+
+
+@pytest.mark.skipif(not HAS_ENCHANT, reason="pyenchant not installed")
+def test_validator_uses_enchant_backend():
+    """Test that validators respect the backend config."""
+    config = Configuration(
+        spellcheck=ConfigurationSpellcheck(
+            enabled=True,
+            backend="enchant",
+            language="en_US",
+        ),
+        validators_fail=["struct.name_spelling"],
+    )
+    # "Colour" is British — enchant en_US should flag it
+    cls = m_class(name="ColourPicker")
+    with pytest.raises(ValueError, match="colour"):
+        struct.name_spelling(config, cls=cls)
