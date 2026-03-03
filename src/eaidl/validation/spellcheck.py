@@ -118,7 +118,7 @@ class EnchantBackend:
         except ImportError:
             raise ImportError(
                 "pyenchant is required for the 'enchant' backend. "
-                "Install it with: pip install eaidl[enchant]\n"
+                "Install it with: uv pip install enchant\n"
                 "System dependency: libenchant-2-dev (apt) or enchant (brew)"
             )
         self._dict = enchant.Dict(language)
