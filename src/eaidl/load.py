@@ -1267,8 +1267,9 @@ class ModelParser:
             .all()
         )
         for t_property in t_properties:
-            if t_property.attr_property in self.config.annotations.keys():
-                prop_config = self.config.annotations[t_property.attr_property]
+            found = self.config.find_annotation(t_property.attr_property)
+            if found:
+                config_key, prop_config = found
                 val = None
                 for item in [int, float, str]:
                     val = try_cast(t_property.attr_value, item)
@@ -1276,35 +1277,38 @@ class ModelParser:
                         break
 
                 if prop_config.idl_default:
-                    prop_name = prop_config.idl_name if prop_config.idl_name else t_property.attr_property
+                    prop_name = prop_config.idl_name if prop_config.idl_name else config_key
                     model_class.properties[prop_name] = self.create_annotation(val)
                 else:
-                    model_class.properties[f"ext::{t_property.attr_property}"] = self.create_annotation(val)
+                    model_class.properties[f"ext::{config_key}"] = self.create_annotation(val)
             elif t_property.attr_property not in ["URI", "isEncapsulated"]:
                 log.warning("Property %s is not configured", t_property.attr_property)
 
         # Parse annotations from stereotypes
         for stereotype in model_class.stereotypes:
-            if stereotype in self.config.annotations_from_stereotypes and stereotype in self.config.annotations.keys():
-                prop_config = self.config.annotations[stereotype]
-                if prop_config.idl_default:
-                    prop_name = prop_config.idl_name if prop_config.idl_name else stereotype
-                    model_class.properties[prop_name] = self.create_annotation(None)
-                else:
-                    model_class.properties[f"ext::{stereotype}"] = self.create_annotation(None)
+            if stereotype in self.config.annotations_from_stereotypes:
+                found = self.config.find_annotation(stereotype)
+                if found:
+                    config_key, prop_config = found
+                    if prop_config.idl_default:
+                        prop_name = prop_config.idl_name if prop_config.idl_name else config_key
+                        model_class.properties[prop_name] = self.create_annotation(None)
+                    else:
+                        model_class.properties[f"ext::{config_key}"] = self.create_annotation(None)
 
         # Parse custom properties
         for prop in self.get_custom_properties(t_object.attr_ea_guid):
-            if prop.name in self.config.annotations.keys():
-                prop_config = self.config.annotations[prop.name]
+            found = self.config.find_annotation(prop.name)
+            if found:
+                config_key, prop_config = found
                 value = to_bool(prop.value) if prop.type == "Boolean" else prop.value
 
                 if value is not False:
                     if prop_config.idl_default:
-                        prop_name = prop_config.idl_name if prop_config.idl_name else prop.name
+                        prop_name = prop_config.idl_name if prop_config.idl_name else config_key
                         model_class.properties[prop_name] = self.create_annotation(value)
                     else:
-                        model_class.properties[f"ext::{prop.name}"] = self.create_annotation(value)
+                        model_class.properties[f"ext::{config_key}"] = self.create_annotation(value)
             elif prop.name not in []:
                 log.warning("Custom property %s is not configured", prop.name)
 

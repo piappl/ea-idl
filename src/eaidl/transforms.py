@@ -4,7 +4,7 @@ import logging
 from typing import Optional, Callable, List
 from copy import deepcopy
 
-from eaidl.model import ModelPackage, ModelClass, ModelAttribute
+from eaidl.model import ModelPackage, ModelClass, ModelAttribute, ModelAnnotation
 from eaidl.config import Configuration
 from eaidl.tree_utils import find_class, find_class_by_namespace
 from eaidl.link_utils import get_inherited_attributes
@@ -572,3 +572,63 @@ def flatten_abstract_classes(roots: List[ModelPackage]) -> List[ModelPackage]:
 
     log.info(f"Flattened {abstract_count} abstract classes")
     return roots
+
+
+def resolve_typedef_defaults(packages: List[ModelPackage], config: Configuration) -> None:
+    """Resolve default values for attributes whose type is a primitive typedef.
+
+    When an attribute's type is a typedef that resolves to a primitive type,
+    the default value should be treated as a literal of that primitive rather than
+    as a qualified object reference. Without this, the default is rendered as
+    e.g. ``@default(ns::types::01.00)`` instead of ``@default("01.00")``.
+    """
+    from eaidl.tree_utils import traverse_packages, collect_all_classes
+
+    # Map from IDL type to ModelAnnotation value_type
+    idl_to_value_type = {
+        "string": "str",
+        "wstring": "str",
+        "long": "int",
+        "short": "int",
+        "unsigned short": "int",
+        "unsigned long": "int",
+        "long long": "int",
+        "unsigned long long": "int",
+        "float": "float",
+        "double": "float",
+        "long double": "float",
+        "boolean": "bool",
+        "char": "str",
+        "wchar": "str",
+        "octet": "int",
+    }
+
+    # Build a map: typedef name -> resolved value_type
+    typedef_value_types: dict[str, str] = {}
+    all_classes = collect_all_classes(packages)
+    for cls in all_classes:
+        if cls.is_typedef and cls.parent_type and config.is_primitive_type(cls.parent_type):
+            idl_type = config.primitive_types.get(cls.parent_type, cls.parent_type)
+            value_type = idl_to_value_type.get(idl_type)
+            if value_type:
+                typedef_value_types[cls.name] = value_type
+
+    if not typedef_value_types:
+        return
+
+    def fix_defaults(cls: ModelClass, pkg: ModelPackage) -> None:
+        for attr in cls.attributes:
+            default = attr.properties.get("default")
+            if default is None or default.value_type != "object":
+                continue
+            resolved_type = typedef_value_types.get(attr.type)
+            if resolved_type is None:
+                continue
+            value = str(default.value) if default.value is not None else ""
+            if resolved_type == "str":
+                # Wrap in quotes if not already quoted
+                if not (value.startswith('"') and value.endswith('"')):
+                    value = f'"{value}"'
+            attr.properties["default"] = ModelAnnotation(value=value, value_type=resolved_type)
+
+    traverse_packages(packages, class_visitor=fix_defaults)
