@@ -309,13 +309,13 @@ def extract_words(text: str, min_word_length: int = 3, ignore_patterns: List[str
             filtered.append(word.lower())
             continue
 
-        # Handle camelCase/PascalCase - split into parts
+        # Handle camelCase/PascalCase/snake_case - split into parts
         parts = split_identifier(word)
         for part in parts:
             # Skip pure numbers
             if part.isdigit():
                 continue
-            if len(part) >= min_word_length and not part.isupper():
+            if len(part) >= min_word_length:
                 filtered.append(part.lower())
 
     return filtered
