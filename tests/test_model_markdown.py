@@ -181,11 +181,11 @@ def test_render_attributes_table():
         ]
     )
     md = render_markdown(data)
-    assert "| field1 | string | yes | no | no | 0..* | key |" in md
+    assert "| field1 | string | yes | no | no | 0..* | key |  |" in md
 
 
 def test_render_attribute_notes():
-    """Attribute notes rendered as inline row."""
+    """Attribute notes rendered inline in the same row."""
     data = _minimal_data(
         packages=[
             {
@@ -217,7 +217,7 @@ def test_render_attribute_notes():
         ]
     )
     md = render_markdown(data)
-    assert "> Important field" in md
+    assert "| x | int | no | no | no | 1..1 | \u2014 | Important field |" in md
 
 
 def test_render_relations_table():

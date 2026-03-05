@@ -163,8 +163,8 @@ def _render_attributes_table(attributes: List[Dict[str, Any]], depth: int, lines
     heading = "#" * depth
     lines.append(f"{heading} Attributes")
     lines.append("")
-    lines.append("| Name | Type | Collection | Optional | Map | Bounds | Stereotypes |")
-    lines.append("|------|------|------------|----------|-----|--------|-------------|")
+    lines.append("| Name | Type | Collection | Optional | Map | Bounds | Stereotypes | Comment |")
+    lines.append("|------|------|------------|----------|-----|--------|-------------|---------|")
     for attr in attributes:
         name = attr.get("name", "")
         atype = attr.get("type", "")
@@ -175,10 +175,7 @@ def _render_attributes_table(attributes: List[Dict[str, Any]], depth: int, lines
         upper = attr.get("upper_bound") or ""
         bounds = f"{lower}..{upper}" if lower or upper else "\u2014"
         stereos = ", ".join(attr["stereotypes"]) if attr.get("stereotypes") else "\u2014"
-        lines.append(f"| {name} | {atype} | {collection} | {optional} | {is_map} | {bounds} | {stereos} |")
-
-        notes = attr.get("notes")
-        if notes:
-            lines.append(f"| | > {notes.strip()} | | | | | |")
+        notes = (attr.get("notes") or "").strip().replace("\n", " ")
+        lines.append(f"| {name} | {atype} | {collection} | {optional} | {is_map} | {bounds} | {stereos} | {notes} |")
 
     lines.append("")
