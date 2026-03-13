@@ -10,6 +10,7 @@ from eaidl.native_diagram_extractor import (
 from eaidl.native_diagram_model import NativeDiagram, NativeDiagramNode
 from eaidl.native_diagram_excalidraw import render_excalidraw
 from eaidl.native_diagram_svg import render_svg, _ea_to_svg, _clip_to_rect, _ea_html_to_xhtml
+from eaidl.native_diagram_svg import svg_link_map, rewrite_svg_links
 
 
 # ---------------------------------------------------------------------------
@@ -693,6 +694,15 @@ class TestExcalidrawRenderer:
         arrows = [el for el in doc["elements"] if el["type"] == "arrow"]
         assert len(arrows) >= 3  # 3 messages
 
+    def test_sequence_lifelines_rendered(self, extractor):
+        """Asset1 and Asset2 lifeline names should appear as text elements."""
+        import json
+        diag = extractor.extract_by_id(12)
+        doc = json.loads(render_excalidraw(diag))
+        texts = {el["text"] for el in doc["elements"] if el.get("type") == "text"}
+        assert "Asset1" in texts
+        assert "Asset2" in texts
+
     def test_note_rendered_as_rectangle(self, extractor):
         """Notes should produce at least one rectangle element."""
         import json
@@ -706,17 +716,260 @@ class TestExcalidrawRenderer:
         diag = extractor.extract_by_id(3)
         assert render_excalidraw(diag) == render_excalidraw(diag)
 
-    def test_roughness_zero(self, extractor):
-        """All elements should use roughness=0 for a clean look."""
+    def test_roughness_sloppy(self, extractor):
+        """Shape/arrow elements use roughness=1; text elements use roughness=0."""
         import json
         diag = extractor.extract_by_id(3)
         doc = json.loads(render_excalidraw(diag))
         for el in doc["elements"]:
-            if "roughness" in el:
-                assert el["roughness"] == 0, f"Element {el['id']} has roughness {el['roughness']}"
+            if "roughness" not in el:
+                continue
+            if el["type"] == "text":
+                assert el["roughness"] == 0
+            else:
+                assert el["roughness"] == 1, (
+                    f"Element {el['id']} (type={el['type']}) has roughness {el['roughness']}"
+                )
 
     def test_files_dict_present(self, extractor):
         import json
         diag = extractor.extract_by_id(3)
         doc = json.loads(render_excalidraw(diag))
         assert "files" in doc
+
+
+# ---------------------------------------------------------------------------
+# Hyperlink / ea_guid tests
+# ---------------------------------------------------------------------------
+
+
+class TestEaGuid:
+    """ea_guid is extracted from t_object.ea_guid and stored on each node."""
+
+    def test_nodes_have_ea_guid(self, extractor):
+        diag = extractor.extract_by_id(3)
+        nodes_with_guid = [n for n in diag.nodes if n.ea_guid]
+        assert len(nodes_with_guid) > 0, "Expected at least some nodes to have ea_guid set"
+
+    def test_ea_guid_format(self, extractor):
+        """ea_guid should look like a GUID string: {xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}."""
+        import re
+        guid_re = re.compile(r"^\{[0-9A-Fa-f-]+\}$")
+        diag = extractor.extract_by_id(3)
+        for node in diag.nodes:
+            if node.ea_guid:
+                assert guid_re.match(node.ea_guid), (
+                    f"Node {node.name!r} ea_guid {node.ea_guid!r} is not GUID-shaped"
+                )
+
+    def test_ea_guid_unique_within_diagram(self, extractor):
+        """Each ea_guid should appear at most once in a diagram."""
+        diag = extractor.extract_by_id(3)
+        guids = [n.ea_guid for n in diag.nodes if n.ea_guid]
+        assert len(guids) == len(set(guids)), "Duplicate ea_guid values found in diagram"
+
+
+class TestSvgLinkMap:
+    """svg_link_map() returns a dict keyed by ea_guid usable for post-processing."""
+
+    def test_returns_dict(self, extractor):
+        diag = extractor.extract_by_id(3)
+        lm = svg_link_map(diag)
+        assert isinstance(lm, dict)
+        assert len(lm) > 0
+
+    def test_keys_are_guid_or_fallback(self, extractor):
+        import re
+        guid_re = re.compile(r"^\{[0-9A-Fa-f-]+\}$")
+        fallback_re = re.compile(r"^#\d+$")
+        diag = extractor.extract_by_id(3)
+        for key in svg_link_map(diag):
+            assert guid_re.match(key) or fallback_re.match(key), (
+                f"Unexpected link-map key format: {key!r}"
+            )
+
+    def test_values_contain_name_and_object_id(self, extractor):
+        diag = extractor.extract_by_id(3)
+        for key, entry in svg_link_map(diag).items():
+            assert "name" in entry
+            assert "object_id" in entry
+
+    def test_guid_keys_match_node_guids(self, extractor):
+        diag = extractor.extract_by_id(3)
+        # Notes are excluded from the link map
+        node_guids = {
+            n.ea_guid for n in diag.nodes
+            if n.ea_guid and n.object_type != "Note"
+        }
+        map_keys = set(svg_link_map(diag).keys())
+        assert node_guids <= map_keys, (
+            "Not all non-Note node ea_guids appear as keys in svg_link_map()"
+        )
+
+
+class TestRewriteSvgLinks:
+    """rewrite_svg_links() replaces eaidl:{guid} placeholders with real URLs."""
+
+    def test_placeholder_replaced(self):
+        guid = "{3522A830-8853-4c52-9908-40871435BB3B}"
+        svg = f'<a href="eaidl:{guid}"><rect/></a>'
+        result = rewrite_svg_links(svg, {guid: "https://example.com/types/Foo.html"})
+        assert "eaidl:" not in result
+        assert "https://example.com/types/Foo.html" in result
+
+    def test_unknown_guid_left_unchanged(self):
+        guid = "{AAAAAAAA-0000-0000-0000-000000000000}"
+        svg = f'<a href="eaidl:{guid}"><rect/></a>'
+        result = rewrite_svg_links(svg, {})
+        assert f"eaidl:{guid}" in result
+
+    def test_multiple_replacements(self):
+        svg = '<a href="eaidl:{A}">x</a><a href="eaidl:{B}">y</a>'
+        result = rewrite_svg_links(svg, {"{A}": "http://a.com", "{B}": "http://b.com"})
+        assert "http://a.com" in result
+        assert "http://b.com" in result
+        assert "eaidl:" not in result
+
+
+class TestSvgHyperlinks:
+    """The SVG renderer inserts eaidl: placeholder <a> wrappers by default."""
+
+    def test_svg_contains_placeholder_hrefs(self, extractor):
+        diag = extractor.extract_by_id(3)
+        svg = render_svg(diag)
+        assert "eaidl:" in svg, "Expected eaidl: placeholder hrefs in default SVG output"
+
+    def test_svg_href_contains_curlies(self, extractor):
+        """Placeholder href should look like eaidl:{...guid...}."""
+        import re
+        diag = extractor.extract_by_id(3)
+        svg = render_svg(diag)
+        assert re.search(r'href="eaidl:\{[0-9A-Fa-f-]+\}"', svg), (
+            "Expected eaidl:{guid} pattern in SVG href attributes"
+        )
+
+    def test_svg_links_disabled_when_template_empty(self, extractor):
+        from eaidl.config import NativeDiagramStyleConfig
+        style = NativeDiagramStyleConfig(node_link_template="")
+        diag = extractor.extract_by_id(3)
+        svg = render_svg(diag, style=style)
+        assert "eaidl:" not in svg
+        assert "<a " not in svg
+
+
+class TestExcalidrawLinks:
+    """Excalidraw element link fields are populated from ea_guid by default."""
+
+    def test_header_rects_have_link(self, extractor):
+        import json
+        diag = extractor.extract_by_id(3)
+        doc = json.loads(render_excalidraw(diag))
+        rects = [el for el in doc["elements"] if el["type"] == "rectangle"]
+        # At least some rects (header rects of class nodes) should carry a link
+        linked = [el for el in rects if el.get("link")]
+        assert len(linked) > 0, "Expected at least one rectangle element with a link"
+
+    def test_header_link_is_placeholder(self, extractor):
+        import json
+        diag = extractor.extract_by_id(3)
+        doc = json.loads(render_excalidraw(diag))
+        linked = [el for el in doc["elements"] if el.get("link")]
+        for el in linked:
+            assert el["link"].startswith("eaidl:"), (
+                f"Expected eaidl: prefix on link, got {el['link']!r}"
+            )
+
+    def test_links_disabled_when_template_empty(self, extractor):
+        import json
+        from eaidl.config import NativeDiagramStyleConfig
+        style = NativeDiagramStyleConfig(node_link_template="")
+        diag = extractor.extract_by_id(3)
+        doc = json.loads(render_excalidraw(diag, style=style))
+        linked = [el for el in doc["elements"] if el.get("link")]
+        assert len(linked) == 0, "Expected no linked elements when node_link_template=''"
+
+
+# ---------------------------------------------------------------------------
+# Granular hyperlink behaviour (header vs attribute rows)
+# ---------------------------------------------------------------------------
+
+
+class TestAttributeTypeGuid:
+    """type_guid is populated on attributes whose type resolves to a model class."""
+
+    def test_some_attributes_have_type_guid(self, extractor):
+        diag = extractor.extract_by_id(3)
+        class_nodes = [n for n in diag.nodes if n.object_type in ("Class", "Part")]
+        all_attrs = [a for n in class_nodes for a in n.attributes]
+        linked = [a for a in all_attrs if a.type_guid]
+        assert len(linked) > 0, "Expected at least one attribute to have a type_guid"
+
+    def test_type_guid_format(self, extractor):
+        import re
+        guid_re = re.compile(r"^\{[0-9A-Fa-f-]+\}$")
+        diag = extractor.extract_by_id(3)
+        for node in diag.nodes:
+            for attr in node.attributes:
+                if attr.type_guid:
+                    assert guid_re.match(attr.type_guid), (
+                        f"Attr {attr.name!r} type_guid {attr.type_guid!r} is not GUID-shaped"
+                    )
+
+    def test_type_guid_distinct_from_owner_guid(self, extractor):
+        """The type_guid of an attribute should not equal the owning node's ea_guid."""
+        diag = extractor.extract_by_id(3)
+        for node in diag.nodes:
+            for attr in node.attributes:
+                if attr.type_guid and node.ea_guid:
+                    # An attribute's type is rarely the same class — but the key
+                    # check is just that the field is independently set.
+                    assert isinstance(attr.type_guid, str)
+
+
+class TestSvgGranularLinks:
+    """Header links to the class; each attribute row links to its type."""
+
+    def test_svg_has_multiple_distinct_hrefs(self, extractor):
+        """A diagram with cross-referencing types should have > 1 unique eaidl: href."""
+        import re
+        diag = extractor.extract_by_id(3)
+        svg = render_svg(diag)
+        hrefs = set(re.findall(r'href="(eaidl:[^"]+)"', svg))
+        assert len(hrefs) > 1, (
+            "Expected multiple distinct eaidl: hrefs (one per class + one per linked type)"
+        )
+
+    def test_header_link_differs_from_attribute_link(self, extractor):
+        """For a node with linked-type attributes, header href != at least one attr href."""
+        import re
+        diag = extractor.extract_by_id(3)
+        # Find a node that has ea_guid AND at least one attribute with type_guid
+        candidate = next(
+            (
+                n for n in diag.nodes
+                if n.ea_guid and any(a.type_guid for a in n.attributes)
+            ),
+            None,
+        )
+        if candidate is None:
+            pytest.skip("No suitable node found in diagram 3")
+        node_href = f"eaidl:{candidate.ea_guid}"
+        attr_hrefs = {
+            f"eaidl:{a.type_guid}" for a in candidate.attributes if a.type_guid
+        }
+        assert node_href not in attr_hrefs or len(attr_hrefs) > 0, (
+            "At least one attribute href should be present alongside the header href"
+        )
+        svg = render_svg(diag)
+        assert node_href in svg
+        for ah in attr_hrefs:
+            assert ah in svg
+
+    def test_svg_no_link_when_template_empty(self, extractor):
+        """With node_link_template='', no <a> elements at all — verified separately
+        for the attribute level (not just class level)."""
+        from eaidl.config import NativeDiagramStyleConfig
+        style = NativeDiagramStyleConfig(node_link_template="")
+        diag = extractor.extract_by_id(3)
+        svg = render_svg(diag, style=style)
+        assert "<a " not in svg

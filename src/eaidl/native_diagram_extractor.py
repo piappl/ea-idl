@@ -431,14 +431,75 @@ class NativeDiagramExtractor:
                     .order_by(TAttribute.attr_pos)
                     .all()
                 )
+                # Bulk-resolve Classifier → ea_guid in one query
+                classifier_ids = [
+                    int(getattr(a, "attr_classifier", 0) or 0)
+                    for a in attr_rows
+                    if getattr(a, "attr_classifier", 0)
+                ]
+                classifier_guid_map: Dict[int, str] = {}
+                if classifier_ids:
+                    guid_rows = (
+                        self.session.query(
+                            TObject.attr_object_id,
+                            TObject.attr_ea_guid,
+                        )
+                        .filter(TObject.attr_object_id.in_(classifier_ids))
+                        .all()
+                    )
+                    classifier_guid_map = {
+                        row.attr_object_id: row.attr_ea_guid
+                        for row in guid_rows
+                        if row.attr_ea_guid
+                    }
+
+                # Fallback: resolve by type name for attrs where Classifier = 0.
+                # EA often omits the Classifier FK (leaves it 0) and stores only
+                # the text type name.  Skip well-known primitives — they have no
+                # t_object row and can never be hyperlinked.
+                _PRIMITIVES = frozenset({
+                    "int", "integer", "long", "short", "byte",
+                    "float", "double", "real",
+                    "boolean", "bool",
+                    "string", "char", "character",
+                    "void", "any", "object",
+                })
+                unresolved_type_names = {
+                    (getattr(a, "attr_type", "") or "").strip()
+                    for a in attr_rows
+                    if not int(getattr(a, "attr_classifier", 0) or 0)
+                    and (getattr(a, "attr_type", "") or "").strip()
+                    and (getattr(a, "attr_type", "") or "").strip().lower() not in _PRIMITIVES
+                }
+                name_guid_map: Dict[str, str] = {}
+                if unresolved_type_names:
+                    name_rows = (
+                        self.session.query(
+                            TObject.attr_name,
+                            TObject.attr_ea_guid,
+                        )
+                        .filter(TObject.attr_name.in_(unresolved_type_names))
+                        .all()
+                    )
+                    # Keep first match per name (names should be unique within a model)
+                    for row in name_rows:
+                        if row.attr_name and row.attr_ea_guid:
+                            name_guid_map.setdefault(row.attr_name, row.attr_ea_guid)
+
                 for a in attr_rows:
+                    classifier_id = int(getattr(a, "attr_classifier", 0) or 0)
+                    type_name = (getattr(a, "attr_type", "") or "").strip()
+                    type_guid = classifier_guid_map.get(classifier_id)
+                    if type_guid is None and not classifier_id and type_name:
+                        type_guid = name_guid_map.get(type_name)
                     attributes.append(
                         NativeDiagramAttribute(
                             name=getattr(a, "attr_name", "") or "",
-                            type=getattr(a, "attr_type", "") or "",
+                            type=type_name,
                             lower_bound=getattr(a, "attr_lowerbound", None),
                             upper_bound=getattr(a, "attr_upperbound", None),
                             position=getattr(a, "attr_pos", 0) or 0,
+                            type_guid=type_guid,
                         )
                     )
 
@@ -449,6 +510,7 @@ class NativeDiagramExtractor:
                     object_type=object_type,
                     stereotype=getattr(t_obj, "attr_stereotype", None),
                     is_abstract=(getattr(t_obj, "attr_abstract", "0") or "0") == "1",
+                    ea_guid=getattr(t_obj, "attr_ea_guid", None) or None,
                     note_text=note_text,
                     note_connector_ref=note_connector_ref,
                     rect_left=getattr(t_do, "attr_rectleft", 0) or 0,

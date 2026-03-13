@@ -164,6 +164,75 @@ def _ea_html_to_xhtml(raw: Optional[str]) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _node_link_href(node: NativeDiagramNode, style) -> Optional[str]:
+    """
+    Compute the href for a linkable node, or ``None`` if links are disabled.
+
+    * When ``style.node_link_template`` is ``""``  → no link.
+    * When it is ``None``  → placeholder ``eaidl:{guid}`` (or ``eaidl:#{object_id}``
+      if the node has no GUID).
+    * Otherwise the template is formatted with ``name``, ``guid``,
+      ``object_id``, ``stereotype``.
+    """
+    template = style.node_link_template
+    if template == "":
+        return None
+    guid = node.ea_guid or f"#{node.object_id}"
+    if template is None:
+        return f"eaidl:{guid}"
+    return template.format(
+        name=node.name,
+        guid=guid,
+        object_id=node.object_id,
+        stereotype=node.stereotype or "",
+    )
+
+
+def svg_link_map(diagram: NativeDiagram) -> Dict[str, Dict]:
+    """
+    Return a dict mapping each named node\'s ``ea_guid`` to its metadata.
+
+    The returned structure is deliberately compatible with the YAML exported by
+    ``model_export.py``.  Keys match ``ModelClass.guid`` so post-processors can
+    join the two data sources on GUID::
+
+        link_map = svg_link_map(diagram)
+        # link_map['{3522A830-...}'] ==
+        #   {'name': 'Message', 'object_id': 35,
+        #    'object_type': 'Class', 'stereotype': 'struct',
+        #    'href_placeholder': 'eaidl:{3522A830-...}'}
+
+    Nodes without a GUID (unusual) use the key ``"#<object_id>"`` instead.
+    """
+    result: Dict[str, Dict] = {}
+    for node in diagram.nodes:
+        if node.object_type == "Note":
+            continue
+        key = node.ea_guid or f"#{node.object_id}"
+        result[key] = {
+            "name": node.name,
+            "object_id": node.object_id,
+            "object_type": node.object_type,
+            "stereotype": node.stereotype,
+            "href_placeholder": f"eaidl:{key}",
+        }
+    return result
+
+
+def rewrite_svg_links(svg: str, guid_to_url: Dict[str, str]) -> str:
+    """
+    Replace ``eaidl:{guid}`` placeholder hrefs in *svg* with real URLs.
+
+    :param svg: SVG string as produced by :func:`render_svg`.
+    :param guid_to_url: Mapping of ``ea_guid`` → URL string, e.g. from a
+        post-processor that has consulted the model YAML.
+    :return: Updated SVG string.
+    """
+    for guid, url in guid_to_url.items():
+        svg = svg.replace(f"eaidl:{guid}", url)
+    return svg
+
+
 def _ea_to_svg(node: NativeDiagramNode) -> Tuple[float, float, float, float]:
     """Return (x, y, width, height) in SVG coordinates for *node*."""
     x = float(node.rect_left)
@@ -263,8 +332,16 @@ def _render_lifeline(parent: ET.Element, node: NativeDiagramNode, style) -> None
     bg = _argb_to_css(node.style.background_color, style.node_header_color)
     border = _argb_to_css(node.style.line_color, style.node_border_color)
 
-    g = ET.SubElement(parent, "g", **{"class": "lifeline",
-                                       "data-object-id": str(node.object_id)})
+    href = _node_link_href(node, style)
+    container = parent
+    if href and node.name:
+        a = ET.SubElement(parent, "a")
+        a.set("href", href)
+        a.set("xlink:href", href)
+        container = a
+
+    g = ET.SubElement(container, "g", **{"class": "lifeline",
+                                          "data-object-id": str(node.object_id)})
 
     # Head box
     ET.SubElement(g, "rect",
@@ -571,8 +648,42 @@ def _build_defs(root: ET.Element, style) -> None:
                   fill=style.node_bg_color, stroke=c, **{"stroke-width": "1"})
 
 
+def _attr_link_href(attr, style, node=None) -> Optional[str]:
+    """Return the link href for an attribute row, or ``None``.
+
+    Priority:
+    1. ``attr.type_guid`` → links to the type class.
+    2. Enum-literal fallback: when the attribute name starts with the parent
+       node name (EA convention ``EnumName_LITERAL_VALUE``), link back to the
+       parent node itself so the literal is navigable to its enum definition.
+    """
+    template = style.node_link_template
+    if template == "":
+        return None
+    if attr.type_guid:
+        guid = attr.type_guid
+        if template is None:
+            return f"eaidl:{guid}"
+        return template.format(
+            name=attr.type,
+            guid=guid,
+            object_id="",
+            stereotype="",
+        )
+    # Enum-literal fallback: self-link to the parent node
+    if (
+        node is not None
+        and node.ea_guid
+        and node.name
+        and attr.name.startswith(node.name + "_")
+    ):
+        return _node_link_href(node, style)
+    return None
+
+
 def _render_class_node(parent: ET.Element, node: NativeDiagramNode, style) -> None:
-    """Render a Class or Part node."""
+    """Render a Class or Part node.  The header links to the class; each
+    attribute row links to the type of that attribute (when resolvable)."""
     x, y, w, h = _ea_to_svg(node)
     # Per-node colour overrides from objectstyle take precedence over config
     bg = _argb_to_css(node.style.background_color, style.node_bg_color)
@@ -585,13 +696,7 @@ def _render_class_node(parent: ET.Element, node: NativeDiagramNode, style) -> No
     g = ET.SubElement(parent, "g", **{"class": "node-class",
                                        "data-object-id": str(node.object_id)})
 
-    # Header rectangle
-    ET.SubElement(g, "rect",
-                  x=str(x), y=str(y), width=str(w), height=str(HEADER_H),
-                  fill=style.node_header_color,
-                  stroke=border, **{"stroke-width": str(lw)})
-
-    # Body rectangle — expand height to always fit all attribute rows
+    # Body rectangle (rendered before header so header border paints on top)
     body_y = y + HEADER_H
     body_h = max(h - HEADER_H, ATTR_ROW_H * max(1, len(node.attributes)) + 2 * PADDING_Y)
     ET.SubElement(g, "rect",
@@ -605,10 +710,24 @@ def _render_class_node(parent: ET.Element, node: NativeDiagramNode, style) -> No
     ET.SubElement(clip, "rect",
                   x=str(x), y=str(body_y), width=str(w), height=str(body_h))
 
+    # Header — optionally wrapped in a link to the class itself
+    node_href = _node_link_href(node, style)
+    hdr_container: ET.Element = g
+    if node_href and node.name:
+        a = ET.SubElement(g, "a")
+        a.set("href", node_href)
+        a.set("xlink:href", node_href)
+        hdr_container = a
+
+    ET.SubElement(hdr_container, "rect",
+                  x=str(x), y=str(y), width=str(w), height=str(HEADER_H),
+                  fill=style.node_header_color,
+                  stroke=border, **{"stroke-width": str(lw)})
+
     # Stereotype (small italic, rendered first so name sits below it)
     text_y = y + HEADER_H - PADDING_Y
     if node.stereotype:
-        ET.SubElement(g, "text",
+        ET.SubElement(hdr_container, "text",
                       x=str(x + w / 2), y=str(y + 10),
                       **{"text-anchor": "middle",
                          "font-family": style.font_family,
@@ -619,7 +738,7 @@ def _render_class_node(parent: ET.Element, node: NativeDiagramNode, style) -> No
 
     # Class name (bold)
     name_text = f"«abstract» {node.name}" if node.is_abstract else node.name
-    ET.SubElement(g, "text",
+    ET.SubElement(hdr_container, "text",
                   x=str(x + w / 2), y=str(text_y),
                   **{"text-anchor": "middle",
                      "font-family": style.font_family,
@@ -627,17 +746,26 @@ def _render_class_node(parent: ET.Element, node: NativeDiagramNode, style) -> No
                      "font-weight": "bold",
                      "fill": style.node_header_text_color}).text = name_text
 
-    # Attributes — clipped to body rect width so long strings don't bleed out
+    # Attributes — each row optionally linked to its type class
     attr_g = ET.SubElement(g, "g", **{"clip-path": f"url(#{clip_id})"})
     for i, attr in enumerate(node.attributes):
         ay = body_y + PADDING_Y + (i + 0.8) * ATTR_ROW_H
         lb, ub = attr.lower_bound or "", attr.upper_bound or ""
         card = f" [{lb}..{ub}]" if (lb or ub) else ""
-        ET.SubElement(attr_g, "text",
+        label = f"+ {attr.name} : {attr.type}{card}"
+        type_href = _attr_link_href(attr, style, node)
+        if type_href:
+            a = ET.SubElement(attr_g, "a")
+            a.set("href", type_href)
+            a.set("xlink:href", type_href)
+            txt_parent: ET.Element = a
+        else:
+            txt_parent = attr_g
+        ET.SubElement(txt_parent, "text",
                       x=str(x + PADDING_X), y=str(ay),
                       **{"font-family": style.font_family,
                          "font-size": str(style.attr_font_size),
-                         "fill": style.node_border_color}).text = f"+ {attr.name} : {attr.type}{card}"
+                         "fill": style.node_border_color}).text = label
 
 
 def _render_note_node(

@@ -174,6 +174,13 @@ class NativeDiagramAttribute(BaseModel):
     position: int = 0
     """Pos — display order within the compartment."""
 
+    type_guid: Optional[str] = None
+    """
+    ``t_object.ea_guid`` of the *type* class, resolved from
+    ``t_attribute.Classifier`` (the Object_ID of the referenced type).
+    ``None`` when the type is primitive / unresolved.
+    """
+
 
 class NativeDiagramNode(BaseModel):
     """
@@ -190,6 +197,13 @@ class NativeDiagramNode(BaseModel):
 
     stereotype: Optional[str] = None
     is_abstract: bool = False
+
+    ea_guid: Optional[str] = None
+    """
+    ``t_object.ea_guid`` — the stable cross-reference key that matches
+    ``ModelClass.guid`` in the IDL model pipeline and in ``model_export.py``.
+    Use this to correlate diagram node link maps with the exported YAML model.
+    """
 
     note_text: Optional[str] = None
     """Populated for ``Note`` objects."""

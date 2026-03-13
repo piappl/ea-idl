@@ -120,12 +120,37 @@ class NativeDiagramStyleConfig(BaseModel):
     note_font_size: int = 10
     """Font size (px) for Note text."""
 
+    # --- links ---
+    node_link_template: Optional[str] = None
+    """
+    URL template applied to every named class / part node when rendering SVG
+    or Excalidraw.  Available format keys:
+
+    * ``{name}``        — element name (e.g. ``Message``)
+    * ``{object_id}``   — EA object ID integer
+    * ``{type}``        — EA object type (``Class``, ``Part``, …)
+    * ``{stereotype}``  — stereotype string (empty string if none)
+
+    Example::
+
+        node_link_template: "../types/{name}.html"
+
+    When ``None`` (default) a stable placeholder URI ``eaidl:{name}`` is
+    emitted.  Post-processors can replace these via
+    :func:`~eaidl.native_diagram_svg.rewrite_svg_links`.
+    Set to ``""`` (empty string) to suppress links entirely.
+    """
+
 
 class DiagramConfiguration(BaseModel):
     """Configuration for diagram generation."""
 
-    #: Which renderer to use (mermaid or plantuml)
-    renderer: Literal["mermaid", "plantuml"] = "mermaid"
+    #: Which renderer to use (mermaid, plantuml, or native)
+    #:
+    #: ``native`` renders EA diagrams directly from the QEA canvas geometry via
+    #: :mod:`eaidl.native_diagram_svg`.  The auto-generated class diagram falls
+    #: back to Mermaid since it has no canvas counterpart.
+    renderer: Literal["mermaid", "plantuml", "native"] = "mermaid"
     #: PlantUML server URL (used when renderer is "plantuml")
     plantuml_server_url: str = "http://127.0.0.1:10005/"
     #: PlantUML request timeout in seconds

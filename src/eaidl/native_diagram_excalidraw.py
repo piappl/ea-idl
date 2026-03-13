@@ -22,8 +22,8 @@ converted using the same transform used by the SVG renderer::
 
 Visual conventions
 ------------------
-* ``roughness: 0`` — clean / polished look (no hand-drawn wobble).
-* ``fontFamily: 2`` — Helvetica / normal sans-serif.
+* ``roughness: 1`` — Excalidraw default sloppy / hand-drawn look.
+* ``fontFamily: 1`` — Virgil (Excalidraw's default hand-drawn font).
 * Class nodes have a filled header band + body compartment backed by a
   faint body fill, with attributes listed in the body.
 * Generalization uses a hollow-triangle arrowhead; Association uses an
@@ -59,11 +59,11 @@ ACTIVATION_BAR_W = 12
 LIFELINE_HEAD_H = 55
 FRAGMENT_TAB_H = 18
 
-# Excalidraw font families: 1=hand, 2=normal, 3=mono
-_FONT_FAMILY = 2
-_FONT_SIZE_NORMAL = 14
-_FONT_SIZE_SMALL = 10
-_FONT_SIZE_ATTR = 11
+# Excalidraw font families: 1=Virgil (hand-drawn), 2=normal, 3=mono
+_FONT_FAMILY = 1
+_FONT_SIZE_NORMAL = 12
+_FONT_SIZE_SMALL = 9
+_FONT_SIZE_ATTR = 10
 
 
 # ---------------------------------------------------------------------------
@@ -188,9 +188,10 @@ def _base_shape(
     fill: str,
     stroke_style: str = "solid",
     stroke_width: int = 1,
-    roughness: int = 0,
+    roughness: int = 1,
     group_ids: Optional[List[str]] = None,
     round_: bool = False,
+    link: Optional[str] = None,
 ) -> Dict[str, Any]:
     return {
         "type": "rectangle",
@@ -216,9 +217,32 @@ def _base_shape(
         "isDeleted": False,
         "boundElements": [],
         "updated": 1,
-        "link": None,
+        "link": link,
         "locked": False,
     }
+
+
+def _ex_node_href(node: NativeDiagramNode, style) -> Optional[str]:
+    """
+    Compute the Excalidraw ``link`` value for a linkable node.
+
+    Mirrors the SVG ``_node_link_href`` logic:
+    * ``style.node_link_template == ""``  → ``None`` (disabled).
+    * ``style.node_link_template is None``  → ``"eaidl:{guid}"`` placeholder.
+    * otherwise format the template with name/guid/object_id/stereotype.
+    """
+    template = style.node_link_template
+    if template == "":
+        return None
+    guid = node.ea_guid or f"#{node.object_id}"
+    if template is None:
+        return f"eaidl:{guid}"
+    return template.format(
+        name=node.name,
+        guid=guid,
+        object_id=node.object_id,
+        stereotype=node.stereotype or "",
+    )
 
 
 def _base_text(
@@ -258,7 +282,7 @@ def _base_text(
         "fillStyle": "solid",
         "strokeWidth": 1,
         "strokeStyle": "solid",
-        "roughness": 0,
+        "roughness": 0,  # text elements never have roughness
         "opacity": 100,
         "groupIds": group_ids or [],
         "frameId": None,
@@ -323,7 +347,7 @@ def _base_line(
         "fillStyle": "solid",
         "strokeWidth": stroke_width,
         "strokeStyle": stroke_style,
-        "roughness": 0,
+        "roughness": 1,
         "opacity": 100,
         "groupIds": group_ids or [],
         "frameId": None,
@@ -364,12 +388,13 @@ def _class_node_elements(node: NativeDiagramNode, style) -> List[Dict[str, Any]]
 
     elements: List[Dict[str, Any]] = []
 
-    # Header rectangle
+    # Header rectangle — carries the hyperlink
     hdr_id = _next_id("hdr")
     elements.append(_base_shape(
         hdr_id, x, y, w, HEADER_H,
         stroke=border, fill=style.node_header_color,
         stroke_width=lw, group_ids=[group_id],
+        link=_ex_node_href(node, style) if node.name else None,
     ))
 
     # Body rectangle
@@ -477,11 +502,12 @@ def _lifeline_elements(node: NativeDiagramNode, style) -> List[Dict[str, Any]]:
 
     elements: List[Dict[str, Any]] = []
 
-    # Head box
+    # Head box — carries the hyperlink
     elements.append(_base_shape(
         _next_id("ll-hd"), x, y, w, head_h,
         stroke=border, fill=bg,
         group_ids=[group_id],
+        link=_ex_node_href(node, style) if node.name else None,
     ))
 
     # Name
@@ -673,44 +699,66 @@ def _sequence_message_elements(
 
     # Label text
     mid_x = (x1 + x2) / 2
-    label_y = y1 - _FONT_SIZE_NORMAL - 2
 
-    if msg.stereotype:
-        elements.append(_base_text(
-            _next_id("msg-st"),
-            mid_x - 60, label_y - _FONT_SIZE_SMALL - 2, 120, _FONT_SIZE_SMALL * 1.4,
-            text=f"«{msg.stereotype}»",
-            font_size=_FONT_SIZE_SMALL,
-            align="center",
-            italic=True,
-            color=style.connector_color,
-            group_ids=[group_id],
-        ))
-        label_y -= _FONT_SIZE_SMALL + 2
-
+    # Label (and optional return value) above the arrow
     label = msg.name or ""
     if msg.param_values:
         label += f"({msg.param_values})"
-    if label:
+
+    above_y = y1 - _FONT_SIZE_NORMAL - 2
+    if msg.return_value and label:
+        # Two lines above: name on top, return_value below it
         elements.append(_base_text(
             _next_id("msg-lbl"),
-            mid_x - 80, label_y, 160, _FONT_SIZE_NORMAL * 1.4,
+            mid_x - 80, above_y - _FONT_SIZE_NORMAL - 2, 160, _FONT_SIZE_NORMAL * 1.4,
             text=label,
             font_size=_FONT_SIZE_NORMAL,
             align="center",
             color=style.node_border_color,
             group_ids=[group_id],
         ))
-
-    if msg.return_value:
         elements.append(_base_text(
             _next_id("msg-ret"),
-            mid_x - 80, y1 + 2, 160, _FONT_SIZE_NORMAL * 1.4,
+            mid_x - 80, above_y, 160, _FONT_SIZE_NORMAL * 1.4,
             text=msg.return_value,
             font_size=_FONT_SIZE_NORMAL,
             align="center",
             italic=True,
             color=style.node_border_color,
+            group_ids=[group_id],
+        ))
+    elif label:
+        elements.append(_base_text(
+            _next_id("msg-lbl"),
+            mid_x - 80, above_y, 160, _FONT_SIZE_NORMAL * 1.4,
+            text=label,
+            font_size=_FONT_SIZE_NORMAL,
+            align="center",
+            color=style.node_border_color,
+            group_ids=[group_id],
+        ))
+    elif msg.return_value:
+        elements.append(_base_text(
+            _next_id("msg-ret"),
+            mid_x - 80, above_y, 160, _FONT_SIZE_NORMAL * 1.4,
+            text=msg.return_value,
+            font_size=_FONT_SIZE_NORMAL,
+            align="center",
+            italic=True,
+            color=style.node_border_color,
+            group_ids=[group_id],
+        ))
+
+    # Stereotype below the arrow line
+    if msg.stereotype:
+        elements.append(_base_text(
+            _next_id("msg-st"),
+            mid_x - 60, y1 + 2, 120, _FONT_SIZE_SMALL * 1.4,
+            text=f"«{msg.stereotype}»",
+            font_size=_FONT_SIZE_SMALL,
+            align="center",
+            italic=True,
+            color=style.connector_color,
             group_ids=[group_id],
         ))
 
@@ -814,13 +862,12 @@ def render_excalidraw(diagram: NativeDiagram, style=None) -> str:
 
     if diagram.diagram_type == "Sequence":
         # Separate lifelines, fragments, and notes
-        lifelines = [n for n in diagram.nodes if n.object_type == "Class"]
+        lifelines = [
+            n for n in diagram.nodes
+            if n.object_type in ("Part", "Class") and n.name
+        ]
         fragments = [n for n in diagram.nodes if n.object_type == "InteractionFragment"]
         notes = [n for n in diagram.nodes if n.object_type == "Note"]
-
-        # Fragments first (background)
-        for frag in fragments:
-            elements.extend(_fragment_elements(frag, style))
 
         # Lifelines
         for node in lifelines:
@@ -846,6 +893,10 @@ def render_excalidraw(diagram: NativeDiagram, style=None) -> str:
         # Notes on top
         for note in notes:
             elements.extend(_note_node_elements(note, style))
+
+        # Fragments last so they render on top of lifelines
+        for frag in fragments:
+            elements.extend(_fragment_elements(frag, style))
 
     else:
         # Class / Composite Structure diagram

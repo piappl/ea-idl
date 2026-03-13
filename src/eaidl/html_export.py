@@ -161,6 +161,65 @@ def generate_index_page(packages: List[ModelPackage], output_dir: Path, env: Env
     log.info(f"Generated index page: {index_file}")
 
 
+def _render_native_diagram(
+    ea_diagram,
+    packages: List[ModelPackage],
+    config: Configuration,
+    namespace_path: List[str],
+    extractor,
+) -> dict:
+    """
+    Render a single EA diagram via the native SVG pipeline and return a dict
+    that matches the structure consumed by ``diagram.jinja2``.
+
+    The native pipeline (``NativeDiagramExtractor`` → ``render_svg``) is
+    geometrically faithful to the EA canvas.  ``eaidl:{guid}`` placeholder
+    hrefs embedded in the SVG are rewritten to real class HTML URLs by
+    cross-referencing the IDL model's ``ModelClass.guid`` values.
+
+    This is intentionally separate from the Mermaid/PlantUML path which uses
+    ``EADiagramBuilder`` → ``DiagramRenderer`` on an abstract semantic
+    description (``ClassDiagramDescription`` / ``SequenceDiagramDescription``).
+    The two pipelines serve different needs and the models they operate on
+    are complementary, not redundant.
+    """
+    from eaidl.native_diagram_svg import render_svg, svg_link_map, rewrite_svg_links
+    from eaidl.tree_utils import traverse_packages
+
+    native_diag = extractor.extract_by_id(ea_diagram.diagram_id)
+    svg = render_svg(native_diag, style=config.diagrams.native_diagram_style)
+
+    # Build guid → ModelClass lookup from the IDL model
+    guid_to_cls: dict = {}
+
+    def _collect(cls, _pkg):
+        if cls.guid:
+            guid_to_cls[cls.guid] = cls
+
+    traverse_packages(packages, class_visitor=_collect)
+
+    # Rewrite eaidl:{guid} placeholder hrefs to real relative class-page URLs
+    link_map = svg_link_map(native_diag)
+    guid_to_url: dict = {}
+    for guid in link_map:
+        if guid in guid_to_cls:
+            cls = guid_to_cls[guid]
+            guid_to_url[guid] = generate_class_link(
+                namespace_path, cls.namespace, cls.name, from_page_type="diagram"
+            )
+    if guid_to_url:
+        svg = rewrite_svg_links(svg, guid_to_url)
+
+    return {
+        "name": ea_diagram.name,
+        "type": ea_diagram.diagram_type,
+        "diagram_notes": ea_diagram.diagram_notes,
+        "author": ea_diagram.author,
+        "diagram_content": svg,
+        "diagram_type": "svg",  # consumed by diagram.jinja2 the same way as PlantUML SVG
+    }
+
+
 def generate_package_pages(
     packages: List[ModelPackage], output_dir: Path, env: Environment, config: Configuration
 ) -> None:
@@ -175,9 +234,15 @@ def generate_package_pages(
     template_package = env.get_template("package.jinja2")
     template_diagram = env.get_template("diagram.jinja2")
 
-    # Create database session for EA diagram conversion
+    # Create database session for EA diagram conversion (Mermaid / PlantUML path)
     engine = sqlalchemy.create_engine(config.database_url, echo=False, future=True)
     session = Session(engine)
+
+    # Create native extractor when using the native renderer
+    native_extractor = None
+    if config.diagrams.renderer == "native":
+        from eaidl.native_diagram_extractor import NativeDiagramExtractor
+        native_extractor = NativeDiagramExtractor.from_url(config.database_url)
 
     def process_package(package: ModelPackage, namespace_path: List[str]) -> None:
         """Recursively process package and nested packages."""
@@ -233,30 +298,37 @@ def generate_package_pages(
             ea_diagrams = []
             for ea_diagram in package.diagrams:
                 try:
-                    # Use new builder architecture
-                    from eaidl.ea_diagram_builder import EADiagramBuilder
-
-                    builder = EADiagramBuilder(ea_diagram, packages, config, session)
-                    diagram_desc = builder.build()
-
-                    # Render with configured renderer (Mermaid or PlantUML)
-                    if hasattr(diagram_desc, "participants"):
-                        # Sequence diagram
-                        ea_output = renderer.render_sequence_diagram(diagram_desc)
+                    if config.diagrams.renderer == "native":
+                        ea_diagrams.append(
+                            _render_native_diagram(
+                                ea_diagram, packages, config, namespace_path, native_extractor
+                            )
+                        )
                     else:
-                        # Class diagram
-                        ea_output = renderer.render_class_diagram(diagram_desc)
+                        # Use builder → renderer pipeline (Mermaid or PlantUML)
+                        from eaidl.ea_diagram_builder import EADiagramBuilder
 
-                    ea_diagrams.append(
-                        {
-                            "name": ea_diagram.name,
-                            "type": ea_diagram.diagram_type,
-                            "notes": ea_diagram.notes,
-                            "author": ea_diagram.author,
-                            "diagram_content": ea_output.content,
-                            "diagram_type": ea_output.output_type.value,  # "text" or "svg"
-                        }
-                    )
+                        builder = EADiagramBuilder(ea_diagram, packages, config, session)
+                        diagram_desc = builder.build()
+
+                        # Render with configured renderer
+                        if hasattr(diagram_desc, "participants"):
+                            # Sequence diagram
+                            ea_output = renderer.render_sequence_diagram(diagram_desc)
+                        else:
+                            # Class diagram
+                            ea_output = renderer.render_class_diagram(diagram_desc)
+
+                        ea_diagrams.append(
+                            {
+                                "name": ea_diagram.name,
+                                "type": ea_diagram.diagram_type,
+                                "diagram_notes": ea_diagram.diagram_notes,
+                                "author": ea_diagram.author,
+                                "diagram_content": ea_output.content,
+                                "diagram_type": ea_output.output_type.value,  # "text" or "svg"
+                            }
+                        )
                 except Exception as e:
                     # Re-raise PlantUML server errors to fail the build
                     from eaidl.renderers import PlantUMLServerError
@@ -294,6 +366,8 @@ def generate_package_pages(
 
     # Close session
     session.close()
+    if native_extractor is not None:
+        native_extractor.close()
 
     log.info("Generated all package pages")
 
