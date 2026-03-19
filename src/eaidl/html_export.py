@@ -184,10 +184,12 @@ def _render_native_diagram(
     are complementary, not redundant.
     """
     from eaidl.native_diagram_svg import render_svg, svg_link_map, rewrite_svg_links
+    from eaidl.native_diagram_excalidraw import render_excalidraw
     from eaidl.tree_utils import traverse_packages
 
     native_diag = extractor.extract_by_id(ea_diagram.diagram_id)
     svg = render_svg(native_diag, style=config.diagrams.native_diagram_style)
+    excalidraw_json = render_excalidraw(native_diag, style=config.diagrams.native_diagram_style)
 
     # Build guid → ModelClass lookup from the IDL model
     guid_to_cls: dict = {}
@@ -209,6 +211,8 @@ def _render_native_diagram(
             )
     if guid_to_url:
         svg = rewrite_svg_links(svg, guid_to_url)
+        # rewrite_svg_links does plain string replacement, works on JSON too
+        excalidraw_json = rewrite_svg_links(excalidraw_json, guid_to_url)
 
     return {
         "name": ea_diagram.name,
@@ -217,6 +221,7 @@ def _render_native_diagram(
         "author": ea_diagram.author,
         "diagram_content": svg,
         "diagram_type": "svg",  # consumed by diagram.jinja2 the same way as PlantUML SVG
+        "excalidraw_content": excalidraw_json,
     }
 
 

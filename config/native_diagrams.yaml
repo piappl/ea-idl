@@ -1,0 +1,7 @@
+database_url: sqlite+pysqlite:///tests/data/nafv4.qea
+root_packages: ["{753A4DFC-7876-4b00-BB5A-6274AD3817C3}"]
+
+diagrams:
+  renderer: native
+  native_diagram_style:
+    node_link_template:   # null → emit eaidl:{guid} placeholders (rewritten at render time)
