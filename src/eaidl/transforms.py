@@ -165,6 +165,142 @@ def filter_stereotypes(
         _filter_stereotypes(package, package, config)
 
 
+def _replace_attr_type_with_any(
+    root: ModelPackage,
+    cls: ModelClass,
+    stereotype: str,
+) -> None:
+    """Replace type with 'any' for all attributes referencing a privatized class.
+
+    Finds all attributes in the tree whose connector points to cls and replaces
+    their type with 'any', preserving collection/map structure.
+
+    :param root: Root package to search
+    :param cls: The privatized class being removed
+    :param stereotype: The stereotype that triggered privatization (for logging)
+    """
+    cls_fqn = "::".join(cls.namespace + [cls.name])
+
+    def _replace_in_package(pkg: ModelPackage) -> None:
+        for parent_cls in pkg.classes:
+            for attr in parent_cls.attributes:
+                attr_fqn = "::".join(parent_cls.namespace + [parent_cls.name]) + "." + attr.name
+                # Check direct type reference via connector
+                if attr.connector is not None and attr.connector.end_object_id == cls.object_id:
+                    suffix = ""
+                    if attr.is_collection:
+                        suffix = " (sequence)"
+                    elif attr.is_map:
+                        suffix = " (map)"
+                    log.info("  → Replacing type with 'any' in %s%s", attr_fqn, suffix)
+                    attr.type = "any"
+                    attr.namespace = []
+                    attr.connector = None
+                # Check map key/value types (stored as qualified strings)
+                if attr.is_map:
+                    if attr.map_key_type == cls_fqn or attr.map_key_type == cls.name:
+                        log.info("  → Replacing map key type with 'any' in %s", attr_fqn)
+                        attr.map_key_type = "any"
+                    if attr.map_value_type == cls_fqn or attr.map_value_type == cls.name:
+                        log.info("  → Replacing map value type with 'any' in %s", attr_fqn)
+                        attr.map_value_type = "any"
+        for sub_pkg in pkg.packages:
+            _replace_in_package(sub_pkg)
+
+    _replace_in_package(root)
+
+
+def _privatize_stereotypes(root: ModelPackage, current: ModelPackage, config: Configuration) -> None:
+    """Privatize classes/attributes/packages with private stereotypes.
+
+    Instead of removing attributes that reference privatized classes, replaces
+    their type with 'any' to preserve structure while hiding type details.
+
+    Note: Uses custom recursion (like _filter_stereotypes) because it modifies
+    the tree structure.
+    """
+    if config.private_stereotypes is None:
+        return
+
+    # Pass 1: Privatize classes - remove them but replace references with 'any'
+    for stereotype in config.private_stereotypes:
+        for cls in current.classes[:]:
+            if stereotype in cls.stereotypes:
+                log.info(
+                    "Privatizing class %s (stereotype: %s)",
+                    "::".join(cls.namespace + [cls.name]),
+                    stereotype,
+                )
+                current.classes.remove(cls)
+                _replace_attr_type_with_any(root, cls, stereotype)
+
+    # Pass 2: Privatize individual attributes - replace type with 'any'
+    for cls in current.classes:
+        for attr in cls.attributes:
+            for stereotype in config.private_stereotypes:
+                if stereotype in attr.stereotypes:
+                    attr_fqn = "::".join(cls.namespace + [cls.name]) + "." + attr.name
+                    log.info(
+                        "Privatizing attribute %s (stereotype: %s) → type replaced with 'any'",
+                        attr_fqn,
+                        stereotype,
+                    )
+                    attr.type = "any"
+                    attr.namespace = []
+                    attr.connector = None
+
+    # Pass 3: Privatize packages - privatize all classes within, then remove package
+    for pkg in current.packages[:]:
+        for stereotype in config.private_stereotypes:
+            if stereotype in pkg.stereotypes:
+                class_count = _count_classes_in_package(pkg)
+                log.info(
+                    "Privatizing package %s (stereotype: %s) — %d class(es)",
+                    "::".join(pkg.namespace + [pkg.name]),
+                    stereotype,
+                    class_count,
+                )
+                _privatize_all_classes_in_package(root, pkg, stereotype)
+                current.packages.remove(pkg)
+
+    # Recurse into remaining packages
+    for pkg in current.packages:
+        _privatize_stereotypes(root, pkg, config)
+
+
+def _count_classes_in_package(pkg: ModelPackage) -> int:
+    """Count all classes in a package and its subpackages."""
+    count = len(pkg.classes)
+    for sub_pkg in pkg.packages:
+        count += _count_classes_in_package(sub_pkg)
+    return count
+
+
+def _privatize_all_classes_in_package(root: ModelPackage, pkg: ModelPackage, stereotype: str) -> None:
+    """Replace all references to classes in a package with 'any'."""
+    for cls in pkg.classes:
+        _replace_attr_type_with_any(root, cls, stereotype)
+    for sub_pkg in pkg.packages:
+        _privatize_all_classes_in_package(root, sub_pkg, stereotype)
+
+
+def privatize_stereotypes(
+    packages: List[ModelPackage],
+    config: Configuration,
+) -> None:
+    """Privatize classes and attributes with private stereotypes.
+
+    Removes classes tagged with stereotypes in config.private_stereotypes, but
+    instead of removing attributes that reference them, replaces their type with
+    'any'. This preserves structural information while hiding type details.
+
+    :param packages: Root packages to process
+    :param config: Configuration with private_stereotypes list
+    """
+    for package in packages:
+        _privatize_stereotypes(package, package, config)
+
+
 def _filter_empty_unions(roots: List[ModelPackage], current: ModelPackage, config: Configuration) -> None:
     """Filter empty or single-element unions from the model.
 

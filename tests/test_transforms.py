@@ -8,6 +8,7 @@ from eaidl.transforms import (
     find_unused_classes,
     filter_unused_classes,
     flatten_abstract_classes,
+    privatize_stereotypes,
     resolve_typedef_defaults,
 )
 from eaidl.model import ModelClass, ModelPackage, ModelAttribute, ModelConnection, ModelAnnotation
@@ -1513,3 +1514,450 @@ def test_resolve_typedef_defaults_enum_typedef_unchanged() -> None:
     default_ann = struct.attributes[0].properties["default"]
     assert default_ann.value_type == "object"
     assert default_ann.value == "SOME_VALUE"
+
+
+def test_privatize_stereotypes_basic() -> None:
+    """Test that privatized class is removed and references become 'any'."""
+    config = Configuration(template="idl_just_defs.jinja2")
+    config.private_stereotypes = ["lobw"]
+    mod = ModelPackage(name="root", package_id=0, object_id=1, guid=str(uuid.uuid4()))
+    # Private class to be removed
+    private_cls = ModelClass(
+        name="PrivateType",
+        stereotypes=[config.stereotypes.idl_struct, "lobw"],
+        object_id=10,
+        namespace=["root"],
+        is_struct=True,
+        parent=mod,
+    )
+    # Struct referencing private class
+    public_cls = ModelClass(
+        name="PublicStruct",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=20,
+        namespace=["root"],
+        is_struct=True,
+        parent=mod,
+    )
+    public_cls.attributes.append(
+        ModelAttribute(
+            name="private_field",
+            alias="private_field",
+            type="PrivateType",
+            attribute_id=1,
+            guid=str(uuid.uuid4()),
+            namespace=["root"],
+            connector=ModelConnection(
+                connector_id=1,
+                connector_type="Association",
+                start_object_id=20,
+                end_object_id=10,
+            ),
+        )
+    )
+    public_cls.attributes.append(
+        ModelAttribute(
+            name="normal_field",
+            alias="normal_field",
+            type="string",
+            attribute_id=2,
+            guid=str(uuid.uuid4()),
+            namespace=[],
+        )
+    )
+    mod.classes = [private_cls, public_cls]
+    privatize_stereotypes([mod], config)
+    # Private class removed
+    assert len(mod.classes) == 1
+    assert mod.classes[0].name == "PublicStruct"
+    # Attribute type replaced with 'any'
+    attr = mod.classes[0].attributes[0]
+    assert attr.name == "private_field"
+    assert attr.type == "any"
+    assert attr.namespace == []
+    assert attr.connector is None
+    # Normal field untouched
+    assert mod.classes[0].attributes[1].type == "string"
+
+
+def test_privatize_stereotypes_union_member() -> None:
+    """Test union member referencing private class gets type 'any', union preserved."""
+    config = Configuration(template="idl_just_defs.jinja2")
+    config.private_stereotypes = ["lobw"]
+    mod = ModelPackage(name="root", package_id=0, object_id=1, guid=str(uuid.uuid4()))
+    private_cls = ModelClass(
+        name="PrivateType",
+        stereotypes=[config.stereotypes.idl_struct, "lobw"],
+        object_id=10,
+        namespace=["root"],
+        is_struct=True,
+        parent=mod,
+    )
+    public_cls = ModelClass(
+        name="PublicType",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=11,
+        namespace=["root"],
+        is_struct=True,
+        parent=mod,
+    )
+    union_cls = ModelClass(
+        name="MyUnion",
+        stereotypes=[config.stereotypes.idl_union],
+        object_id=20,
+        namespace=["root"],
+        is_union=True,
+        union_enum="root::MyEnum",
+        parent=mod,
+    )
+    union_cls.attributes = [
+        ModelAttribute(
+            name="public_member",
+            alias="public_member",
+            type="PublicType",
+            attribute_id=1,
+            guid=str(uuid.uuid4()),
+            namespace=["root"],
+            union_key="PUBLIC",
+            connector=ModelConnection(
+                connector_id=1,
+                connector_type="Association",
+                start_object_id=20,
+                end_object_id=11,
+            ),
+        ),
+        ModelAttribute(
+            name="private_member",
+            alias="private_member",
+            type="PrivateType",
+            attribute_id=2,
+            guid=str(uuid.uuid4()),
+            namespace=["root"],
+            union_key="PRIVATE",
+            connector=ModelConnection(
+                connector_id=2,
+                connector_type="Association",
+                start_object_id=20,
+                end_object_id=10,
+            ),
+        ),
+    ]
+    mod.classes = [private_cls, public_cls, union_cls]
+    privatize_stereotypes([mod], config)
+    # Union still has 2 members
+    assert len(union_cls.attributes) == 2
+    # Public member untouched
+    assert union_cls.attributes[0].type == "PublicType"
+    assert union_cls.attributes[0].connector is not None
+    # Private member replaced with 'any'
+    assert union_cls.attributes[1].type == "any"
+    assert union_cls.attributes[1].namespace == []
+    assert union_cls.attributes[1].connector is None
+    # Union key preserved
+    assert union_cls.attributes[1].union_key == "PRIVATE"
+
+
+def test_privatize_stereotypes_collection() -> None:
+    """Test sequence<PrivateType> becomes sequence<any>."""
+    config = Configuration(template="idl_just_defs.jinja2")
+    config.private_stereotypes = ["lobw"]
+    mod = ModelPackage(name="root", package_id=0, object_id=1, guid=str(uuid.uuid4()))
+    private_cls = ModelClass(
+        name="PrivateType",
+        stereotypes=[config.stereotypes.idl_struct, "lobw"],
+        object_id=10,
+        namespace=["root"],
+        is_struct=True,
+        parent=mod,
+    )
+    struct_cls = ModelClass(
+        name="MyStruct",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=20,
+        namespace=["root"],
+        is_struct=True,
+        parent=mod,
+    )
+    struct_cls.attributes.append(
+        ModelAttribute(
+            name="items",
+            alias="items",
+            type="PrivateType",
+            attribute_id=1,
+            guid=str(uuid.uuid4()),
+            namespace=["root"],
+            is_collection=True,
+            connector=ModelConnection(
+                connector_id=1,
+                connector_type="Association",
+                start_object_id=20,
+                end_object_id=10,
+            ),
+        )
+    )
+    mod.classes = [private_cls, struct_cls]
+    privatize_stereotypes([mod], config)
+    attr = struct_cls.attributes[0]
+    assert attr.type == "any"
+    assert attr.is_collection is True
+    assert attr.namespace == []
+    # Verify rendering
+    result = render(config, [mod])
+    assert "sequence<any>" in result
+
+
+def test_privatize_stereotypes_map() -> None:
+    """Test map with private key/value type gets replaced."""
+    config = Configuration(template="idl_just_defs.jinja2")
+    config.private_stereotypes = ["lobw"]
+    mod = ModelPackage(name="root", package_id=0, object_id=1, guid=str(uuid.uuid4()))
+    private_cls = ModelClass(
+        name="PrivateType",
+        stereotypes=[config.stereotypes.idl_struct, "lobw"],
+        object_id=10,
+        namespace=["root"],
+        is_struct=True,
+        parent=mod,
+    )
+    struct_cls = ModelClass(
+        name="MyStruct",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=20,
+        namespace=["root"],
+        is_struct=True,
+        parent=mod,
+    )
+    struct_cls.attributes.append(
+        ModelAttribute(
+            name="data",
+            alias="data",
+            type="PrivateType",
+            attribute_id=1,
+            guid=str(uuid.uuid4()),
+            namespace=["root"],
+            is_map=True,
+            map_key_type="string",
+            map_value_type="root::PrivateType",
+            connector=ModelConnection(
+                connector_id=1,
+                connector_type="Association",
+                start_object_id=20,
+                end_object_id=10,
+            ),
+        )
+    )
+    mod.classes = [private_cls, struct_cls]
+    privatize_stereotypes([mod], config)
+    attr = struct_cls.attributes[0]
+    assert attr.type == "any"
+    assert attr.map_key_type == "string"
+    assert attr.map_value_type == "any"
+
+
+def test_privatize_stereotypes_attribute_level() -> None:
+    """Test individual attribute tagged with private stereotype gets type replaced."""
+    config = Configuration(template="idl_just_defs.jinja2")
+    config.private_stereotypes = ["lobw"]
+    mod = ModelPackage(name="root", package_id=0, object_id=1, guid=str(uuid.uuid4()))
+    struct_cls = ModelClass(
+        name="MyStruct",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=20,
+        namespace=["root"],
+        is_struct=True,
+        parent=mod,
+    )
+    struct_cls.attributes = [
+        ModelAttribute(
+            name="secret_field",
+            alias="secret_field",
+            type="string",
+            attribute_id=1,
+            guid=str(uuid.uuid4()),
+            namespace=[],
+            stereotypes=["lobw"],
+        ),
+        ModelAttribute(
+            name="public_field",
+            alias="public_field",
+            type="int",
+            attribute_id=2,
+            guid=str(uuid.uuid4()),
+            namespace=[],
+        ),
+    ]
+    mod.classes = [struct_cls]
+    privatize_stereotypes([mod], config)
+    # Attribute kept but type replaced
+    assert len(struct_cls.attributes) == 2
+    assert struct_cls.attributes[0].name == "secret_field"
+    assert struct_cls.attributes[0].type == "any"
+    assert struct_cls.attributes[0].namespace == []
+    # Public field untouched
+    assert struct_cls.attributes[1].type == "int"
+
+
+def test_privatize_stereotypes_package_level() -> None:
+    """Test package tagged with private stereotype: all classes privatized, package removed."""
+    config = Configuration(template="idl_just_defs.jinja2")
+    config.private_stereotypes = ["lobw"]
+    mod = ModelPackage(name="root", package_id=0, object_id=1, guid=str(uuid.uuid4()))
+    private_pkg = ModelPackage(
+        name="internal",
+        package_id=2,
+        object_id=100,
+        guid=str(uuid.uuid4()),
+        stereotypes=["lobw"],
+        namespace=["root"],
+    )
+    private_cls = ModelClass(
+        name="InternalType",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=10,
+        namespace=["root", "internal"],
+        is_struct=True,
+        parent=private_pkg,
+    )
+    private_pkg.classes = [private_cls]
+    # Public struct in root referencing private class
+    public_cls = ModelClass(
+        name="PublicStruct",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=20,
+        namespace=["root"],
+        is_struct=True,
+        parent=mod,
+    )
+    public_cls.attributes.append(
+        ModelAttribute(
+            name="internal_ref",
+            alias="internal_ref",
+            type="InternalType",
+            attribute_id=1,
+            guid=str(uuid.uuid4()),
+            namespace=["root", "internal"],
+            connector=ModelConnection(
+                connector_id=1,
+                connector_type="Association",
+                start_object_id=20,
+                end_object_id=10,
+            ),
+        )
+    )
+    mod.classes = [public_cls]
+    mod.packages = [private_pkg]
+    privatize_stereotypes([mod], config)
+    # Package removed
+    assert len(mod.packages) == 0
+    # Reference replaced with 'any'
+    attr = public_cls.attributes[0]
+    assert attr.type == "any"
+    assert attr.namespace == []
+    assert attr.connector is None
+
+
+def test_privatize_and_filter_together() -> None:
+    """Test both filter_stereotypes and private_stereotypes work together."""
+    config = Configuration(template="idl_just_defs.jinja2")
+    config.filter_stereotypes = ["experimental"]
+    config.private_stereotypes = ["lobw"]
+    mod = ModelPackage(name="root", package_id=0, object_id=1, guid=str(uuid.uuid4()))
+    # Class to be fully removed
+    experimental_cls = ModelClass(
+        name="ExperimentalType",
+        stereotypes=[config.stereotypes.idl_struct, "experimental"],
+        object_id=10,
+        namespace=["root"],
+        is_struct=True,
+        parent=mod,
+    )
+    # Class to be privatized
+    private_cls = ModelClass(
+        name="PrivateType",
+        stereotypes=[config.stereotypes.idl_struct, "lobw"],
+        object_id=11,
+        namespace=["root"],
+        is_struct=True,
+        parent=mod,
+    )
+    # Public struct referencing both
+    public_cls = ModelClass(
+        name="PublicStruct",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=20,
+        namespace=["root"],
+        is_struct=True,
+        parent=mod,
+    )
+    public_cls.attributes = [
+        ModelAttribute(
+            name="experimental_ref",
+            alias="experimental_ref",
+            type="ExperimentalType",
+            attribute_id=1,
+            guid=str(uuid.uuid4()),
+            namespace=["root"],
+            connector=ModelConnection(
+                connector_id=1,
+                connector_type="Association",
+                start_object_id=20,
+                end_object_id=10,
+            ),
+        ),
+        ModelAttribute(
+            name="private_ref",
+            alias="private_ref",
+            type="PrivateType",
+            attribute_id=2,
+            guid=str(uuid.uuid4()),
+            namespace=["root"],
+            connector=ModelConnection(
+                connector_id=2,
+                connector_type="Association",
+                start_object_id=20,
+                end_object_id=11,
+            ),
+        ),
+    ]
+    mod.classes = [experimental_cls, private_cls, public_cls]
+    # Privatize first (as in generate.py)
+    privatize_stereotypes([mod], config)
+    # Then filter
+    filter_stereotypes([mod], config)
+    # Only public struct remains
+    assert len(mod.classes) == 1
+    assert mod.classes[0].name == "PublicStruct"
+    # experimental_ref removed entirely by filter
+    assert len(public_cls.attributes) == 1
+    # private_ref replaced with 'any'
+    assert public_cls.attributes[0].name == "private_ref"
+    assert public_cls.attributes[0].type == "any"
+
+
+def test_privatize_stereotypes_no_matches() -> None:
+    """Test private_stereotypes with no matching classes does nothing."""
+    config = Configuration(template="idl_just_defs.jinja2")
+    config.private_stereotypes = ["nonexistent"]
+    mod = ModelPackage(name="root", package_id=0, object_id=1, guid=str(uuid.uuid4()))
+    cls = ModelClass(
+        name="MyStruct",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=10,
+        namespace=["root"],
+        is_struct=True,
+        parent=mod,
+    )
+    cls.attributes.append(
+        ModelAttribute(
+            name="field",
+            alias="field",
+            type="string",
+            attribute_id=1,
+            guid=str(uuid.uuid4()),
+            namespace=[],
+        )
+    )
+    mod.classes = [cls]
+    privatize_stereotypes([mod], config)
+    assert len(mod.classes) == 1
+    assert cls.attributes[0].type == "string"

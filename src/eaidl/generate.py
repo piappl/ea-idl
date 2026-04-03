@@ -9,6 +9,7 @@ from eaidl.transforms import (
     filter_empty_unions,
     filter_unused_classes,
     flatten_abstract_classes,
+    privatize_stereotypes,
     resolve_typedef_defaults,
 )
 
@@ -80,8 +81,11 @@ def generate(config: Configuration, packages: List[ModelPackage]) -> str:
     # before any stereotype-based filtering happens
     if config.flatten_abstract_classes:
         flatten_abstract_classes(packages)
+    if config.private_stereotypes is not None:
+        privatize_stereotypes(packages, config)
     if config.filter_stereotypes is not None:
         filter_stereotypes(packages, config)
+    if config.filter_stereotypes is not None or config.private_stereotypes is not None:
         filter_empty_unions(packages, config)
     if config.filter_unused_classes:
         filter_unused_classes(packages, config, config.unused_root_property, remove=True)
