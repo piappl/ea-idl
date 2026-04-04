@@ -75,9 +75,8 @@ def topological_sort_classes(classes: List[ModelClass], scc_map: Dict[int, Set[i
     def is_soft_dependency(src: ModelClass, target_id: int) -> bool:
         """
         Check if a dependency from src to target_id is 'soft' (allowed to be circular).
-        A dependency is soft if it's a member of a union or a collection member in a struct.
-        Typedefs are ALWAYS hard dependencies because the base type must be declared
-        at the point of typedef definition.
+        A dependency is soft if it goes through a collection type (sequence<>, map<>).
+        Typedefs are ALWAYS hard dependencies unless they use collection types.
         """
         target = id_to_class.get(target_id)
         if not target:
@@ -93,9 +92,9 @@ def topological_sort_classes(classes: List[ModelClass], scc_map: Dict[int, Set[i
             return False  # Hard - direct typedef needs full definition
 
         # Struct and union members: soft if ALL attributes of that type are collections.
-        # While the union itself can be forward-declared, its member types must be
-        # complete (fully defined) at the point of the union's full definition.
-        # Only collection types (sequence<>, map<>) break the completeness requirement.
+        # Both structs and unions need their member types to be complete (fully defined)
+        # at the point of the full definition. Only collection types (sequence<>, map<>)
+        # break the completeness requirement in C++.
         target_name = target.name
         found_any = False
         for attr in src.attributes:

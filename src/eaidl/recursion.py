@@ -137,8 +137,9 @@ def find_type_cycles(packages: List[ModelPackage], check_non_collection_cycles: 
                     # Track in all_deps_graph
                     all_deps_graph[cls_id].append((target.object_id, attr.name, attr.is_collection))
 
-                    # For sequence_deps_graph: only track sequences (for structs) or all members (for unions)
-                    if cls.is_union or attr.is_collection:
+                    # For sequence_deps_graph: only track collection members (sequence<>, map<>)
+                    # Both structs and unions need complete types for by-value members
+                    if attr.is_collection:
                         sequence_deps_graph[cls_id].append(target.object_id)
 
     # Find ALL cycles using the full dependency graph
@@ -163,10 +164,10 @@ def find_type_cycles(packages: List[ModelPackage], check_non_collection_cycles: 
             cls = all_types[cls_id]
             for target_id, attr_name, is_collection in all_deps_graph[cls_id]:
                 if target_id in scc:  # Dependency within this SCC
-                    if cls.is_union or is_collection:
+                    if is_collection:
                         has_sequence = True
                     else:
-                        # Non-sequence edge in cycle
+                        # Non-collection edge in cycle
                         target = all_types[target_id]
                         missing_sequence_edges.append((cls.full_name, attr_name, target.full_name))
 
@@ -177,6 +178,14 @@ def find_type_cycles(packages: List[ModelPackage], check_non_collection_cycles: 
                 cls = all_types[node_id]
                 type_kind = "typedef" if cls.is_typedef else ("struct" if cls.is_struct else "union")
                 log.debug(f"{type_kind.capitalize()} {cls.full_name} is in SCC of size {len(scc)}")
+            # Warn about by-value edges that may cause C++ incomplete type errors
+            if missing_sequence_edges:
+                edge_list = ", ".join([f"{src}.{attr} -> {tgt}" for src, attr, tgt in missing_sequence_edges])
+                log.warning(
+                    f"Cycle has non-collection (by-value) edges that may cause C++ "
+                    f"incomplete type errors: {edge_list}. "
+                    f"Consider marking these attributes as IsCollection=true in the model."
+                )
         elif check_non_collection_cycles:
             # Cycle with NO sequences - this is an error if checking is enabled
             cycle_types = [all_types[cls_id].full_name for cls_id in scc]
