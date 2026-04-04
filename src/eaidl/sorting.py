@@ -83,11 +83,6 @@ def topological_sort_classes(classes: List[ModelClass], scc_map: Dict[int, Set[i
         if not target:
             return False
 
-        # Union members are soft because unions can be forward declared
-        # and their full definition (which uses the member) happens in Pass 2.
-        if src.is_union:
-            return True
-
         # Typedefs: Check if they use collection types (sequence/map)
         # For 'typedef sequence<S> T', S only needs to be forward declared (soft dependency)
         # For 'typedef S T', S needs to be fully defined (hard dependency)
@@ -97,7 +92,10 @@ def topological_sort_classes(classes: List[ModelClass], scc_map: Dict[int, Set[i
                 return True  # Soft - collection types only need forward declaration
             return False  # Hard - direct typedef needs full definition
 
-        # Struct members: soft if ALL attributes of that type are collections
+        # Struct and union members: soft if ALL attributes of that type are collections.
+        # While the union itself can be forward-declared, its member types must be
+        # complete (fully defined) at the point of the union's full definition.
+        # Only collection types (sequence<>, map<>) break the completeness requirement.
         target_name = target.name
         found_any = False
         for attr in src.attributes:
