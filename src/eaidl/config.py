@@ -134,7 +134,7 @@ class Configuration(BaseModel):
     private_stereotypes: Optional[List[str]] = None
     #: If True, collapse empty unions by default and use keep_union_stereotype to preserve them
     #: If False, keep empty unions by default and use collapse_union_stereotype to remove them
-    collapse_empty_unions_by_default: bool = True
+    collapse_empty_unions_by_default: bool = False
     #: Stereotype used to keep unions when collapse_empty_unions_by_default is True
     keep_union_stereotype: Optional[str] = "keep"
     #: Stereotype used to collapse unions when collapse_empty_unions_by_default is False
@@ -154,13 +154,13 @@ class Configuration(BaseModel):
     #: List of packages to ignore
     ignore_packages: List[str] = []
     #: Name of minimum amount of items annotation
-    min_items: str = "ext::minItems"
+    min_items: str = "ext::min_items"
     #: Name of maximum amount of items annotation
-    max_items: str = "ext::maxItems"
+    max_items: str = "ext::max_items"
     #: Name of minimum slength annotation
-    min_length: str = "ext::minLength"
+    min_length: str = "ext::min_length"
     #: Name of maximum length annotation
-    max_length: str = "ext::maxLength"
+    max_length: str = "ext::max_length"
     #: Mapping of EA primitive types to IDL types.
     #: Keys are types as they appear in EA model, values are IDL types to output.
     #: For those types we don't look for connection in attribute.
@@ -189,28 +189,53 @@ class Configuration(BaseModel):
         "unsigned int": "unsigned long",  # unsigned int -> unsigned long
     }
     #: If we want to output stereotype as annotation
-    annotations_from_stereotypes: List[str] = ["interface"]
+    annotations_from_stereotypes: List[str] = []
     annotations: Dict[str, AnnotationType] = {
         "maximum": AnnotationType(
             idl_name="max",
             idl_default=True,
         ),
-        "exclusiveMaximum": AnnotationType(idl_default=False, idl_types=["any value;"]),
+        "exclusive_maximum": AnnotationType(
+            idl_default=False,
+            idl_types=["any value;"],
+        ),
         "minimum": AnnotationType(idl_name="min", idl_default=True),
         "optional": AnnotationType(idl_name="optional", idl_default=True),
-        "exclusiveMinimum": AnnotationType(idl_default=False, idl_types=["any value;"]),
-        "maxItems": AnnotationType(idl_default=False, idl_types=["unsigned long value;"]),
-        "minItems": AnnotationType(idl_default=False, idl_types=["unsigned long value;"]),
+        "exclusive_minimum": AnnotationType(
+            idl_default=False,
+            idl_types=["any value;"],
+        ),
+        "max_items": AnnotationType(
+            idl_default=False,
+            idl_types=["unsigned long value;"],
+        ),
+        "min_items": AnnotationType(
+            idl_default=False,
+            idl_types=["unsigned long value;"],
+        ),
+        "min_length": AnnotationType(
+            idl_default=False,
+            idl_types=["unsigned long value;"],
+        ),
+        "max_length": AnnotationType(
+            idl_default=False,
+            idl_types=["unsigned long value;"],
+        ),
         "unit": AnnotationType(
             idl_default=True,
         ),
-        "interface": AnnotationType(idl_name="interface", idl_default=False),
-        "pattern": AnnotationType(
+        "pattern_ecma262": AnnotationType(
             idl_default=False,
             idl_types=["string value;"],
-            notes="Regular expression to match.",
         ),
-        "isFinalSpecialization": AnnotationType(idl_default=True, idl_name="final"),
+        "pattern_xsd": AnnotationType(
+            idl_default=False,
+            idl_types=["string value;"],
+        ),
+        "pattern_python": AnnotationType(
+            idl_default=False,
+            idl_types=["string value;"],
+        ),
     }
     #: List of validation runs fail generation
     validators_fail: List[str] = [
@@ -272,7 +297,7 @@ class Configuration(BaseModel):
     #: Optional preprocessor flag name to wrap ext annotation definitions.
     #: If set, the ext annotations section will be wrapped with #ifdef or #ifndef.
     #: If None (default), no preprocessor directive is added.
-    ext_ifdef_flag: Optional[str] = None
+    ext_ifdef_flag: Optional[str] = "LOCAL_EXT_DEFINED"
     #: If True, use #ifndef instead of #ifdef for the ext annotations section.
     #: Only applies when ext_ifdef_flag is set.
     ext_ifdef_negate: bool = False

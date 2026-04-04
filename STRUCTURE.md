@@ -156,23 +156,23 @@ The `filter_empty_unions()` transformation handles empty and single-element unio
 
 **Two modes of operation:**
 
-**Mode 1: Collapse by default** (default behavior)
-- Empty/single unions are removed unless marked with `<<keep>>` stereotype
-- Configuration:
-  ```python
-  collapse_empty_unions_by_default: bool = True  # default
-  keep_union_stereotype: str = "keep"  # stereotype to preserve unions
-  ```
-
-**Mode 2: Keep by default**
+**Mode 1: Keep by default** (default behavior)
 - Empty/single unions are preserved unless marked with `<<collapse>>` stereotype
 - Configuration:
   ```python
-  collapse_empty_unions_by_default: bool = False
+  collapse_empty_unions_by_default: bool = False  # default
   collapse_union_stereotype: str = "collapse"  # stereotype to remove unions
   ```
 
-**Example (collapse by default):**
+**Mode 2: Collapse by default**
+- Empty/single unions are removed unless marked with `<<keep>>` stereotype
+- Configuration:
+  ```python
+  collapse_empty_unions_by_default: bool = True
+  keep_union_stereotype: str = "keep"  # stereotype to preserve unions
+  ```
+
+**Example (collapse mode):**
 ```python
 # Input model:
 EmptyUnion (union)

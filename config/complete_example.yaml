@@ -55,15 +55,15 @@ root_packages:
 # =============================================================================
 # Control how empty and single-element unions are handled
 #
-# Mode 1: Collapse by default (default behavior)
-# - Empty/single unions are removed unless marked with <<keep>> stereotype
-# collapse_empty_unions_by_default: true  # default
-# keep_union_stereotype: "keep"  # stereotype to preserve unions
-#
-# Mode 2: Keep by default
+# Mode 1: Keep by default (default behavior)
 # - Empty/single unions are preserved unless marked with <<collapse>> stereotype
-# collapse_empty_unions_by_default: false
+# collapse_empty_unions_by_default: false  # default
 # collapse_union_stereotype: "collapse"  # stereotype to remove unions
+#
+# Mode 2: Collapse by default
+# - Empty/single unions are removed unless marked with <<keep>> stereotype
+# collapse_empty_unions_by_default: true
+# keep_union_stereotype: "keep"  # stereotype to preserve unions
 
 # =============================================================================
 # Template Selection
@@ -149,6 +149,12 @@ allowed_abbreviations:
 # output_unlinked_notes: false
 # Allow recursive struct definitions (IDL 4.2+)
 # allow_recursive_structs: true
+
+# =============================================================================
+# Private Extensions
+# =============================================================================
+# Flag name for #ifdef guarding private extension annotations.
+# ext_ifdef_flag: "LOCAL_EXT_DEFINED"  # default
 
 # =============================================================================
 # Usage Examples

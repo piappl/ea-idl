@@ -89,16 +89,16 @@ struct Store {
     sequence<core::data::types::Identifier> sequence;
     @optional
     core::data::types::Identifier optional_one;
-    @ext::maxItems(5)
+    @ext::max_items(5)
     sequence<core::data::types::Identifier, 5> sequence_upper_bound;
-    @ext::minItems(1)
+    @ext::min_items(1)
     sequence<core::data::types::Identifier> sequence_lower_bound;
-    @ext::minItems(1)
-    @ext::maxItems(5)
+    @ext::min_items(1)
+    @ext::max_items(5)
     sequence<core::data::types::Identifier, 5> sequence_bound;
     @optional
     sequence<core::data::types::Identifier> optional_sequence;
-    @ext::maxItems(5)
+    @ext::max_items(5)
     @optional
     sequence<core::data::types::Identifier, 5> optional_sequence_upper_bound;
 };
@@ -183,25 +183,27 @@ struct MessageHeader {
 
 ## Mapping
 
-| Model name            | IDL name         | custom | comment                                                                            |
-| --------------------- | ---------------- | ------ | ---------------------------------------------------------------------------------- |
-| maximum               | max              | false  | inclusive maximum                                                                  |
-| exclusiveMaximum      | exclusiveMaximum | true   |                                                                                    |
-| minimum               | min              | false  | inclusive minimum                                                                  |
-| exclusiveMinimum      | exclusiveMinimum | true   |                                                                                    |
-| pattern               | pattern          | true   | for compatibility patterns should use the most universal syntax (check below)      |
-| interface             | interface        | true   | for messages/interface definitinons (top level)                                    |
-| maxItems              | maxItems         | true   |                                                                                    |
-| minItems              | minItems         | true   |                                                                                    |
-| isFinalSpecialization | final            |        |                                                                                    |
-|                       | appendable       |        |                                                                                    |
-|                       | mutable          |        |                                                                                    |
-| unit                  | unit             | false  | unit, prefer <https://www.bipm.org/en/measurement-units> as stated in IDL definition |
-|                       | value            |        | taken from initial value of attribute                                              |
+| Model name            | IDL name            | custom | comment                                                                            |
+| --------------------- | ------------------- | ------ | ---------------------------------------------------------------------------------- |
+| maximum               | max                 | false  | inclusive maximum                                                                  |
+| exclusive_maximum     | exclusive_maximum   | true   |                                                                                    |
+| minimum               | min                 | false  | inclusive minimum                                                                  |
+| exclusive_minimum     | exclusive_minimum   | true   |                                                                                    |
+| pattern_ecma262       | pattern_ecma262     | true   | ECMA-262 regex (used in JSON Schema)                                               |
+| pattern_xsd           | pattern_xsd         | true   | W3C XML Schema regex                                                               |
+| pattern_python        | pattern_python      | true   | Python regex                                                                       |
+| max_items             | max_items           | true   |                                                                                    |
+| min_items             | min_items           | true   |                                                                                    |
+| min_length            | min_length          | true   |                                                                                    |
+| max_length            | max_length          | true   |                                                                                    |
+|                       | appendable          |        |                                                                                    |
+|                       | mutable             |        |                                                                                    |
+| unit                  | unit                | false  | unit, prefer <https://www.bipm.org/en/measurement-units> as stated in IDL definition |
+|                       | value               |        | taken from initial value of attribute                                              |
 
 ### Regular expression syntax
 
-IDL standard does not specify any particular regular expression language for pattern model.
+The `pattern_ecma262`, `pattern_xsd`, and `pattern_python` annotations allow specifying regex patterns in the appropriate dialect for each target. The old `pattern` annotation has been replaced by these dialect-specific variants.
 
 We aim for compatibility with multiple regex engines, primarily:
 
@@ -211,7 +213,7 @@ We aim for compatibility with multiple regex engines, primarily:
 - W3C XML Schema (used in XSD)
 - ECMA-262 (used in JSON Schema)
 
-Those engines differ in syntax and functionality, so a simple syntax subset should be used.
+Those engines differ in syntax and functionality, so a simple syntax subset should be used when targeting multiple dialects.
 
 Their syntax overlap but none is a strict subset of the others, so we constrain ourselves to the small intersection described below.
 

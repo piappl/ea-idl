@@ -91,19 +91,17 @@ class TestFindAnnotation:
 
 
 def _make_config_with_aliases() -> Configuration:
-    """Create a config that renames exclusiveMaximum -> exclusive_maximum via alias."""
+    """Create a config with exclusive_maximum having an alias for exclusiveMaximum."""
     config = Configuration()
     config.database_url = f"sqlite+pysqlite:///{(Path(__file__).parent / 'data' / 'nafv4.qea').as_posix()}"
     config.root_packages = ["{753A4DFC-7876-4b00-BB5A-6274AD3817C3}"]
     config.reserved_words_action = "allow"
-    # Rename exclusiveMaximum -> exclusive_maximum via alias
+    # Add alias to the existing exclusive_maximum key
     config.annotations["exclusive_maximum"] = AnnotationType(
         idl_default=False,
         idl_types=["any value;"],
         aliases=["exclusiveMaximum"],
     )
-    # Remove the original key so only the alias path works
-    del config.annotations["exclusiveMaximum"]
     return config
 
 
@@ -192,6 +190,6 @@ def test_without_alias_uses_original_names():
     parser = ModelParser(config)
     idl_output = generate(config, parser.load())
 
-    # Default config uses "exclusiveMaximum" as the key directly
-    assert "@annotation exclusiveMaximum" in idl_output
-    assert "@ext::exclusiveMaximum(" in idl_output
+    # Default config uses "exclusive_maximum" as the key
+    assert "@annotation exclusive_maximum" in idl_output
+    assert "@ext::exclusive_maximum(" in idl_output

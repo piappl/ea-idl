@@ -726,7 +726,7 @@ class JsonSchemaImporter:
 
         # Pattern for strings
         if "pattern" in schema:
-            attr.properties["pattern"] = ModelAnnotation(value=schema["pattern"], value_type="str")
+            attr.properties["pattern_ecma262"] = ModelAnnotation(value=schema["pattern"], value_type="str")
 
         # Default value
         if "default" in schema:

@@ -207,20 +207,21 @@ def test_validate_generated_idl_on_the_fly() -> None:
 def test_ext_ifdef_flag_not_set() -> None:
     """Test that without ext_ifdef_flag, no preprocessor directives are added."""
     config = Configuration()
+    config.ext_ifdef_flag = None
     # Create a simple package with property_types (ext annotations)
     ext_pkg = ModelPackage(
         name="ext",
         package_id=-1,
         object_id=-1,
         guid=str(uuid.uuid4()),
-        property_types=[ModelPropertyType(property="maxItems", property_types=["unsigned long value;"])],
+        property_types=[ModelPropertyType(property="max_items", property_types=["unsigned long value;"])],
     )
     idl_output = render(config, [ext_pkg])
 
     assert "#ifdef" not in idl_output
     assert "#ifndef" not in idl_output
     assert "#endif" not in idl_output
-    assert "@annotation maxItems" in idl_output
+    assert "@annotation max_items" in idl_output
 
 
 def test_ext_ifdef_flag_set() -> None:

@@ -250,7 +250,7 @@ def build_union_structure(config: Configuration) -> ModelPackage:
 
 
 def test_filter_empty_unions() -> None:
-    config = Configuration(template="idl_just_defs.jinja2")
+    config = Configuration(template="idl_just_defs.jinja2", collapse_empty_unions_by_default=True)
     mod = build_union_structure(config)
     # print(render(config, mod))
     # module root {
@@ -277,7 +277,7 @@ def test_filter_empty_unions() -> None:
 
 
 def test_filter_one_union_member() -> None:
-    config = Configuration(template="idl_just_defs.jinja2")
+    config = Configuration(template="idl_just_defs.jinja2", collapse_empty_unions_by_default=True)
     mod = build_union_structure(config)
     # This is similar to test for removing empty unions, but we add one member
     un = find_class([mod], lambda c: c.object_id == 1)

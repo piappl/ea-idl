@@ -191,10 +191,10 @@ def test_parse_array_schema(tmp_path):
     assert points_attr.is_collection
     assert points_attr.type == "Point"
 
-    assert "ext::minItems" in points_attr.properties
-    assert "ext::maxItems" in points_attr.properties
-    assert points_attr.properties["ext::minItems"].value == 1
-    assert points_attr.properties["ext::maxItems"].value == 10
+    assert "ext::min_items" in points_attr.properties
+    assert "ext::max_items" in points_attr.properties
+    assert points_attr.properties["ext::min_items"].value == 1
+    assert points_attr.properties["ext::max_items"].value == 10
 
 
 def test_parse_nested_array_schema(tmp_path):
@@ -397,8 +397,8 @@ def test_constraints_as_annotations(tmp_path):
 
     # Check pattern constraint
     name_attr = next(attr for attr in measurement_cls.attributes if attr.name == "name")
-    assert "pattern" in name_attr.properties
-    assert name_attr.properties["pattern"].value == "^[a-zA-Z]+$"
+    assert "pattern_ecma262" in name_attr.properties
+    assert name_attr.properties["pattern_ecma262"].value == "^[a-zA-Z]+$"
 
 
 def test_database_import(config, tmp_path):
