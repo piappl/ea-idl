@@ -3,7 +3,7 @@
 import json
 import pytest
 from click.testing import CliRunner
-from eaidl.cli import cli, run, change, diagram, packages
+from eaidl.cli import cli, run, change, diagram, packages, export_diagrams
 
 
 @pytest.fixture
@@ -236,3 +236,60 @@ class TestCLIGroup:
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert isinstance(data, list)
+
+
+class TestExportDiagramsCommand:
+    """Tests for the 'export-diagrams' command."""
+
+    def test_yaml_output(self, runner, temp_config, tmp_path):
+        """Test default YAML export writes files to output directory."""
+        result = runner.invoke(
+            export_diagrams,
+            ["--config", str(temp_config), "--output", str(tmp_path), "--format", "yaml"],
+        )
+        assert result.exit_code == 0
+        yaml_files = list(tmp_path.glob("*.yaml"))
+        assert len(yaml_files) > 0
+        assert "Exported" in result.output
+
+    def test_json_output(self, runner, temp_config, tmp_path):
+        """Test JSON export produces valid JSON files."""
+        result = runner.invoke(
+            export_diagrams,
+            ["--config", str(temp_config), "--output", str(tmp_path), "--format", "json"],
+        )
+        assert result.exit_code == 0
+        json_files = list(tmp_path.glob("*.json"))
+        assert len(json_files) > 0
+        # Verify produced valid JSON
+        data = json.loads(json_files[0].read_text())
+        assert "name" in data
+
+    def test_svg_output(self, runner, temp_config, tmp_path):
+        """Test SVG export produces SVG files."""
+        result = runner.invoke(
+            export_diagrams,
+            ["--config", str(temp_config), "--output", str(tmp_path), "--format", "svg"],
+        )
+        assert result.exit_code == 0
+        svg_files = list(tmp_path.glob("*.svg"))
+        assert len(svg_files) > 0
+        assert "<svg" in svg_files[0].read_text()
+
+    def test_invalid_diagram_id(self, runner, temp_config, tmp_path):
+        """Test --diagram-id with a non-existent ID."""
+        result = runner.invoke(
+            export_diagrams,
+            ["--config", str(temp_config), "--output", str(tmp_path), "--diagram-id", "999999"],
+        )
+        # Should fail or report no diagrams — not crash with a traceback
+        assert "Traceback" not in result.output
+
+    def test_via_cli_group(self, runner, temp_config, tmp_path):
+        """Test export-diagrams is reachable via the CLI group."""
+        result = runner.invoke(
+            cli,
+            ["export-diagrams", "--config", str(temp_config), "--output", str(tmp_path)],
+        )
+        assert result.exit_code == 0
+        assert "Exported" in result.output
