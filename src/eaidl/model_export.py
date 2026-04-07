@@ -12,11 +12,13 @@ import yaml
 from eaidl.config import Configuration
 from eaidl.load import ModelParser
 from eaidl.model import (
+
     ModelAttribute,
     ModelClass,
     ModelDiagram,
     ModelPackage,
 )
+from eaidl.tree_utils import collect_packages
 
 log = logging.getLogger(__name__)
 
@@ -75,14 +77,15 @@ class ModelExporter:
         self.parser = parser
 
     def export(self, packages: List[ModelPackage]) -> Dict[str, Any]:
-        """Export full model to a dict."""
+        """Export full model to a flat dict (all packages at top level)."""
+        all_packages = collect_packages(packages)
         return {
             "metadata": {
                 "database_url": self.config.database_url,
                 "root_packages": self.config.root_packages,
                 "export_date": datetime.now(timezone.utc).isoformat(),
             },
-            "packages": [self._export_package(pkg) for pkg in packages],
+            "packages": [self._export_package(pkg) for pkg in all_packages],
         }
 
     def _export_package(self, package: ModelPackage) -> Dict[str, Any]:
@@ -101,7 +104,7 @@ class ModelExporter:
             result["classes"] = [self._export_class(cls) for cls in package.classes]
 
         if package.packages:
-            result["packages"] = [self._export_package(child) for child in package.packages]
+            result["packages"] = [child.guid for child in package.packages]
 
         return result
 
@@ -174,7 +177,7 @@ class ModelExporter:
                     "type": conn.connector_type,
                     "stereotype": conn.stereotypes[0] if conn.stereotypes else None,
                     "target": target_obj.attr_name,
-                    "target_guid": target_obj.attr_ea_guid,
+                    "target_guid": target_obj.attr_ea_guid.strip("{}").lower() if target_obj.attr_ea_guid else None,
                     "target_namespace": target_namespace,
                     "direction": conn.direction,
                     "source_cardinality": conn.source.cardinality,

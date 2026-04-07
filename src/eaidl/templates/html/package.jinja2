@@ -2,6 +2,64 @@
 
 {% block title %}{{ package.name }} - EA-IDL Documentation{% endblock %}
 
+{% block extra_styles %}
+{% if auto_diagram_content or ea_diagrams %}
+<style>
+    .mermaid {
+        display: block;
+        width: 100%;
+        text-align: center;
+    }
+
+    .mermaid svg {
+        max-width: 100%;
+        height: auto;
+    }
+
+    .diagram-container {
+        overflow: auto;
+        border: 1px solid var(--bs-border-color);
+        border-radius: 0.375rem;
+        background-color: white;
+        position: relative;
+        padding: 2rem;
+        min-height: 400px;
+    }
+
+    .diagram-controls {
+        position: sticky;
+        top: 0;
+        background-color: white;
+        padding: 0.5rem;
+        border-bottom: 1px solid var(--bs-border-color);
+        z-index: 10;
+    }
+
+    .nav-tabs {
+        border-bottom: 2px solid var(--bs-border-color);
+    }
+
+    .nav-tabs .nav-link {
+        border: 1px solid transparent;
+        border-top-left-radius: 0.375rem;
+        border-top-right-radius: 0.375rem;
+        margin-bottom: -2px;
+    }
+
+    .nav-tabs .nav-link:hover {
+        border-color: var(--bs-border-color);
+    }
+
+    .nav-tabs .nav-link.active {
+        color: var(--bs-primary);
+        background-color: var(--bs-body-bg);
+        border-color: var(--bs-border-color) var(--bs-border-color) transparent;
+        font-weight: 500;
+    }
+</style>
+{% endif %}
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
     <h1 class="mb-3">
@@ -57,29 +115,19 @@
             </div>
         </div>
 
-        {% if package.classes or package.diagrams %}
+        {% if auto_diagram_content or ea_diagrams %}
         <div class="col-md-4">
             <div class="card">
                 <div class="card-body">
                     <h5 class="card-title">Diagrams</h5>
                     <p class="card-text">
-                        {% if package.diagrams %}
-                        This package has {{ package.diagrams | length }} EA diagram(s)
-                        {% if package.classes %}
-                        plus an auto-generated class diagram.
+                        {% if ea_diagrams %}
+                        {{ ea_diagrams | length }} EA diagram(s){% if auto_diagram_content %} plus auto-generated class diagram{% endif %}.
                         {% else %}
-                        .
-                        {% endif %}
-                        {% else %}
-                        View interactive class diagram showing relationships and structure.
+                        Auto-generated class diagram.
                         {% endif %}
                     </p>
-                    <a href="diagram.html" class="btn btn-primary">
-                        View Diagrams
-                        {% if package.diagrams %}
-                        <span class="badge bg-light text-dark ms-2">{{ package.diagrams | length + (1 if package.classes else 0) }}</span>
-                        {% endif %}
-                    </a>
+                    <a href="#diagrams" class="btn btn-outline-primary btn-sm">Jump to Diagrams ↓</a>
                 </div>
             </div>
         </div>
@@ -142,5 +190,294 @@
         </table>
     </div>
     {% endif %}
+
+    {% if auto_diagram_content or ea_diagrams %}
+    <h2 class="mt-5 mb-3" id="diagrams">Diagrams</h2>
+
+    <!-- Tab Navigation -->
+    <ul class="nav nav-tabs mb-3" id="diagramTabs" role="tablist">
+        {% if auto_diagram_content %}
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="auto-tab" data-bs-toggle="tab"
+                    data-bs-target="#auto-diagram" type="button" role="tab"
+                    aria-controls="auto-diagram" aria-selected="true">
+                Auto-Generated Class Diagram
+            </button>
+        </li>
+        {% endif %}
+        {% for ea_diagram in ea_diagrams %}
+        {% set slug = ea_diagram.name | slugify %}
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if not auto_diagram_content and loop.first %}active{% endif %}"
+                    id="{{ slug }}-tab" data-bs-toggle="tab"
+                    data-bs-target="#{{ slug }}" type="button" role="tab"
+                    aria-controls="{{ slug }}" aria-selected="{% if not auto_diagram_content and loop.first %}true{% else %}false{% endif %}">
+                {{ ea_diagram.name }}
+                {% if ea_diagram.type %}
+                <span class="badge bg-secondary ms-1">{{ ea_diagram.type }}</span>
+                {% endif %}
+            </button>
+        </li>
+        {% endfor %}
+    </ul>
+
+    <!-- Tab Content -->
+    <div class="tab-content" id="diagramTabsContent">
+        {% if auto_diagram_content %}
+        <div class="tab-pane fade show active" id="auto-diagram" role="tabpanel" aria-labelledby="auto-tab">
+            {% if auto_diagram_type == 'svg' %}
+                <div class="diagram-container" id="auto-content" data-diagram-id="auto">
+                    {{ auto_diagram_content | safe }}
+                </div>
+            {% else %}
+                <div id="auto-loading" class="alert alert-info">
+                    <div class="spinner-border spinner-border-sm me-2" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    Loading diagram...
+                </div>
+                <div class="diagram-container" id="auto-content" data-diagram-id="auto">
+                    <div class="mermaid">{{ auto_diagram_content }}</div>
+                </div>
+                <div id="auto-error" class="alert alert-danger" style="display: none;">
+                    <strong>Error rendering diagram:</strong> <span class="error-message"></span>
+                    <details class="mt-2">
+                        <summary>Diagram source code</summary>
+                        <pre><code>{{ auto_diagram_content }}</code></pre>
+                    </details>
+                </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% for ea_diagram in ea_diagrams %}
+        {% set slug = ea_diagram.name | slugify %}
+        <div class="tab-pane fade {% if not auto_diagram_content and loop.first %}show active{% endif %}"
+             id="{{ slug }}" role="tabpanel" aria-labelledby="{{ slug }}-tab">
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">{{ ea_diagram.name }}</h5>
+                    {% if ea_diagram.diagram_notes %}
+                    <div class="alert alert-info">
+                        {{ render_notes(ea_diagram.diagram_notes) }}
+                    </div>
+                    {% endif %}
+                    {% if ea_diagram.excalidraw_content %}
+                    <button class="btn btn-sm btn-outline-secondary"
+                            onclick="copyExcalidraw('{{ slug }}-excalidraw')"
+                            title="Copy Excalidraw JSON to clipboard">
+                        Copy as Excalidraw
+                    </button>
+                    <script type="application/json" id="{{ slug }}-excalidraw">{{ ea_diagram.excalidraw_content }}</script>
+                    {% endif %}
+                </div>
+            </div>
+            {% if ea_diagram.diagram_type == 'svg' %}
+                <div class="diagram-container" id="{{ slug }}-content" data-diagram-id="{{ slug }}">
+                    {{ ea_diagram.diagram_content | safe }}
+                </div>
+            {% else %}
+                <div id="{{ slug }}-loading" class="alert alert-info">
+                    <div class="spinner-border spinner-border-sm me-2" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    Loading diagram...
+                </div>
+                <div class="diagram-container" id="{{ slug }}-content" data-diagram-id="{{ slug }}">
+                    <div class="mermaid">{{ ea_diagram.diagram_content }}</div>
+                </div>
+                <div id="{{ slug }}-error" class="alert alert-danger" style="display: none;">
+                    <strong>Error rendering diagram:</strong> <span class="error-message"></span>
+                    <details class="mt-2">
+                        <summary>Diagram source code</summary>
+                        <pre><code>{{ ea_diagram.diagram_content }}</code></pre>
+                    </details>
+                </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Legend -->
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5 class="mb-0">Relationship Legend</h5>
+        </div>
+        <div class="card-body">
+            <ul class="list-unstyled">
+                <li><strong>→</strong> Association</li>
+                <li><strong>▷</strong> Inheritance</li>
+                <li><strong>+</strong> Public attribute</li>
+                <li><strong>+*</strong> Inherited attribute (from parent class)</li>
+            </ul>
+            <ul class="list-unstyled">
+                <li><strong>&lt;&lt;union&gt;&gt;</strong> link union with its discriminator</li>
+                <li><strong>&lt;&lt;value&gt;&gt;</strong> link flexible enumeration with defined values</li>
+            </ul>
+        </div>
+    </div>
+    {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if auto_diagram_content or ea_diagrams %}
+<script src="{{ assets_path }}/js/mermaid.min.js"></script>
+<script>
+    mermaid.initialize({
+        startOnLoad: false,
+        theme: 'default',
+        securityLevel: 'loose',
+        flowchart: { useMaxWidth: true, htmlLabels: true },
+        classDiagram: { useMaxWidth: true },
+        logLevel: 'debug'
+    });
+
+    const renderedDiagrams = new Set();
+
+    async function renderDiagram(diagramId) {
+        if (renderedDiagrams.has(diagramId)) return;
+
+        const loadingDiv = document.getElementById(`${diagramId}-loading`);
+        const diagramDiv = document.getElementById(`${diagramId}-content`);
+        const errorDiv   = document.getElementById(`${diagramId}-error`);
+
+        if (!diagramDiv) return;
+
+        const mermaidElement = diagramDiv.querySelector('.mermaid');
+        const svgElement     = diagramDiv.querySelector('svg');
+
+        if (svgElement && !mermaidElement) {
+            setTimeout(() => addZoomControls(diagramId), 100);
+            renderedDiagrams.add(diagramId);
+            return;
+        }
+
+        if (!mermaidElement) {
+            if (loadingDiv) loadingDiv.style.display = 'none';
+            renderedDiagrams.add(diagramId);
+            return;
+        }
+
+        try {
+            await mermaid.run({ nodes: [mermaidElement] });
+            if (loadingDiv) loadingDiv.style.display = 'none';
+            diagramDiv.style.display = 'block';
+            setTimeout(() => addZoomControls(diagramId), 100);
+            renderedDiagrams.add(diagramId);
+        } catch (error) {
+            if (loadingDiv) loadingDiv.style.display = 'none';
+            if (errorDiv) {
+                errorDiv.style.display = 'block';
+                const msg = errorDiv.querySelector('.error-message');
+                if (msg) msg.textContent = error.message || 'Unknown error';
+            }
+        }
+    }
+
+    function addZoomControls(diagramId) {
+        const container = document.getElementById(`${diagramId}-content`);
+        if (!container || container.querySelector('.diagram-controls')) return;
+
+        const mermaidDiv = container.querySelector('.mermaid');
+        const svgElement = mermaidDiv ? mermaidDiv.querySelector('svg') : container.querySelector('svg');
+        if (!svgElement) return;
+
+        const viewBox = svgElement.getAttribute('viewBox');
+        if (viewBox) {
+            svgElement.removeAttribute('width');
+            svgElement.removeAttribute('height');
+            svgElement.style.width    = '50%';
+            svgElement.style.height   = 'auto';
+            svgElement.style.maxWidth = 'none';
+        }
+
+        const controls = document.createElement('div');
+        controls.className = 'diagram-controls mb-2';
+        controls.id = `${diagramId}-controls`;
+        controls.innerHTML = `
+            <button class="btn btn-sm btn-outline-primary" onclick="zoomDiagram('${diagramId}', 1.2)">+ Zoom In</button>
+            <button class="btn btn-sm btn-outline-primary" onclick="zoomDiagram('${diagramId}', 0.833)">− Zoom Out</button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="resetDiagramZoom('${diagramId}')">Reset</button>
+            <span class="ms-3 text-muted" id="${diagramId}-zoom-level">50%</span>
+        `;
+        container.insertBefore(controls, container.firstChild);
+        svgElement.dataset.scale = '0.5';
+    }
+
+    window.zoomDiagram = function(diagramId, factor) {
+        const container = document.getElementById(`${diagramId}-content`);
+        if (!container) return;
+        const svg = container.querySelector('svg');
+        if (!svg) return;
+        let scale = parseFloat(svg.dataset.scale || 0.5);
+        scale = Math.min(Math.max(scale * factor, 0.25), 3);
+        svg.dataset.scale = scale.toString();
+        svg.style.width = `${scale * 100}%`;
+        const label = document.getElementById(`${diagramId}-zoom-level`);
+        if (label) label.textContent = `${Math.round(scale * 100)}%`;
+    };
+
+    window.resetDiagramZoom = function(diagramId) {
+        const container = document.getElementById(`${diagramId}-content`);
+        if (!container) return;
+        const svg = container.querySelector('svg');
+        if (!svg) return;
+        svg.dataset.scale = '0.5';
+        svg.style.width = '50%';
+        const label = document.getElementById(`${diagramId}-zoom-level`);
+        if (label) label.textContent = '50%';
+    };
+
+    window.copyExcalidraw = async function(scriptId) {
+        const el = document.getElementById(scriptId);
+        if (!el) return;
+        try {
+            await navigator.clipboard.writeText(el.textContent.trim());
+            const btn = document.querySelector(`[onclick="copyExcalidraw('${scriptId}')"]`);
+            if (btn) {
+                const orig = btn.innerHTML;
+                btn.innerHTML = '✓ Copied!';
+                btn.classList.replace('btn-outline-secondary', 'btn-success');
+                setTimeout(() => { btn.innerHTML = orig; btn.classList.replace('btn-success', 'btn-outline-secondary'); }, 2000);
+            }
+        } catch (err) {
+            alert('Could not copy to clipboard: ' + err.message);
+        }
+    };
+
+    document.addEventListener('DOMContentLoaded', function() {
+        function activateTabFromHash() {
+            const hash = window.location.hash;
+            if (!hash) return false;
+            const tabBtn = document.querySelector(`[data-bs-target="${hash}"]`);
+            if (tabBtn) { bootstrap.Tab.getOrCreateInstance(tabBtn).show(); return true; }
+            return false;
+        }
+
+        function renderActivePane() {
+            const activePane = document.querySelector('.tab-pane.active');
+            if (activePane) {
+                const container = activePane.querySelector('[data-diagram-id]');
+                if (container) renderDiagram(container.dataset.diagramId);
+            }
+        }
+
+        activateTabFromHash();
+        renderActivePane();
+
+        document.querySelectorAll('[data-bs-toggle="tab"]').forEach(button => {
+            button.addEventListener('shown.bs.tab', function(event) {
+                const targetId = event.target.getAttribute('data-bs-target');
+                history.replaceState(null, '', targetId);
+                const pane = document.querySelector(targetId);
+                if (pane) {
+                    const c = pane.querySelector('[data-diagram-id]');
+                    if (c) renderDiagram(c.dataset.diagramId);
+                }
+            });
+        });
+    });
+</script>
+{% endif %}
 {% endblock %}

@@ -737,6 +737,81 @@ class TestExcalidrawRenderer:
         doc = json.loads(render_excalidraw(diag))
         assert "files" in doc
 
+    def test_arrows_have_start_binding(self, extractor):
+        """Arrow elements should have startBinding pointing to a real element id."""
+        import json
+        diag = extractor.extract_by_id(3)
+        doc = json.loads(render_excalidraw(diag))
+        element_ids = {el["id"] for el in doc["elements"]}
+        arrows = [el for el in doc["elements"] if el["type"] == "arrow"]
+        assert len(arrows) > 0, "Expected at least one arrow"
+        # Every bound arrow endpoint must reference a real element id
+        for arrow in arrows:
+            sb = arrow.get("startBinding")
+            if sb is not None:
+                assert sb["elementId"] in element_ids, (
+                    f"Arrow {arrow['id']} startBinding.elementId {sb['elementId']!r} "
+                    "not found in elements"
+                )
+            eb = arrow.get("endBinding")
+            if eb is not None:
+                assert eb["elementId"] in element_ids, (
+                    f"Arrow {arrow['id']} endBinding.elementId {eb['elementId']!r} "
+                    "not found in elements"
+                )
+
+    def test_arrows_are_bound_on_both_ends(self, extractor):
+        """Most class-diagram arrows should be bound on both source and target."""
+        import json
+        diag = extractor.extract_by_id(3)
+        doc = json.loads(render_excalidraw(diag))
+        arrows = [el for el in doc["elements"] if el["type"] == "arrow"]
+        bound_both = [
+            a for a in arrows
+            if a.get("startBinding") is not None and a.get("endBinding") is not None
+        ]
+        assert len(bound_both) > 0, "Expected at least one fully-bound arrow"
+
+    def test_node_rects_list_bound_arrows(self, extractor):
+        """Header rectangles of nodes connected by arrows must list those arrows
+        in their boundElements."""
+        import json
+        diag = extractor.extract_by_id(3)
+        doc = json.loads(render_excalidraw(diag))
+        element_by_id = {el["id"]: el for el in doc["elements"]}
+        arrows = [el for el in doc["elements"] if el["type"] == "arrow"]
+        bound_arrow_ids: set = set()
+        for arrow in arrows:
+            for key in ("startBinding", "endBinding"):
+                binding = arrow.get(key)
+                if binding is not None:
+                    bound_arrow_ids.add(arrow["id"])
+                    rect = element_by_id.get(binding["elementId"])
+                    assert rect is not None
+                    be_ids = {be["id"] for be in rect.get("boundElements", [])}
+                    assert arrow["id"] in be_ids, (
+                        f"Rect {rect['id']} does not list arrow {arrow['id']} "
+                        "in its boundElements"
+                    )
+
+    def test_binding_references_header_rects(self, extractor):
+        """Arrow bindings should point to 'hdr' elements (the header rects),
+        not body or attr elements."""
+        import json
+        diag = extractor.extract_by_id(3)
+        doc = json.loads(render_excalidraw(diag))
+        element_by_id = {el["id"]: el for el in doc["elements"]}
+        arrows = [el for el in doc["elements"] if el["type"] == "arrow"]
+        for arrow in arrows:
+            for key in ("startBinding", "endBinding"):
+                binding = arrow.get(key)
+                if binding is not None:
+                    eid = binding["elementId"]
+                    assert eid.startswith("hdr-"), (
+                        f"Arrow {arrow['id']} {key}.elementId={eid!r} "
+                        "should start with 'hdr-'"
+                    )
+
 
 # ---------------------------------------------------------------------------
 # Hyperlink / ea_guid tests

@@ -95,11 +95,12 @@
 
         <!-- EA diagram tabs -->
         {% for ea_diagram in ea_diagrams %}
+        {% set slug = ea_diagram.name | slugify %}
         <li class="nav-item" role="presentation">
             <button class="nav-link {% if not auto_diagram_content and loop.first %}active{% endif %}"
-                    id="ea-{{ loop.index }}-tab" data-bs-toggle="tab"
-                    data-bs-target="#ea-diagram-{{ loop.index }}" type="button" role="tab"
-                    aria-controls="ea-diagram-{{ loop.index }}" aria-selected="{% if not auto_diagram_content and loop.first %}true{% else %}false{% endif %}">
+                    id="{{ slug }}-tab" data-bs-toggle="tab"
+                    data-bs-target="#{{ slug }}" type="button" role="tab"
+                    aria-controls="{{ slug }}" aria-selected="{% if not auto_diagram_content and loop.first %}true{% else %}false{% endif %}">
                 {{ ea_diagram.name }}
                 {% if ea_diagram.type %}
                 <span class="badge bg-secondary ms-1">{{ ea_diagram.type }}</span>
@@ -153,8 +154,9 @@
 
         <!-- EA diagram panes -->
         {% for ea_diagram in ea_diagrams %}
+        {% set slug = ea_diagram.name | slugify %}
         <div class="tab-pane fade {% if not auto_diagram_content and loop.first %}show active{% endif %}"
-             id="ea-diagram-{{ loop.index }}" role="tabpanel" aria-labelledby="ea-{{ loop.index }}-tab">
+             id="{{ slug }}" role="tabpanel" aria-labelledby="{{ slug }}-tab">
             <div class="card mb-3">
                 <div class="card-body">
                     <h5 class="card-title">{{ ea_diagram.name }}</h5>
@@ -167,7 +169,7 @@
 
                     {% if ea_diagram.excalidraw_content %}
                     <button class="btn btn-sm btn-outline-secondary"
-                            onclick="copyExcalidraw('ea-{{ loop.index }}-excalidraw')"
+                            onclick="copyExcalidraw('{{ slug }}-excalidraw')"
                             title="Copy Excalidraw JSON to clipboard — paste directly into excalidraw.com">
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" class="me-1">
                             <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
@@ -175,7 +177,7 @@
                         </svg>
                         Copy as Excalidraw
                     </button>
-                    <script type="application/json" id="ea-{{ loop.index }}-excalidraw">{{ ea_diagram.excalidraw_content }}</script>
+                    <script type="application/json" id="{{ slug }}-excalidraw">{{ ea_diagram.excalidraw_content }}</script>
                     {% endif %}
 
                 </div>
@@ -183,21 +185,21 @@
 
             {% if ea_diagram.diagram_type == 'svg' %}
                 <!-- PlantUML SVG: Direct embedding -->
-                <div class="diagram-container" id="ea-{{ loop.index }}-content" data-diagram-id="ea-{{ loop.index }}">
+                <div class="diagram-container" id="{{ slug }}-content" data-diagram-id="{{ slug }}">
                     {{ ea_diagram.diagram_content | safe }}
                 </div>
             {% else %}
                 <!-- Mermaid: Text + JS rendering -->
-                <div id="ea-{{ loop.index }}-loading" class="alert alert-info">
+                <div id="{{ slug }}-loading" class="alert alert-info">
                     <div class="spinner-border spinner-border-sm me-2" role="status">
                         <span class="visually-hidden">Loading...</span>
                     </div>
                     Loading diagram...
                 </div>
-                <div class="diagram-container" id="ea-{{ loop.index }}-content" data-diagram-id="ea-{{ loop.index }}">
+                <div class="diagram-container" id="{{ slug }}-content" data-diagram-id="{{ slug }}">
                     <div class="mermaid">{{ ea_diagram.diagram_content }}</div>
                 </div>
-                <div id="ea-{{ loop.index }}-error" class="alert alert-danger" style="display: none;">
+                <div id="{{ slug }}-error" class="alert alert-danger" style="display: none;">
                     <strong>Error rendering diagram:</strong> <span class="error-message"></span>
                     <details class="mt-2">
                         <summary>Diagram source code</summary>
@@ -440,26 +442,35 @@
 
     // Render active diagram when page loads or tab switches
     document.addEventListener('DOMContentLoaded', function() {
-        // Render the initially active diagram
-        const activePane = document.querySelector('.tab-pane.active');
-        if (activePane) {
-            const container = activePane.querySelector('[data-diagram-id]');
-            if (container) {
-                renderDiagram(container.dataset.diagramId);
+        function activateTabFromHash() {
+            const hash = window.location.hash;
+            if (!hash) return false;
+            const tabBtn = document.querySelector(`[data-bs-target="${hash}"]`);
+            if (tabBtn) { bootstrap.Tab.getOrCreateInstance(tabBtn).show(); return true; }
+            return false;
+        }
+
+        function renderActivePane() {
+            const activePane = document.querySelector('.tab-pane.active');
+            if (activePane) {
+                const container = activePane.querySelector('[data-diagram-id]');
+                if (container) renderDiagram(container.dataset.diagramId);
             }
         }
 
-        // Add event listener for tab switches
-        const tabButtons = document.querySelectorAll('[data-bs-toggle="tab"]');
-        tabButtons.forEach(button => {
+        // Activate tab from URL hash (hot-link support), then render
+        activateTabFromHash();
+        renderActivePane();
+
+        // Update URL hash and render diagram on tab switch
+        document.querySelectorAll('[data-bs-toggle="tab"]').forEach(button => {
             button.addEventListener('shown.bs.tab', function(event) {
                 const targetId = event.target.getAttribute('data-bs-target');
+                history.replaceState(null, '', targetId);
                 const targetPane = document.querySelector(targetId);
                 if (targetPane) {
                     const container = targetPane.querySelector('[data-diagram-id]');
-                    if (container) {
-                        renderDiagram(container.dataset.diagramId);
-                    }
+                    if (container) renderDiagram(container.dataset.diagramId);
                 }
             });
         });

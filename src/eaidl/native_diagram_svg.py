@@ -681,6 +681,24 @@ def _attr_link_href(attr, style, node=None) -> Optional[str]:
     return None
 
 
+def _node_min_width(node: NativeDiagramNode, style) -> float:
+    """Return the minimum node width needed to display the header and all
+    attribute labels without clipping."""
+    _char_w_name = style.font_size * 0.62
+    _char_w_attr = style.attr_font_size * 0.62
+    header_lines = []
+    if node.stereotype:
+        header_lines.append(f"\u00ab{node.stereotype}\u00bb")
+    header_lines.append(f"\u00ababstract\u00bb {node.name}" if node.is_abstract else (node.name or ""))
+    min_w = max((len(line) * _char_w_name for line in header_lines), default=0) + 2 * PADDING_X
+    for attr in node.attributes:
+        lb, ub = attr.lower_bound or "", attr.upper_bound or ""
+        card = f" [{lb}..{ub}]" if (lb or ub) else ""
+        label = f"+ {attr.name} : {attr.type}{card}"
+        min_w = max(min_w, len(label) * _char_w_attr + 2 * PADDING_X)
+    return min_w
+
+
 def _render_class_node(parent: ET.Element, node: NativeDiagramNode, style) -> None:
     """Render a Class or Part node.  The header links to the class; each
     attribute row links to the type of that attribute (when resolvable)."""
@@ -696,19 +714,13 @@ def _render_class_node(parent: ET.Element, node: NativeDiagramNode, style) -> No
     g = ET.SubElement(parent, "g", **{"class": "node-class",
                                        "data-object-id": str(node.object_id)})
 
-    # Body rectangle (rendered before header so header border paints on top)
+    # Body rectangle (rendered before header so header border paints on top).
+    # Node borders use the EA-stored dimensions so diagram layout is preserved.
     body_y = y + HEADER_H
     body_h = max(h - HEADER_H, ATTR_ROW_H * max(1, len(node.attributes)) + 2 * PADDING_Y)
     ET.SubElement(g, "rect",
                   x=str(x), y=str(body_y), width=str(w), height=str(body_h),
                   fill=bg, stroke=border, **{"stroke-width": str(lw)})
-
-    # Clip path scoped to this node so attribute text never bleeds outside the box
-    clip_id = f"clip-body-{node.object_id}"
-    local_defs = ET.SubElement(g, "defs")
-    clip = ET.SubElement(local_defs, "clipPath", id=clip_id)
-    ET.SubElement(clip, "rect",
-                  x=str(x), y=str(body_y), width=str(w), height=str(body_h))
 
     # Header — optionally wrapped in a link to the class itself
     node_href = _node_link_href(node, style)
@@ -725,6 +737,7 @@ def _render_class_node(parent: ET.Element, node: NativeDiagramNode, style) -> No
                   stroke=border, **{"stroke-width": str(lw)})
 
     # Stereotype (small italic, rendered first so name sits below it)
+    name_text = f"«abstract» {node.name}" if node.is_abstract else node.name
     text_y = y + HEADER_H - PADDING_Y
     if node.stereotype:
         ET.SubElement(hdr_container, "text",
@@ -737,7 +750,6 @@ def _render_class_node(parent: ET.Element, node: NativeDiagramNode, style) -> No
         text_y = y + HEADER_H - 2
 
     # Class name (bold)
-    name_text = f"«abstract» {node.name}" if node.is_abstract else node.name
     ET.SubElement(hdr_container, "text",
                   x=str(x + w / 2), y=str(text_y),
                   **{"text-anchor": "middle",
@@ -746,8 +758,8 @@ def _render_class_node(parent: ET.Element, node: NativeDiagramNode, style) -> No
                      "font-weight": "bold",
                      "fill": style.node_header_text_color}).text = name_text
 
-    # Attributes — each row optionally linked to its type class
-    attr_g = ET.SubElement(g, "g", **{"clip-path": f"url(#{clip_id})"})
+    # Attributes — no clip applied so long labels are fully visible even if they
+    # extend past the node border.  The viewBox is sized to accommodate them.
     for i, attr in enumerate(node.attributes):
         ay = body_y + PADDING_Y + (i + 0.8) * ATTR_ROW_H
         lb, ub = attr.lower_bound or "", attr.upper_bound or ""
@@ -755,12 +767,12 @@ def _render_class_node(parent: ET.Element, node: NativeDiagramNode, style) -> No
         label = f"+ {attr.name} : {attr.type}{card}"
         type_href = _attr_link_href(attr, style, node)
         if type_href:
-            a = ET.SubElement(attr_g, "a")
+            a = ET.SubElement(g, "a")
             a.set("href", type_href)
             a.set("xlink:href", type_href)
             txt_parent: ET.Element = a
         else:
-            txt_parent = attr_g
+            txt_parent = g
         ET.SubElement(txt_parent, "text",
                       x=str(x + PADDING_X), y=str(ay),
                       **{"font-family": style.font_family,
@@ -907,14 +919,21 @@ def render_svg(diagram: NativeDiagram, style=None) -> str:
 
     node_map: Dict[int, NativeDiagramNode] = {n.object_id: n for n in diagram.nodes}
 
-    # Compute bounding box over all nodes to set viewBox
+    # Compute bounding box over all nodes to set viewBox.
+    # Use the effective right edge (accounting for min-width expansion) so
+    # nodes whose names or attribute labels are wider than the EA-stored
+    # rectangle are not clipped by the canvas.
     if diagram.nodes:
-        xs = [n.rect_left for n in diagram.nodes] + [n.rect_right for n in diagram.nodes]
+        xs_left = [n.rect_left for n in diagram.nodes]
+        xs_right = [
+            n.rect_left + max(float(n.rect_right - n.rect_left), _node_min_width(n, style))
+            for n in diagram.nodes
+        ]
         ys_top = [-n.rect_top for n in diagram.nodes]
         ys_bot = [-n.rect_bottom for n in diagram.nodes]
-        min_x = min(xs) - SVG_PAD
+        min_x = min(xs_left) - SVG_PAD
         min_y = min(ys_top) - SVG_PAD
-        max_x = max(xs) + SVG_PAD
+        max_x = max(xs_right) + SVG_PAD
         max_y = max(ys_bot) + SVG_PAD
     else:
         min_x, min_y, max_x, max_y = 0, 0, float(diagram.canvas_width), float(diagram.canvas_height)

@@ -1,10 +1,20 @@
-from typing import Literal, Optional, List, Dict, TYPE_CHECKING
-from pydantic import BaseModel
+from typing import Annotated, Literal, Optional, List, Dict, TYPE_CHECKING
+from pydantic import BaseModel, BeforeValidator
 
 if TYPE_CHECKING:
     from eaidl.config import Configuration
 
 ModelScope = Literal["Private", "Public", "Protected", "Package"]
+
+
+def _normalise_ea_guid(v: object) -> object:
+    """Strip EA's brace-wrapped GUID format and lowercase: {GUID} → guid."""
+    if isinstance(v, str):
+        return v.strip("{}").lower()
+    return v
+
+
+EaGuid = Annotated[str, BeforeValidator(_normalise_ea_guid)]
 
 
 class LocalBaseModel(BaseModel):
@@ -173,7 +183,7 @@ class ModelDiagram(LocalBaseModel):
     author: Optional[str] = None
     created_date: Optional[str] = None
     modified_date: Optional[str] = None
-    guid: Optional[str] = None
+    guid: Optional[EaGuid] = None
     cx: Optional[int] = None  # Canvas width
     cy: Optional[int] = None  # Canvas height
     scale: Optional[int] = None  # Scale percentage
@@ -188,7 +198,7 @@ class ModelClass(LocalBaseModel):
     name: str
     parent: Optional["ModelPackage"] = None
     object_id: int
-    guid: Optional[str] = None
+    guid: Optional[EaGuid] = None
     is_abstract: Optional[bool] = None
     alias: Optional[str] = None
     attributes: List["ModelAttribute"] = []
@@ -249,7 +259,7 @@ class ModelPackage(LocalBaseModel):
     object_id: int
     parent: Optional["ModelPackage"] = None
     name: str
-    guid: str
+    guid: EaGuid
     packages: List["ModelPackage"] = []
     stereotypes: List[str] = []
     classes: List[ModelClass] = []
@@ -274,7 +284,7 @@ class ModelAttribute(LocalBaseModel):
     alias: str
     type: Optional[str] = None
     attribute_id: int
-    guid: str
+    guid: EaGuid
     parent: Optional["ModelClass"] = None
     scope: Optional[ModelScope] = None
     position: Optional[int] = None
@@ -284,7 +294,7 @@ class ModelAttribute(LocalBaseModel):
     is_ordered: Optional[bool] = None
     is_static: Optional[bool] = None
     #: Set to true if this attribute is a map
-    is_map: Optional[bool] = None
+    is_map: bool = False
     #: If this attribute is a map (is_map==True) this is kye type
     map_key_type: Optional[str] = None
     #: If this attribute is a map (is_map==True) this is value type

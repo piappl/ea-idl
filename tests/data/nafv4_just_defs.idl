@@ -64,6 +64,27 @@ module core {
             FlexibleNameValues_ONE_VALUE,
             FlexibleNameValues_OTHER_VALUE
         };
+        /**
+            Linked note:
+            This is a union, but a special kind, it has one member set as one stereotype,
+            another as other. So it will collapse when one is removed.
+        */
+        union Measurement switch (core::data::MeasurementTypeEnum) {
+            case core::data::MeasurementTypeEnum_TEMPERATURE_MEASUREMENT:
+                /**
+                    Linked note:
+                    This is a union, but a special kind, it has one member set as one stereotype,
+                    another as other. So it will collapse when one is removed.
+                */
+                core::common::types::TemperatureMeasurement temperature_measurement;
+            case core::data::MeasurementTypeEnum_PRIMITIVE:
+                /**
+                    Linked note:
+                    This is a union, but a special kind, it has one member set as one stereotype,
+                    another as other. So it will collapse when one is removed.
+                */
+                string primitive;
+        };
         union IdentifierOrName switch (core::data::IdentifierOrNameTypeEnum) {
             case core::data::IdentifierOrNameTypeEnum_IDENTIFIER:
                 core::common::types::Identifier identifier;
@@ -89,7 +110,6 @@ module core {
                 Linked note:
                 Various combinations of optional and multiplicity.
             */
-            @optional
             core::common::types::Identifier optional_one;
             /**
                 Linked note:
@@ -112,13 +132,11 @@ module core {
                 Linked note:
                 Various combinations of optional and multiplicity.
             */
-            @optional
             sequence<core::common::types::Identifier> optional_sequence;
             /**
                 Linked note:
                 Various combinations of optional and multiplicity.
             */
-            @optional
             sequence<core::common::types::Identifier, 5> optional_sequence_upper_bound;
         };
         struct FlexibleName {
@@ -172,15 +190,21 @@ module core {
             @default(core::message::MessageTypeEnum_MEASUREMENT)
             core::message::MessageTypeEnum message_type;
         };
+        union AnyGUID switch (int8) {
+            case 1:
+                core::message::GUID hibw;
+            case 2:
+                core::message::GUIDBytes lobw;
+        };
         struct Message {
             core::message::MessageHeader header;
             core::message::Nationality nationality;
-            core::message::GUIDBytes uuid;
+            core::message::AnyGUID uuid;
         };
         @ext::interface
         struct DataMessage: core::message::Message {
             @ext::minItems(1)
-            sequence<core::common::types::TemperatureMeasurement, 5> body;
+            sequence<core::data::Measurement, 5> body;
             /**
                 This is a sequence
             */
@@ -204,7 +228,6 @@ module core {
         typedef sequence<Node> Children;
         struct Node {
             core::common::types::Identifier id;
-            @optional
             sequence<core::recursion::Node> children;
             core::recursion::Children other_children;
         };

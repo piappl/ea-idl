@@ -30,6 +30,16 @@ from sqlalchemy.orm import Session
 log = logging.getLogger(__name__)
 
 
+def _slugify(value: str) -> str:
+    """Convert a string to a URL-safe slug for use as an HTML id / URL hash."""
+    import re
+
+    value = value.lower()
+    value = re.sub(r"[^a-z0-9]+", "-", value)
+    value = value.strip("-")
+    return value or "diagram"
+
+
 def create_html_env(config: Configuration) -> Environment:
     """
     Create Jinja2 environment for HTML templates.
@@ -50,6 +60,7 @@ def create_html_env(config: Configuration) -> Environment:
     # Add custom filters and functions
     env.filters["strip_html"] = strip_html
     env.filters["format_notes"] = format_notes_for_html
+    env.filters["slugify"] = _slugify
 
     return env
 
@@ -183,9 +194,10 @@ def _render_native_diagram(
     The two pipelines serve different needs and the models they operate on
     are complementary, not redundant.
     """
-    from eaidl.native_diagram_svg import render_svg, svg_link_map, rewrite_svg_links
+    from eaidl.native_diagram_svg import render_svg, rewrite_svg_links
     from eaidl.native_diagram_excalidraw import render_excalidraw
     from eaidl.tree_utils import traverse_packages
+    import re as _re
 
     native_diag = extractor.extract_by_id(ea_diagram.diagram_id)
     svg = render_svg(native_diag, style=config.diagrams.native_diagram_style)
@@ -200,12 +212,19 @@ def _render_native_diagram(
 
     traverse_packages(packages, class_visitor=_collect)
 
-    # Rewrite eaidl:{guid} placeholder hrefs to real relative class-page URLs
-    link_map = svg_link_map(native_diag)
+    # Rewrite eaidl:{guid} placeholder hrefs to real relative class-page URLs.
+    # Scan the SVG directly for ALL eaidl: placeholders (node links AND
+    # attribute-type links).  svg_link_map only covers canvas-node GUIDs, but
+    # _attr_link_href also emits eaidl:{type_guid} for attribute types that may
+    # not be nodes on this particular diagram.
+    # ModelClass.guid is normalised (lowercase, no braces); raw EA GUIDs from
+    # the SVG still have braces and mixed case, so normalise before lookup.
+    found_guids = set(_re.findall(r'eaidl:(\{[^}]+\})', svg))
     guid_to_url: dict = {}
-    for guid in link_map:
-        if guid in guid_to_cls:
-            cls = guid_to_cls[guid]
+    for guid in found_guids:
+        normalised = guid.strip("{}").lower()
+        if normalised in guid_to_cls:
+            cls = guid_to_cls[normalised]
             guid_to_url[guid] = generate_class_link(
                 namespace_path, cls.namespace, cls.name, from_page_type="diagram"
             )
@@ -261,17 +280,11 @@ def generate_package_pages(
         index_rel_link = "/".join([".."] * (depth + 1)) + "/index.html"
         search_rel_path = "/".join([".."] * (depth + 1)) + "/search.json"
 
-        # Generate package index page
-        html = template_package.render(
-            package=package,
-            current_namespace=namespace_path,
-            index_link=index_rel_link,
-            assets_path=assets_rel_path,
-            search_index_path=search_rel_path,
-        )
-        (pkg_dir / "index.html").write_text(html, encoding="utf-8")
-
-        # Generate diagram page with both auto-generated and EA diagrams
+        # Compute diagram data before rendering templates so both package and
+        # diagram pages can share the same rendered content.
+        auto_diagram_content = None
+        auto_diagram_type = None
+        ea_diagrams = []
         if package.classes or package.diagrams:
             # Use new builder → renderer pipeline
             from eaidl.diagram_builder import ClassDiagramBuilder
@@ -280,9 +293,6 @@ def generate_package_pages(
             renderer = get_renderer(config)
 
             # Generate auto-generated diagram
-            auto_diagram_output = None
-            auto_diagram_content = None
-            auto_diagram_type = None
             if package.classes:
                 try:
                     builder = ClassDiagramBuilder(package, config, packages)
@@ -300,7 +310,6 @@ def generate_package_pages(
                     # For Mermaid and other errors, this is non-fatal
 
             # Convert EA diagrams using builder → renderer pipeline
-            ea_diagrams = []
             for ea_diagram in package.diagrams:
                 try:
                     if config.diagrams.renderer == "native":
@@ -345,7 +354,21 @@ def generate_package_pages(
                     )
                     # Continue with other diagrams
 
-            # Render diagram page with tabs
+        # Generate package index page (diagrams are embedded inline)
+        html = template_package.render(
+            package=package,
+            auto_diagram_content=auto_diagram_content,
+            auto_diagram_type=auto_diagram_type,
+            ea_diagrams=ea_diagrams,
+            current_namespace=namespace_path,
+            index_link=index_rel_link,
+            assets_path=assets_rel_path,
+            search_index_path=search_rel_path,
+        )
+        (pkg_dir / "index.html").write_text(html, encoding="utf-8")
+
+        # Also generate standalone diagram page (kept for direct/legacy access)
+        if package.classes or package.diagrams:
             html_diagram = template_diagram.render(
                 package=package,
                 auto_diagram_content=auto_diagram_content,

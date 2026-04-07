@@ -373,8 +373,11 @@ def _base_line(
 # Node renderers
 # ---------------------------------------------------------------------------
 
-def _class_node_elements(node: NativeDiagramNode, style) -> List[Dict[str, Any]]:
-    """Return Excalidraw elements for a Class or Part node."""
+def _class_node_elements(node: NativeDiagramNode, style) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Return ``(elements, header_rect)`` for a Class or Part node.
+
+    The header rectangle is the canonical binding target for connectors.
+    """
     x, y, w, h = _ea_to_ex(node)
 
     bg = _argb_to_hex(node.style.background_color, style.node_bg_color)
@@ -384,59 +387,82 @@ def _class_node_elements(node: NativeDiagramNode, style) -> List[Dict[str, Any]]
     lw = node.style.line_width if node.style.line_width > 0 else style.node_border_width
     group_id = f"node-{node.object_id}"
 
-    body_h = max(h - HEADER_H, ATTR_ROW_H * max(1, len(node.attributes)) + 2 * PADDING_Y)
-
     elements: List[Dict[str, Any]] = []
 
-    # Header rectangle — carries the hyperlink
-    hdr_id = _next_id("hdr")
-    elements.append(_base_shape(
-        hdr_id, x, y, w, HEADER_H,
-        stroke=border, fill=style.node_header_color,
-        stroke_width=lw, group_ids=[group_id],
-        link=_ex_node_href(node, style) if node.name else None,
-    ))
+    # --- compute dimensions --------------------------------------------------
+    _LINE_H = _FONT_SIZE_NORMAL + 4   # px per header line including leading
+    n_header_lines = 1 if not node.stereotype else 2
+    band_h = max(2 * PADDING_Y + n_header_lines * _LINE_H, HEADER_H)
 
-    # Body rectangle
-    body_id = _next_id("body")
-    elements.append(_base_shape(
-        body_id, x, y + HEADER_H, w, body_h,
+    # Minimum width: widest header text line must fit without wrapping.
+    # Virgil at font-size 12 averages ~0.62 px/char (empirical).
+    _CHAR_W = _FONT_SIZE_NORMAL * 0.62
+    header_lines = []
+    if node.stereotype:
+        header_lines.append(f"«{node.stereotype}»")
+    header_lines.append(f"«abstract» {node.name}" if node.is_abstract else (node.name or ""))
+    min_w = max(len(line) * _CHAR_W for line in header_lines) + 2 * PADDING_X
+    w = max(w, min_w)
+
+    # Minimum total height: band + optional attribute section
+    attrs_section_h = (
+        (len(node.attributes) * ATTR_ROW_H + 2 * PADDING_Y)
+        if node.attributes else 0
+    )
+    actual_h = max(h, band_h + attrs_section_h)
+
+    # Outer rectangle — sized to actual content height so nothing overflows.
+    # Carries the link and is the connector binding target (id prefix "hdr").
+    hdr_id = _next_id("hdr")
+    hdr_el = _base_shape(
+        hdr_id, x, y, w, actual_h,
         stroke=border, fill=bg,
         stroke_width=lw, group_ids=[group_id],
-    ))
+        link=_ex_node_href(node, style) if node.name else None,
+    )
+    elements.append(hdr_el)
 
-    # Stereotype text
-    name_y = y + 2
+    band_id = _next_id("band")
+    name_text_id = _next_id("name")
+    band_el = _base_shape(
+        band_id, x, y, w, band_h,
+        stroke=style.node_header_color,
+        fill=style.node_header_color,
+        stroke_width=lw, group_ids=[group_id],
+    )
+    band_el["boundElements"].append({"type": "text", "id": name_text_id})
+    elements.append(band_el)
+
+    # Build a single label: optional stereotype line + name (all inside band)
+    label_parts = []
     if node.stereotype:
-        st_text = f"«{node.stereotype}»"
-        st_h = _FONT_SIZE_SMALL * 1.4
-        elements.append(_base_text(
-            _next_id("st"), x, y + 1, w, st_h,
-            text=st_text,
-            font_size=_FONT_SIZE_SMALL,
-            align="center",
-            italic=True,
-            color=style.node_header_text_color,
-            group_ids=[group_id],
-        ))
-        name_y = y + st_h + 1
-
-    # Name text
-    name_text = f"«abstract» {node.name}" if node.is_abstract else node.name
-    name_h = HEADER_H - (name_y - y) - 1
+        label_parts.append(f"«{node.stereotype}»")
+    label_parts.append(f"«abstract» {node.name}" if node.is_abstract else node.name)
+    name_label = "\n".join(label_parts)
     elements.append(_base_text(
-        _next_id("name"), x, name_y, w, max(name_h, _FONT_SIZE_NORMAL),
-        text=name_text,
+        name_text_id, x, y, w, band_h,
+        text=name_label,
         font_size=_FONT_SIZE_NORMAL,
         align="center",
         bold=True,
         color=style.node_header_text_color,
         group_ids=[group_id],
-        vertical_align="top",
+        container_id=band_id,
+        vertical_align="middle",
     ))
 
-    # Attribute rows — clipped logically by limiting text width to node width
-    body_y = y + HEADER_H
+    # Divider line between header band and attribute body
+    if node.attributes:
+        elements.append(_base_line(
+            _next_id("div"),
+            x, y + band_h, x + w, y + band_h,
+            stroke=border,
+            stroke_width=lw,
+            group_ids=[group_id],
+        ))
+
+    # Attribute rows — start below the actual band height
+    body_y = y + band_h
     for i, attr in enumerate(node.attributes):
         ay = body_y + PADDING_Y + i * ATTR_ROW_H
         lb, ub = attr.lower_bound or "", attr.upper_bound or ""
@@ -452,7 +478,7 @@ def _class_node_elements(node: NativeDiagramNode, style) -> List[Dict[str, Any]]
             vertical_align="top",
         ))
 
-    return elements
+    return elements, hdr_el
 
 
 # Alias so the constant resolves at call time
@@ -467,31 +493,39 @@ def _note_node_elements(node: NativeDiagramNode, style) -> List[Dict[str, Any]]:
     elements: List[Dict[str, Any]] = []
 
     box_id = _next_id("note")
-    elements.append(_base_shape(
+    note_text_id = _next_id("note-txt")
+    box_el = _base_shape(
         box_id, x, y, w, h,
         stroke=style.note_border_color, fill=style.note_bg_color,
         stroke_width=1, group_ids=[group_id],
-    ))
+    )
 
     raw = node.note_text or node.name or ""
     plain = _strip_html(raw)
     if plain:
+        box_el["boundElements"].append({"type": "text", "id": note_text_id})
+        elements.append(box_el)
         elements.append(_base_text(
-            _next_id("note-txt"), x + NOTE_FOLD // 2, y + 4,
-            w - NOTE_FOLD, h - 8,
+            note_text_id, x, y, w, h,
             text=plain,
             font_size=_FONT_SIZE_ATTR,
             align="left",
             color=style.note_text_color,
             group_ids=[group_id],
+            container_id=box_id,
             vertical_align="top",
         ))
+    else:
+        elements.append(box_el)
 
     return elements
 
 
-def _lifeline_elements(node: NativeDiagramNode, style) -> List[Dict[str, Any]]:
-    """Return Excalidraw elements for a sequence-diagram lifeline."""
+def _lifeline_elements(node: NativeDiagramNode, style) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Return ``(elements, head_box)`` for a sequence-diagram lifeline.
+
+    The head box is the canonical binding target for NoteLink connectors.
+    """
     x, y, w, h = _ea_to_ex(node)
     cx = x + w / 2
     head_h = min(LIFELINE_HEAD_H, h)
@@ -502,13 +536,15 @@ def _lifeline_elements(node: NativeDiagramNode, style) -> List[Dict[str, Any]]:
 
     elements: List[Dict[str, Any]] = []
 
-    # Head box — carries the hyperlink
-    elements.append(_base_shape(
-        _next_id("ll-hd"), x, y, w, head_h,
+    # Head box — carries the hyperlink and is the connector binding target
+    ll_hd_id = _next_id("ll-hd")
+    ll_hd_el = _base_shape(
+        ll_hd_id, x, y, w, head_h,
         stroke=border, fill=bg,
         group_ids=[group_id],
         link=_ex_node_href(node, style) if node.name else None,
-    ))
+    )
+    elements.append(ll_hd_el)
 
     # Name
     elements.append(_base_text(
@@ -531,7 +567,7 @@ def _lifeline_elements(node: NativeDiagramNode, style) -> List[Dict[str, Any]]:
         group_ids=[group_id],
     ))
 
-    return elements
+    return elements, ll_hd_el
 
 
 def _fragment_elements(node: NativeDiagramNode, style) -> List[Dict[str, Any]]:
@@ -588,6 +624,7 @@ def _connector_elements(
     conn: NativeDiagramConnector,
     node_map: Dict[int, NativeDiagramNode],
     style,
+    bind_elem_map: Optional[Dict[int, Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     """Return Excalidraw elements for a connector."""
     src = node_map.get(conn.source_object_id)
@@ -634,6 +671,26 @@ def _connector_elements(
         end_arrowhead=end_arrow,
         waypoints=wpts,
     )
+
+    # Bind arrow endpoints to source / target node rects
+    if bind_elem_map is not None:
+        src_el = bind_elem_map.get(conn.source_object_id)
+        tgt_el = bind_elem_map.get(conn.target_object_id)
+        if src_el is not None:
+            line_el["startBinding"] = {
+                "elementId": src_el["id"],
+                "focus": 0.0,
+                "gap": 1,
+            }
+            src_el["boundElements"].append({"id": line_el["id"], "type": line_el["type"]})
+        if tgt_el is not None:
+            line_el["endBinding"] = {
+                "elementId": tgt_el["id"],
+                "focus": 0.0,
+                "gap": 1,
+            }
+            tgt_el["boundElements"].append({"id": line_el["id"], "type": line_el["type"]})
+
     elements.append(line_el)
 
     # Role label near target end
@@ -869,9 +926,12 @@ def render_excalidraw(diagram: NativeDiagram, style=None) -> str:
         fragments = [n for n in diagram.nodes if n.object_type == "InteractionFragment"]
         notes = [n for n in diagram.nodes if n.object_type == "Note"]
 
-        # Lifelines
+        # Lifelines — also build bind map for NoteLink connectors
+        bind_elem_map: Dict[int, Dict[str, Any]] = {}
         for node in lifelines:
-            elements.extend(_lifeline_elements(node, style))
+            node_elems, ll_hd_el = _lifeline_elements(node, style)
+            elements.extend(node_elems)
+            bind_elem_map[node.object_id] = ll_hd_el
 
         # Messages
         for msg in diagram.sequence_messages:
@@ -885,7 +945,7 @@ def render_excalidraw(diagram: NativeDiagram, style=None) -> str:
         # NoteLink connectors
         for conn in diagram.connectors:
             if conn.connector_type == "NoteLink" and not conn.hidden:
-                elements.extend(_connector_elements(conn, node_map, style))
+                elements.extend(_connector_elements(conn, node_map, style, bind_elem_map))
 
         # Note-to-message ref dashed lines
         elements.extend(_note_message_ref_elements(notes, diagram.sequence_messages, style))
@@ -903,15 +963,25 @@ def render_excalidraw(diagram: NativeDiagram, style=None) -> str:
         notes = [n for n in diagram.nodes if n.object_type == "Note"]
         class_nodes = [n for n in diagram.nodes if n.object_type != "Note"]
 
+        # Map object_id → header rect element so connectors can bind to nodes
+        bind_elem_map: Dict[int, Dict[str, Any]] = {}
         for node in class_nodes:
-            elements.extend(_class_node_elements(node, style))
+            node_elems, hdr_el = _class_node_elements(node, style)
+            elements.extend(node_elems)
+            bind_elem_map[node.object_id] = hdr_el
 
         for conn in diagram.connectors:
             if not conn.hidden:
-                elements.extend(_connector_elements(conn, node_map, style))
+                elements.extend(_connector_elements(conn, node_map, style, bind_elem_map))
 
         for note in notes:
             elements.extend(_note_node_elements(note, style))
+
+    # Ensure text elements always render above shapes and connector lines.
+    # Excalidraw z-order is determined by list position (later = on top).
+    non_text = [el for el in elements if el["type"] != "text"]
+    text_els = [el for el in elements if el["type"] == "text"]
+    elements = non_text + text_els
 
     doc = {
         "type": "excalidraw",
