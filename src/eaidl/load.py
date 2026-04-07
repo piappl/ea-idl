@@ -396,10 +396,13 @@ class ModelParser:
                 if t_package is None:
                     log.error("Package not found %s", child_t_object.attr_ea_guid)
                     continue
-                if child_t_object.attr_ea_guid in self.config.ignore_packages:
+                raw_guid = child_t_object.attr_ea_guid or ""
+                normalised_guid = raw_guid.strip("{}").lower()
+                normalised_ignore = [g.strip("{}").lower() for g in self.config.ignore_packages]
+                if normalised_guid in normalised_ignore:
                     log.error(
                         "Ignoring %s %s",
-                        child_t_object.attr_ea_guid,
+                        raw_guid,
                         t_package.attr_name,
                     )
                     continue

@@ -28,5 +28,17 @@ def get_renderer(config: Configuration) -> DiagramRenderer:
             server_url=config.diagrams.plantuml_server_url,
             timeout=config.diagrams.plantuml_timeout,
         )
+    elif renderer_type == "native":
+        # The 'native' renderer is handled directly in html_export and does not
+        # go through the DiagramRenderer interface.  For paths that still need
+        # a DiagramRenderer (e.g. auto-generated class diagrams) we fall back
+        # to Mermaid.
+        log.debug(
+            "renderer='native' was passed to get_renderer(); "
+            "returning MermaidRenderer as fallback for auto-generated diagrams."
+        )
+        return MermaidRenderer()
     else:
-        raise ValueError(f"Unknown diagram renderer: {renderer_type}. " f"Supported renderers: mermaid, plantuml")
+        raise ValueError(
+            f"Unknown diagram renderer: {renderer_type}. " f"Supported renderers: mermaid, plantuml, native"
+        )
