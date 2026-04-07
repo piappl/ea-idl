@@ -15,6 +15,7 @@ def test_generate() -> None:
     config.database_url = f"sqlite+pysqlite:///{path.as_posix()}"
     config.root_packages = ["{753A4DFC-7876-4b00-BB5A-6274AD3817C3}"]
     config.filter_stereotypes = ["lobw"]
+    config.collapse_empty_unions_by_default = True
     config.output_linked_notes = True
     config.output_unlinked_notes = True
     config.reserved_words_action = "allow"
@@ -30,6 +31,7 @@ def test_generate_just_defs() -> None:
     config.root_packages = ["{753A4DFC-7876-4b00-BB5A-6274AD3817C3}"]
     config.template = "idl_just_defs.jinja2"
     config.filter_stereotypes = ["hibw"]
+    config.collapse_empty_unions_by_default = True
     config.output_linked_notes = True
     config.output_unlinked_notes = True
     config.reserved_words_action = "allow"

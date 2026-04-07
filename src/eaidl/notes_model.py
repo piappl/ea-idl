@@ -37,9 +37,14 @@ class NoteMetadata(BaseModel):
     @field_validator("object_guid", mode="before")
     @classmethod
     def validate_guid_format(cls, v: Optional[str]) -> Optional[str]:
-        """Validate GUID format if present."""
+        """Validate GUID format if present. Accepts both {GUID} and plain UUID."""
         if v is None or v == "":
             return None
+        # Accept plain UUID (normalised form from model.py) and re-brace it
+        if not v.startswith("{"):
+            v = "{" + v.upper() + "}"
+        elif not v.endswith("}"):
+            v = v + "}"
         if not v.startswith("{") or not v.endswith("}"):
             raise ValueError("GUID must be in format {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}")
         return v

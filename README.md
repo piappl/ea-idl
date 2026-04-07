@@ -70,6 +70,11 @@ uv run eaidl docs --config config/sqlite.yaml --output ./_docs           # Gener
 # Export/import notes for review by non-EA users:
 uv run eaidl export-notes --config config/sqlite.yaml --output notes.docx  # Export notes to DOCX
 uv run eaidl import-notes --config config/sqlite.yaml --input notes.docx   # Import edited notes (dry-run)
+
+# Export full model structure to YAML or Markdown:
+uv run eaidl export-model --config config/sqlite.yaml --output model.yaml              # YAML (default)
+uv run eaidl export-model --config config/sqlite.yaml --output model.md --format markdown  # Markdown
+uv run eaidl export-model --config config/sqlite.yaml --output model.md --format markdown --diagrams-dir images  # with diagram images
 ```
 
 ## Export and Import Notes for External Review
@@ -86,6 +91,23 @@ uv run eaidl import-notes --config config/sqlite.yaml --input notes.docx --no-dr
 ```
 
 The export includes metadata for validation. Import supports **partial updates** (checksum-matched) for parallel editing workflows. Use `--strict` to fail on mismatches, `--report` for JSON output.
+
+## Export Full Model Structure
+
+The `export-model` command exports the complete model (all packages, classes, attributes, and relations) to a portable YAML or Markdown file. Packages are listed flat with child packages referenced by GUID.
+
+```sh
+# Export to YAML (default)
+uv run eaidl export-model --config config/sqlite.yaml --output model.yaml
+
+# Export to Markdown
+uv run eaidl export-model --config config/sqlite.yaml --output model.md --format markdown
+
+# Export to Markdown with embedded diagram images
+uv run eaidl export-model --config config/sqlite.yaml --output model.md --format markdown --diagrams-dir images
+```
+
+The `--diagrams-dir` option specifies a directory (relative to the output file) containing exported diagram images; when provided, Markdown output embeds them inline.
 
 ### using uvx
 

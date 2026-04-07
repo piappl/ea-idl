@@ -73,17 +73,94 @@ class ConfigurationSpellcheck(BaseModel):
     backend: Literal["pyspellchecker", "enchant"] = "pyspellchecker"
 
 
+class NativeDiagramStyleConfig(BaseModel):
+    """Renderer-agnostic visual style for native EA diagram export.
+
+    These values are consumed by whichever downstream renderer is used
+    (SVG, Excalidraw, DrawIO, …).  Colours are CSS hex strings (#rrggbb).
+    """
+
+    # --- node colours ---
+    node_header_color: str = "#4a7ab5"
+    """Fill colour of the class-name header band."""
+    node_header_text_color: str = "#ffffff"
+    """Text colour inside the header band."""
+    node_bg_color: str = "#ffffff"
+    """Fill colour of the node body (attribute compartment)."""
+    part_bg_color: str = "#dbeafe"
+    """Fill colour of Part nodes inside composite structure diagrams."""
+    node_border_color: str = "#2c5282"
+    """Border / outline colour of class nodes."""
+    node_border_width: int = 1
+    """Border line width in pixels."""
+
+    # --- note colours ---
+    note_bg_color: str = "#fffde7"
+    """Fill colour of Note objects."""
+    note_border_color: str = "#f9a825"
+    """Border colour of Note objects."""
+    note_text_color: str = "#5d4037"
+    """Text colour inside Note objects."""
+
+    # --- connector colours ---
+    connector_color: str = "#2c5282"
+    """Default stroke colour for connectors."""
+    connector_note_color: str = "#718096"
+    """Stroke colour for NoteLink connectors (dashed)."""
+
+    # --- canvas ---
+    canvas_bg_color: str = "#f7fafc"
+    """Background fill of the whole diagram canvas."""
+
+    # --- typography ---
+    font_family: str = "Arial, sans-serif"
+    """Font family for all rendered text."""
+    font_size: int = 11
+    """Base font size (px) for node names."""
+    attr_font_size: int = 10
+    """Font size (px) for attribute rows."""
+    note_font_size: int = 10
+    """Font size (px) for Note text."""
+
+    # --- links ---
+    node_link_template: Optional[str] = None
+    """
+    URL template applied to every named class / part node when rendering SVG
+    or Excalidraw.  Available format keys:
+
+    * ``{name}``        — element name (e.g. ``Message``)
+    * ``{object_id}``   — EA object ID integer
+    * ``{type}``        — EA object type (``Class``, ``Part``, …)
+    * ``{stereotype}``  — stereotype string (empty string if none)
+
+    Example::
+
+        node_link_template: "../types/{name}.html"
+
+    When ``None`` (default) a stable placeholder URI ``eaidl:{name}`` is
+    emitted.  Post-processors can replace these via
+    :func:`~eaidl.native_diagram_svg.rewrite_svg_links`.
+    Set to ``""`` (empty string) to suppress links entirely.
+    """
+
+
 class DiagramConfiguration(BaseModel):
     """Configuration for diagram generation."""
 
-    #: Which renderer to use (mermaid or plantuml)
-    renderer: Literal["mermaid", "plantuml"] = "mermaid"
+    #: Which renderer to use (mermaid, plantuml, or native)
+    #:
+    #: ``native`` renders EA diagrams directly from the QEA canvas geometry via
+    #: :mod:`eaidl.native_diagram_svg`.  The auto-generated class diagram falls
+    #: back to Mermaid since it has no canvas counterpart.
+    renderer: Literal["mermaid", "plantuml", "native"] = "mermaid"
     #: PlantUML server URL (used when renderer is "plantuml")
     plantuml_server_url: str = "http://127.0.0.1:10005/"
     #: PlantUML request timeout in seconds
     plantuml_timeout: int = 30
     #: Maximum number of attributes to display in class diagrams (prevents overcrowding)
     max_attributes_displayed: int = 15
+    #: Visual style for native diagram export (SVG, Excalidraw, DrawIO…)
+    native_diagram_style: NativeDiagramStyleConfig = NativeDiagramStyleConfig()
 
 
 class Configuration(BaseModel):

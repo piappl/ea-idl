@@ -371,7 +371,7 @@ class ModelParser:
             package.namespace = copy.copy(parent_package.namespace)
             package.namespace.append(package.name)
         package.notes = strip_html(t_package_object.attr_note, special=True)
-        package.stereotypes = self.get_stereotypes(package.guid)
+        package.stereotypes = self.get_stereotypes(t_package.attr_ea_guid)
         if parse_children:
             self.package_parse_children(package)
         # Load diagrams for this package
@@ -396,10 +396,13 @@ class ModelParser:
                 if t_package is None:
                     log.error("Package not found %s", child_t_object.attr_ea_guid)
                     continue
-                if child_t_object.attr_ea_guid in self.config.ignore_packages:
+                raw_guid = child_t_object.attr_ea_guid or ""
+                normalised_guid = raw_guid.strip("{}").lower()
+                normalised_ignore = [g.strip("{}").lower() for g in self.config.ignore_packages]
+                if normalised_guid in normalised_ignore:
                     log.error(
                         "Ignoring %s %s",
-                        child_t_object.attr_ea_guid,
+                        raw_guid,
                         t_package.attr_name,
                     )
                     continue
@@ -951,7 +954,7 @@ class ModelParser:
                 attribute.name = apply_prefix_with_case(attribute.name, self.config.danger_words_prefix, is_class=False)
 
         attribute.namespace = []
-        attribute.stereotypes = self.get_stereotypes(attribute.guid)
+        attribute.stereotypes = self.get_stereotypes(t_attribute.attr_ea_guid)
         attribute.is_optional = "optional" in attribute.stereotypes
         attribute.is_ordered = to_bool(t_attribute.attr_isordered)
         attribute.is_static = to_bool(t_attribute.attr_isstatic)

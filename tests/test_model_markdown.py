@@ -31,16 +31,17 @@ def test_render_package_heading_depth():
         packages=[
             {
                 "name": "Parent",
+                "guid": "{parent-1}",
                 "stereotypes": None,
                 "notes": None,
-                "packages": [
-                    {
-                        "name": "Child",
-                        "stereotypes": None,
-                        "notes": None,
-                    }
-                ],
-            }
+                "packages": ["{child-1}"],
+            },
+            {
+                "name": "Child",
+                "guid": "{child-1}",
+                "stereotypes": None,
+                "notes": None,
+            },
         ]
     )
     md = render_markdown(data)
@@ -284,31 +285,32 @@ def test_render_deeply_nested_packages():
         packages=[
             {
                 "name": "L1",
+                "guid": "{l1}",
                 "stereotypes": None,
                 "notes": None,
-                "packages": [
+                "packages": ["{l2}"],
+            },
+            {
+                "name": "L2",
+                "guid": "{l2}",
+                "stereotypes": None,
+                "notes": None,
+                "packages": ["{l3}"],
+            },
+            {
+                "name": "L3",
+                "guid": "{l3}",
+                "stereotypes": None,
+                "notes": None,
+                "classes": [
                     {
-                        "name": "L2",
+                        "name": "Deep",
+                        "kind": "struct",
                         "stereotypes": None,
                         "notes": None,
-                        "packages": [
-                            {
-                                "name": "L3",
-                                "stereotypes": None,
-                                "notes": None,
-                                "classes": [
-                                    {
-                                        "name": "Deep",
-                                        "kind": "struct",
-                                        "stereotypes": None,
-                                        "notes": None,
-                                    }
-                                ],
-                            }
-                        ],
                     }
                 ],
-            }
+            },
         ]
     )
     md = render_markdown(data)

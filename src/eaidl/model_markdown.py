@@ -24,8 +24,20 @@ def render_markdown(
     lines.append("---")
     lines.append("")
 
-    for pkg in data.get("packages", []):
-        _render_package(pkg, depth=2, lines=lines, diagrams_dir=diagrams_dir, diagram_paths=diagram_paths)
+    all_pkgs = data.get("packages", [])
+    pkg_by_guid: Dict[str, Any] = {pkg["guid"]: pkg for pkg in all_pkgs if pkg.get("guid")}
+
+    all_child_guids: set = set()
+    for pkg in all_pkgs:
+        for child_ref in pkg.get("packages", []):
+            if isinstance(child_ref, str):
+                all_child_guids.add(child_ref)
+
+    roots = [pkg for pkg in all_pkgs if pkg.get("guid") not in all_child_guids]
+    for pkg in roots:
+        _render_package(
+            pkg, depth=2, lines=lines, pkg_by_guid=pkg_by_guid, diagrams_dir=diagrams_dir, diagram_paths=diagram_paths
+        )
 
     return "\n".join(lines)
 
@@ -34,6 +46,7 @@ def _render_package(
     pkg: Dict[str, Any],
     depth: int,
     lines: List[str],
+    pkg_by_guid: Optional[Dict[str, Any]] = None,
     diagrams_dir: Optional[str] = None,
     diagram_paths: Optional[Dict[str, str]] = None,
 ) -> None:
@@ -58,8 +71,27 @@ def _render_package(
     for cls in pkg.get("classes", []):
         _render_class(cls, depth + 1, lines)
 
-    for child in pkg.get("packages", []):
-        _render_package(child, depth + 1, lines, diagrams_dir=diagrams_dir, diagram_paths=diagram_paths)
+    for child_ref in pkg.get("packages", []):
+        if isinstance(child_ref, str):
+            child = (pkg_by_guid or {}).get(child_ref)
+            if child is not None:
+                _render_package(
+                    child,
+                    depth + 1,
+                    lines,
+                    pkg_by_guid=pkg_by_guid,
+                    diagrams_dir=diagrams_dir,
+                    diagram_paths=diagram_paths,
+                )
+        elif isinstance(child_ref, dict):
+            _render_package(
+                child_ref,
+                depth + 1,
+                lines,
+                pkg_by_guid=pkg_by_guid,
+                diagrams_dir=diagrams_dir,
+                diagram_paths=diagram_paths,
+            )
 
     lines.append("---")
     lines.append("")

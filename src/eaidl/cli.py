@@ -377,6 +377,68 @@ def export_model(config_obj, debug, output, output_format, diagrams_dir):
     click.echo(f"Model exported to {output}")
 
 
+@click.command("export-diagrams")
+@click.option("--config", default="config.yaml", help="Configuration file.")
+@click.option("--debug", default=False, is_flag=True, help="Enable debug.")
+@click.option("--output", "-o", default=None, help="Output directory (default: current dir).")
+@click.option(
+    "--format",
+    "output_format",
+    default="yaml",
+    type=click.Choice(["yaml", "json", "svg", "excalidraw"]),
+    show_default=True,
+    help="Serialisation format for the exported diagram AST.",
+)
+@click.option("--diagram-id", default=None, type=int, help="Export only this diagram ID.")
+@setup_command
+def export_diagrams(config_obj, debug, output, output_format, diagram_id):
+    """Export EA-authored diagram layouts to a portable YAML/JSON AST.
+
+    Each diagram is written to a separate file named
+    ``<diagram_id>_<name>.<format>`` in the output directory.
+    """
+    import yaml
+    from pathlib import Path
+    from eaidl.native_diagram_extractor import NativeDiagramExtractor
+
+    out_dir = Path(output) if output else Path.cwd()
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    extractor = NativeDiagramExtractor.from_url(config_obj.database_url)
+    try:
+        if diagram_id is not None:
+            diagrams = [extractor.extract_by_id(diagram_id)]
+        else:
+            diagrams = extractor.extract_all()
+    finally:
+        extractor.close()
+
+    if not diagrams:
+        click.echo("No diagrams found.")
+        return
+
+    for diag in diagrams:
+        safe_name = "".join(c if c.isalnum() or c in "-_." else "_" for c in diag.name)
+        filename = f"{diag.diagram_id}_{safe_name}.{output_format}"
+        dest = out_dir / filename
+        if output_format == "svg":
+            from eaidl.native_diagram_svg import render_svg
+
+            dest.write_text(render_svg(diag, config_obj.diagrams.native_diagram_style), encoding="utf-8")
+        elif output_format == "excalidraw":
+            from eaidl.native_diagram_excalidraw import render_excalidraw
+
+            dest.write_text(render_excalidraw(diag, config_obj.diagrams.native_diagram_style), encoding="utf-8")
+        elif output_format == "json":
+            import json
+
+            dest.write_text(json.dumps(diag.model_dump(), indent=2), encoding="utf-8")
+        else:
+            dest.write_text(yaml.dump(diag.model_dump(), allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+    click.echo(f"Exported {len(diagrams)} diagram(s) to {out_dir}")
+
+
 @click.command()
 @click.option("--config", default="config.yaml", help="Configuration file.")
 @click.option("--debug", default=False, is_flag=True, help="Enable debug.")
@@ -475,6 +537,7 @@ cli.add_command(import_schema)
 cli.add_command(export_notes)
 cli.add_command(import_notes)
 cli.add_command(export_model)
+cli.add_command(export_diagrams)
 cli.add_command(spellcheck)
 
 if __name__ == "__main__":
