@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import sqlalchemy
 from sqlalchemy.ext.automap import automap_base
@@ -98,9 +98,26 @@ def parse_object_style(raw: Optional[str]) -> NativeObjectStyle:
         RzO        — resize to content (0/1)
     """
     kv = _parse_kv(raw)
-    known = {"DUID", "HideIcon", "NSL", "BCol", "BFol", "LCol", "LWth",
-              "fontsz", "bold", "black", "italic", "ul", "charset", "pitch",
-              "AttCustom", "OpCustom", "AttInh", "RzO"}
+    known = {
+        "DUID",
+        "HideIcon",
+        "NSL",
+        "BCol",
+        "BFol",
+        "LCol",
+        "LWth",
+        "fontsz",
+        "bold",
+        "black",
+        "italic",
+        "ul",
+        "charset",
+        "pitch",
+        "AttCustom",
+        "OpCustom",
+        "AttInh",
+        "RzO",
+    }
 
     def _b(key: str, default: bool = False) -> bool:
         return kv.get(key, "0") == "1"
@@ -368,11 +385,7 @@ class NativeDiagramExtractor:
         diagram_type = getattr(t_diagram, "attr_diagram_type", None)
         nodes = self._extract_nodes(diagram_id)
         connectors = self._extract_connectors(diagram_id)
-        sequence_messages = (
-            self._extract_sequence_messages(diagram_id)
-            if diagram_type == "Sequence"
-            else []
-        )
+        sequence_messages = self._extract_sequence_messages(diagram_id) if diagram_type == "Sequence" else []
         return NativeDiagram(
             diagram_id=diagram_id,
             name=t_diagram.attr_name,
@@ -433,9 +446,7 @@ class NativeDiagramExtractor:
                 )
                 # Bulk-resolve Classifier → ea_guid in one query
                 classifier_ids = [
-                    int(getattr(a, "attr_classifier", 0) or 0)
-                    for a in attr_rows
-                    if getattr(a, "attr_classifier", 0)
+                    int(getattr(a, "attr_classifier", 0) or 0) for a in attr_rows if getattr(a, "attr_classifier", 0)
                 ]
                 classifier_guid_map: Dict[int, str] = {}
                 if classifier_ids:
@@ -448,22 +459,33 @@ class NativeDiagramExtractor:
                         .all()
                     )
                     classifier_guid_map = {
-                        row.attr_object_id: row.attr_ea_guid
-                        for row in guid_rows
-                        if row.attr_ea_guid
+                        row.attr_object_id: row.attr_ea_guid for row in guid_rows if row.attr_ea_guid
                     }
 
                 # Fallback: resolve by type name for attrs where Classifier = 0.
                 # EA often omits the Classifier FK (leaves it 0) and stores only
                 # the text type name.  Skip well-known primitives — they have no
                 # t_object row and can never be hyperlinked.
-                _PRIMITIVES = frozenset({
-                    "int", "integer", "long", "short", "byte",
-                    "float", "double", "real",
-                    "boolean", "bool",
-                    "string", "char", "character",
-                    "void", "any", "object",
-                })
+                _PRIMITIVES = frozenset(
+                    {
+                        "int",
+                        "integer",
+                        "long",
+                        "short",
+                        "byte",
+                        "float",
+                        "double",
+                        "real",
+                        "boolean",
+                        "bool",
+                        "string",
+                        "char",
+                        "character",
+                        "void",
+                        "any",
+                        "object",
+                    }
+                )
                 unresolved_type_names = {
                     (getattr(a, "attr_type", "") or "").strip()
                     for a in attr_rows
@@ -603,9 +625,7 @@ class NativeDiagramExtractor:
                 return val if val else None
         return None
 
-    def _extract_sequence_messages(
-        self, diagram_id: int
-    ) -> List[NativeSequenceMessage]:
+    def _extract_sequence_messages(self, diagram_id: int) -> List[NativeSequenceMessage]:
         """Return sequence messages for *diagram_id* ordered by SeqNo."""
         TConnector = _base.classes.t_connector
 
@@ -630,15 +650,9 @@ class NativeDiagramExtractor:
                     target_object_id=t_cn.attr_end_object_id,
                     seq_no=getattr(t_cn, "attr_seqno", 0) or 0,
                     call_type=getattr(t_cn, "attr_pdata1", None) or None,
-                    return_value=self._parse_pdata2_retval(
-                        getattr(t_cn, "attr_pdata2", None)
-                    ),
-                    param_values=self._parse_styleex_params(
-                        getattr(t_cn, "attr_styleex", None)
-                    ),
-                    activation_bar_height=self._parse_pdata5_sy(
-                        getattr(t_cn, "attr_pdata5", None)
-                    ),
+                    return_value=self._parse_pdata2_retval(getattr(t_cn, "attr_pdata2", None)),
+                    param_values=self._parse_styleex_params(getattr(t_cn, "attr_styleex", None)),
+                    activation_bar_height=self._parse_pdata5_sy(getattr(t_cn, "attr_pdata5", None)),
                     start_x=getattr(t_cn, "attr_ptstartx", 0) or 0,
                     start_y=getattr(t_cn, "attr_ptstarty", 0) or 0,
                     end_x=getattr(t_cn, "attr_ptendx", 0) or 0,

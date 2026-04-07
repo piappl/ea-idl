@@ -37,7 +37,7 @@ import json
 import math
 import re
 from html.parser import HTMLParser
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from eaidl.native_diagram_model import (
     NativeDiagram,
@@ -53,7 +53,7 @@ PADDING_X = 8
 PADDING_Y = 5
 HEADER_H = 22
 ATTR_ROW_H = 16
-NOTE_FOLD = 10          # not rendered visually in Excalidraw but kept logically
+NOTE_FOLD = 10  # not rendered visually in Excalidraw but kept logically
 SVG_PAD = 30
 ACTIVATION_BAR_W = 12
 LIFELINE_HEAD_H = 55
@@ -69,6 +69,7 @@ _FONT_SIZE_ATTR = 10
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 class _TextStripper(HTMLParser):
     """Strip EA HTML formatting tags to produce plain text for Excalidraw."""
@@ -125,9 +126,7 @@ def _argb_to_hex(argb: int, fallback: str) -> str:
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
-def _clip_to_rect(
-    cx: float, cy: float, w: float, h: float, dx: float, dy: float
-) -> Tuple[float, float]:
+def _clip_to_rect(cx: float, cy: float, w: float, h: float, dx: float, dy: float) -> Tuple[float, float]:
     if dx == 0 and dy == 0:
         return cx, cy
     hw, hh = w / 2, h / 2
@@ -373,6 +372,7 @@ def _base_line(
 # Node renderers
 # ---------------------------------------------------------------------------
 
+
 def _class_node_elements(node: NativeDiagramNode, style) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """Return ``(elements, header_rect)`` for a Class or Part node.
 
@@ -390,7 +390,7 @@ def _class_node_elements(node: NativeDiagramNode, style) -> Tuple[List[Dict[str,
     elements: List[Dict[str, Any]] = []
 
     # --- compute dimensions --------------------------------------------------
-    _LINE_H = _FONT_SIZE_NORMAL + 4   # px per header line including leading
+    _LINE_H = _FONT_SIZE_NORMAL + 4  # px per header line including leading
     n_header_lines = 1 if not node.stereotype else 2
     band_h = max(2 * PADDING_Y + n_header_lines * _LINE_H, HEADER_H)
 
@@ -405,19 +405,22 @@ def _class_node_elements(node: NativeDiagramNode, style) -> Tuple[List[Dict[str,
     w = max(w, min_w)
 
     # Minimum total height: band + optional attribute section
-    attrs_section_h = (
-        (len(node.attributes) * ATTR_ROW_H + 2 * PADDING_Y)
-        if node.attributes else 0
-    )
+    attrs_section_h = (len(node.attributes) * ATTR_ROW_H + 2 * PADDING_Y) if node.attributes else 0
     actual_h = max(h, band_h + attrs_section_h)
 
     # Outer rectangle — sized to actual content height so nothing overflows.
     # Carries the link and is the connector binding target (id prefix "hdr").
     hdr_id = _next_id("hdr")
     hdr_el = _base_shape(
-        hdr_id, x, y, w, actual_h,
-        stroke=border, fill=bg,
-        stroke_width=lw, group_ids=[group_id],
+        hdr_id,
+        x,
+        y,
+        w,
+        actual_h,
+        stroke=border,
+        fill=bg,
+        stroke_width=lw,
+        group_ids=[group_id],
         link=_ex_node_href(node, style) if node.name else None,
     )
     elements.append(hdr_el)
@@ -425,10 +428,15 @@ def _class_node_elements(node: NativeDiagramNode, style) -> Tuple[List[Dict[str,
     band_id = _next_id("band")
     name_text_id = _next_id("name")
     band_el = _base_shape(
-        band_id, x, y, w, band_h,
+        band_id,
+        x,
+        y,
+        w,
+        band_h,
         stroke=style.node_header_color,
         fill=style.node_header_color,
-        stroke_width=lw, group_ids=[group_id],
+        stroke_width=lw,
+        group_ids=[group_id],
     )
     band_el["boundElements"].append({"type": "text", "id": name_text_id})
     elements.append(band_el)
@@ -439,27 +447,38 @@ def _class_node_elements(node: NativeDiagramNode, style) -> Tuple[List[Dict[str,
         label_parts.append(f"«{node.stereotype}»")
     label_parts.append(f"«abstract» {node.name}" if node.is_abstract else node.name)
     name_label = "\n".join(label_parts)
-    elements.append(_base_text(
-        name_text_id, x, y, w, band_h,
-        text=name_label,
-        font_size=_FONT_SIZE_NORMAL,
-        align="center",
-        bold=True,
-        color=style.node_header_text_color,
-        group_ids=[group_id],
-        container_id=band_id,
-        vertical_align="middle",
-    ))
+    elements.append(
+        _base_text(
+            name_text_id,
+            x,
+            y,
+            w,
+            band_h,
+            text=name_label,
+            font_size=_FONT_SIZE_NORMAL,
+            align="center",
+            bold=True,
+            color=style.node_header_text_color,
+            group_ids=[group_id],
+            container_id=band_id,
+            vertical_align="middle",
+        )
+    )
 
     # Divider line between header band and attribute body
     if node.attributes:
-        elements.append(_base_line(
-            _next_id("div"),
-            x, y + band_h, x + w, y + band_h,
-            stroke=border,
-            stroke_width=lw,
-            group_ids=[group_id],
-        ))
+        elements.append(
+            _base_line(
+                _next_id("div"),
+                x,
+                y + band_h,
+                x + w,
+                y + band_h,
+                stroke=border,
+                stroke_width=lw,
+                group_ids=[group_id],
+            )
+        )
 
     # Attribute rows — start below the actual band height
     body_y = y + band_h
@@ -468,15 +487,21 @@ def _class_node_elements(node: NativeDiagramNode, style) -> Tuple[List[Dict[str,
         lb, ub = attr.lower_bound or "", attr.upper_bound or ""
         card = f" [{lb}..{ub}]" if (lb or ub) else ""
         attr_text = f"+ {attr.name} : {attr.type}{card}"
-        elements.append(_base_text(
-            _next_id("attr"), x + PADDING_X, ay, w - PADDING_X, _ATTR_ROW_H,
-            text=attr_text,
-            font_size=_FONT_SIZE_ATTR,
-            align="left",
-            color=style.node_border_color,
-            group_ids=[group_id],
-            vertical_align="top",
-        ))
+        elements.append(
+            _base_text(
+                _next_id("attr"),
+                x + PADDING_X,
+                ay,
+                w - PADDING_X,
+                _ATTR_ROW_H,
+                text=attr_text,
+                font_size=_FONT_SIZE_ATTR,
+                align="left",
+                color=style.node_border_color,
+                group_ids=[group_id],
+                vertical_align="top",
+            )
+        )
 
     return elements, hdr_el
 
@@ -495,9 +520,15 @@ def _note_node_elements(node: NativeDiagramNode, style) -> List[Dict[str, Any]]:
     box_id = _next_id("note")
     note_text_id = _next_id("note-txt")
     box_el = _base_shape(
-        box_id, x, y, w, h,
-        stroke=style.note_border_color, fill=style.note_bg_color,
-        stroke_width=1, group_ids=[group_id],
+        box_id,
+        x,
+        y,
+        w,
+        h,
+        stroke=style.note_border_color,
+        fill=style.note_bg_color,
+        stroke_width=1,
+        group_ids=[group_id],
     )
 
     raw = node.note_text or node.name or ""
@@ -505,16 +536,22 @@ def _note_node_elements(node: NativeDiagramNode, style) -> List[Dict[str, Any]]:
     if plain:
         box_el["boundElements"].append({"type": "text", "id": note_text_id})
         elements.append(box_el)
-        elements.append(_base_text(
-            note_text_id, x, y, w, h,
-            text=plain,
-            font_size=_FONT_SIZE_ATTR,
-            align="left",
-            color=style.note_text_color,
-            group_ids=[group_id],
-            container_id=box_id,
-            vertical_align="top",
-        ))
+        elements.append(
+            _base_text(
+                note_text_id,
+                x,
+                y,
+                w,
+                h,
+                text=plain,
+                font_size=_FONT_SIZE_ATTR,
+                align="left",
+                color=style.note_text_color,
+                group_ids=[group_id],
+                container_id=box_id,
+                vertical_align="top",
+            )
+        )
     else:
         elements.append(box_el)
 
@@ -539,33 +576,50 @@ def _lifeline_elements(node: NativeDiagramNode, style) -> Tuple[List[Dict[str, A
     # Head box — carries the hyperlink and is the connector binding target
     ll_hd_id = _next_id("ll-hd")
     ll_hd_el = _base_shape(
-        ll_hd_id, x, y, w, head_h,
-        stroke=border, fill=bg,
+        ll_hd_id,
+        x,
+        y,
+        w,
+        head_h,
+        stroke=border,
+        fill=bg,
         group_ids=[group_id],
         link=_ex_node_href(node, style) if node.name else None,
     )
     elements.append(ll_hd_el)
 
     # Name
-    elements.append(_base_text(
-        _next_id("ll-nm"), x, y + 2, w, head_h - 4,
-        text=node.name,
-        font_size=_FONT_SIZE_NORMAL,
-        align="center",
-        bold=True,
-        color=style.node_header_text_color,
-        group_ids=[group_id],
-    ))
+    elements.append(
+        _base_text(
+            _next_id("ll-nm"),
+            x,
+            y + 2,
+            w,
+            head_h - 4,
+            text=node.name,
+            font_size=_FONT_SIZE_NORMAL,
+            align="center",
+            bold=True,
+            color=style.node_header_text_color,
+            group_ids=[group_id],
+        )
+    )
 
     # Dashed lifeline
     line_top = y + head_h
     line_bot = y + h
-    elements.append(_base_line(
-        _next_id("ll-ln"), cx, line_top, cx, line_bot,
-        stroke=border,
-        stroke_style="dashed",
-        group_ids=[group_id],
-    ))
+    elements.append(
+        _base_line(
+            _next_id("ll-ln"),
+            cx,
+            line_top,
+            cx,
+            line_bot,
+            stroke=border,
+            stroke_style="dashed",
+            group_ids=[group_id],
+        )
+    )
 
     return elements, ll_hd_el
 
@@ -581,8 +635,13 @@ def _fragment_elements(node: NativeDiagramNode, style) -> List[Dict[str, Any]]:
     # Dashed outer box
     outer_id = _next_id("frag-box")
     outer = _base_shape(
-        outer_id, x, y, w, h,
-        stroke=border, fill="transparent",
+        outer_id,
+        x,
+        y,
+        w,
+        h,
+        stroke=border,
+        fill="transparent",
         stroke_style="dashed",
         group_ids=[group_id],
     )
@@ -591,31 +650,50 @@ def _fragment_elements(node: NativeDiagramNode, style) -> List[Dict[str, Any]]:
     # Keyword tab (solid filled rectangle at top-left)
     tab_w = min(90.0, w * 0.4)
     tab_id = _next_id("frag-tab")
-    elements.append(_base_shape(
-        tab_id, x, y, tab_w, FRAGMENT_TAB_H,
-        stroke=border, fill=style.node_header_color,
-        group_ids=[group_id],
-    ))
+    elements.append(
+        _base_shape(
+            tab_id,
+            x,
+            y,
+            tab_w,
+            FRAGMENT_TAB_H,
+            stroke=border,
+            fill=style.node_header_color,
+            group_ids=[group_id],
+        )
+    )
 
     keyword = node.stereotype or "alt"
-    elements.append(_base_text(
-        _next_id("frag-kw"), x + 4, y + 1, tab_w - 8, FRAGMENT_TAB_H - 2,
-        text=keyword,
-        font_size=_FONT_SIZE_SMALL,
-        align="left",
-        color=style.node_header_text_color,
-        group_ids=[group_id],
-    ))
-
-    if node.name:
-        elements.append(_base_text(
-            _next_id("frag-nm"), x + tab_w + 6, y + 1, w - tab_w - 6, FRAGMENT_TAB_H - 2,
-            text=node.name,
+    elements.append(
+        _base_text(
+            _next_id("frag-kw"),
+            x + 4,
+            y + 1,
+            tab_w - 8,
+            FRAGMENT_TAB_H - 2,
+            text=keyword,
             font_size=_FONT_SIZE_SMALL,
             align="left",
-            color=style.node_border_color,
+            color=style.node_header_text_color,
             group_ids=[group_id],
-        ))
+        )
+    )
+
+    if node.name:
+        elements.append(
+            _base_text(
+                _next_id("frag-nm"),
+                x + tab_w + 6,
+                y + 1,
+                w - tab_w - 6,
+                FRAGMENT_TAB_H - 2,
+                text=node.name,
+                font_size=_FONT_SIZE_SMALL,
+                align="left",
+                color=style.node_border_color,
+                group_ids=[group_id],
+            )
+        )
 
     return elements
 
@@ -634,9 +712,7 @@ def _connector_elements(
 
     geo = conn.geometry
     p1, p2 = _edge_points(src, tgt, geo.source_x, geo.source_y, geo.end_x, geo.end_y)
-    wpts: List[Tuple[float, float]] = [
-        (float(wp[0]), float(-wp[1])) for wp in geo.waypoints
-    ]
+    wpts: List[Tuple[float, float]] = [(float(wp[0]), float(-wp[1])) for wp in geo.waypoints]
 
     ctype = conn.connector_type or "Association"
     is_note_link = ctype == "NoteLink"
@@ -655,7 +731,7 @@ def _connector_elements(
     if is_gen:
         end_arrow = "triangle"
     elif is_agg:
-        start_arrow = "dot"   # approximation for diamond
+        start_arrow = "dot"  # approximation for diamond
         end_arrow = "arrow"
     elif not is_note_link:
         end_arrow = "arrow"
@@ -663,7 +739,10 @@ def _connector_elements(
     elements: List[Dict[str, Any]] = []
     line_el = _base_line(
         _next_id(f"conn-{conn.connector_id}"),
-        p1[0], p1[1], p2[0], p2[1],
+        p1[0],
+        p1[1],
+        p2[0],
+        p2[1],
         stroke=stroke,
         stroke_style=stroke_style,
         stroke_width=lw,
@@ -697,13 +776,19 @@ def _connector_elements(
     if conn.target_role:
         lx = p2[0] * 0.8 + p1[0] * 0.2
         ly = p2[1] * 0.8 + p1[1] * 0.2 - 10
-        elements.append(_base_text(
-            _next_id("role"), lx - 20, ly, 60, _FONT_SIZE_SMALL * 1.4,
-            text=conn.target_role,
-            font_size=_FONT_SIZE_SMALL,
-            align="center",
-            color=style.node_border_color,
-        ))
+        elements.append(
+            _base_text(
+                _next_id("role"),
+                lx - 20,
+                ly,
+                60,
+                _FONT_SIZE_SMALL * 1.4,
+                text=conn.target_role,
+                font_size=_FONT_SIZE_SMALL,
+                align="center",
+                color=style.node_border_color,
+            )
+        )
 
     return elements
 
@@ -730,29 +815,56 @@ def _sequence_message_elements(
         # Two-segment loop: right bump
         loop_x = x1 + 40
         # Segment 1: x1,y1 → loop_x,y1
-        elements.append(_base_line(
-            _next_id("msg-s1"), x1, y1, loop_x, y1,
-            stroke=stroke, group_ids=[group_id],
-        ))
+        elements.append(
+            _base_line(
+                _next_id("msg-s1"),
+                x1,
+                y1,
+                loop_x,
+                y1,
+                stroke=stroke,
+                group_ids=[group_id],
+            )
+        )
         # Segment 2: loop_x,y1 → loop_x,y1+30
-        elements.append(_base_line(
-            _next_id("msg-s2"), loop_x, y1, loop_x, y1 + 30,
-            stroke=stroke, group_ids=[group_id],
-        ))
+        elements.append(
+            _base_line(
+                _next_id("msg-s2"),
+                loop_x,
+                y1,
+                loop_x,
+                y1 + 30,
+                stroke=stroke,
+                group_ids=[group_id],
+            )
+        )
         # Segment 3 with arrowhead: loop_x,y1+30 → x2,y2+30
-        elements.append(_base_line(
-            _next_id("msg-s3"), loop_x, y1 + 30, x2, y2 + 30,
-            stroke=stroke, end_arrowhead="arrow", group_ids=[group_id],
-        ))
+        elements.append(
+            _base_line(
+                _next_id("msg-s3"),
+                loop_x,
+                y1 + 30,
+                x2,
+                y2 + 30,
+                stroke=stroke,
+                end_arrowhead="arrow",
+                group_ids=[group_id],
+            )
+        )
     else:
-        elements.append(_base_line(
-            _next_id(f"msg-{msg.connector_id}"),
-            x1, y1, x2, y2,
-            stroke=stroke,
-            stroke_style=stroke_style,
-            end_arrowhead="arrow",
-            group_ids=[group_id],
-        ))
+        elements.append(
+            _base_line(
+                _next_id(f"msg-{msg.connector_id}"),
+                x1,
+                y1,
+                x2,
+                y2,
+                stroke=stroke,
+                stroke_style=stroke_style,
+                end_arrowhead="arrow",
+                group_ids=[group_id],
+            )
+        )
 
     # Label text
     mid_x = (x1 + x2) / 2
@@ -765,59 +877,84 @@ def _sequence_message_elements(
     above_y = y1 - _FONT_SIZE_NORMAL - 2
     if msg.return_value and label:
         # Two lines above: name on top, return_value below it
-        elements.append(_base_text(
-            _next_id("msg-lbl"),
-            mid_x - 80, above_y - _FONT_SIZE_NORMAL - 2, 160, _FONT_SIZE_NORMAL * 1.4,
-            text=label,
-            font_size=_FONT_SIZE_NORMAL,
-            align="center",
-            color=style.node_border_color,
-            group_ids=[group_id],
-        ))
-        elements.append(_base_text(
-            _next_id("msg-ret"),
-            mid_x - 80, above_y, 160, _FONT_SIZE_NORMAL * 1.4,
-            text=msg.return_value,
-            font_size=_FONT_SIZE_NORMAL,
-            align="center",
-            italic=True,
-            color=style.node_border_color,
-            group_ids=[group_id],
-        ))
+        elements.append(
+            _base_text(
+                _next_id("msg-lbl"),
+                mid_x - 80,
+                above_y - _FONT_SIZE_NORMAL - 2,
+                160,
+                _FONT_SIZE_NORMAL * 1.4,
+                text=label,
+                font_size=_FONT_SIZE_NORMAL,
+                align="center",
+                color=style.node_border_color,
+                group_ids=[group_id],
+            )
+        )
+        elements.append(
+            _base_text(
+                _next_id("msg-ret"),
+                mid_x - 80,
+                above_y,
+                160,
+                _FONT_SIZE_NORMAL * 1.4,
+                text=msg.return_value,
+                font_size=_FONT_SIZE_NORMAL,
+                align="center",
+                italic=True,
+                color=style.node_border_color,
+                group_ids=[group_id],
+            )
+        )
     elif label:
-        elements.append(_base_text(
-            _next_id("msg-lbl"),
-            mid_x - 80, above_y, 160, _FONT_SIZE_NORMAL * 1.4,
-            text=label,
-            font_size=_FONT_SIZE_NORMAL,
-            align="center",
-            color=style.node_border_color,
-            group_ids=[group_id],
-        ))
+        elements.append(
+            _base_text(
+                _next_id("msg-lbl"),
+                mid_x - 80,
+                above_y,
+                160,
+                _FONT_SIZE_NORMAL * 1.4,
+                text=label,
+                font_size=_FONT_SIZE_NORMAL,
+                align="center",
+                color=style.node_border_color,
+                group_ids=[group_id],
+            )
+        )
     elif msg.return_value:
-        elements.append(_base_text(
-            _next_id("msg-ret"),
-            mid_x - 80, above_y, 160, _FONT_SIZE_NORMAL * 1.4,
-            text=msg.return_value,
-            font_size=_FONT_SIZE_NORMAL,
-            align="center",
-            italic=True,
-            color=style.node_border_color,
-            group_ids=[group_id],
-        ))
+        elements.append(
+            _base_text(
+                _next_id("msg-ret"),
+                mid_x - 80,
+                above_y,
+                160,
+                _FONT_SIZE_NORMAL * 1.4,
+                text=msg.return_value,
+                font_size=_FONT_SIZE_NORMAL,
+                align="center",
+                italic=True,
+                color=style.node_border_color,
+                group_ids=[group_id],
+            )
+        )
 
     # Stereotype below the arrow line
     if msg.stereotype:
-        elements.append(_base_text(
-            _next_id("msg-st"),
-            mid_x - 60, y1 + 2, 120, _FONT_SIZE_SMALL * 1.4,
-            text=f"«{msg.stereotype}»",
-            font_size=_FONT_SIZE_SMALL,
-            align="center",
-            italic=True,
-            color=style.connector_color,
-            group_ids=[group_id],
-        ))
+        elements.append(
+            _base_text(
+                _next_id("msg-st"),
+                mid_x - 60,
+                y1 + 2,
+                120,
+                _FONT_SIZE_SMALL * 1.4,
+                text=f"«{msg.stereotype}»",
+                font_size=_FONT_SIZE_SMALL,
+                align="center",
+                italic=True,
+                color=style.connector_color,
+                group_ids=[group_id],
+            )
+        )
 
     return elements
 
@@ -857,11 +994,17 @@ def _activation_bar_elements(
         border = _argb_to_hex(node.style.line_color, style.node_border_color)
         for top, bot in obj_spans:
             h = max(bot - top, 4)
-            elements.append(_base_shape(
-                _next_id("act"),
-                cx - hw, top, ACTIVATION_BAR_W, h,
-                stroke=border, fill=style.node_bg_color,
-            ))
+            elements.append(
+                _base_shape(
+                    _next_id("act"),
+                    cx - hw,
+                    top,
+                    ACTIVATION_BAR_W,
+                    h,
+                    stroke=border,
+                    fill=style.node_bg_color,
+                )
+            )
 
     return elements
 
@@ -884,18 +1027,24 @@ def _note_message_ref_elements(
         ny = (-float(note.rect_top) + -float(note.rect_bottom)) / 2
         mx = (float(msg.start_x) + float(msg.end_x)) / 2
         my = (-float(msg.start_y) + -float(msg.end_y)) / 2
-        elements.append(_base_line(
-            _next_id("nmref"),
-            nx, ny, mx, my,
-            stroke=style.connector_note_color,
-            stroke_style="dashed",
-        ))
+        elements.append(
+            _base_line(
+                _next_id("nmref"),
+                nx,
+                ny,
+                mx,
+                my,
+                stroke=style.connector_note_color,
+                stroke_style="dashed",
+            )
+        )
     return elements
 
 
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
+
 
 def render_excalidraw(diagram: NativeDiagram, style=None) -> str:
     """
@@ -912,6 +1061,7 @@ def render_excalidraw(diagram: NativeDiagram, style=None) -> str:
 
     if style is None:
         from eaidl.config import NativeDiagramStyleConfig
+
         style = NativeDiagramStyleConfig()
 
     node_map: Dict[int, NativeDiagramNode] = {n.object_id: n for n in diagram.nodes}
@@ -919,10 +1069,7 @@ def render_excalidraw(diagram: NativeDiagram, style=None) -> str:
 
     if diagram.diagram_type == "Sequence":
         # Separate lifelines, fragments, and notes
-        lifelines = [
-            n for n in diagram.nodes
-            if n.object_type in ("Part", "Class") and n.name
-        ]
+        lifelines = [n for n in diagram.nodes if n.object_type in ("Part", "Class") and n.name]
         fragments = [n for n in diagram.nodes if n.object_type == "InteractionFragment"]
         notes = [n for n in diagram.nodes if n.object_type == "Note"]
 
@@ -938,9 +1085,7 @@ def render_excalidraw(diagram: NativeDiagram, style=None) -> str:
             elements.extend(_sequence_message_elements(msg, style))
 
         # Activation bars
-        elements.extend(_activation_bar_elements(
-            diagram.sequence_messages, node_map, style
-        ))
+        elements.extend(_activation_bar_elements(diagram.sequence_messages, node_map, style))
 
         # NoteLink connectors
         for conn in diagram.connectors:

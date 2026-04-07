@@ -39,4 +39,6 @@ def get_renderer(config: Configuration) -> DiagramRenderer:
         )
         return MermaidRenderer()
     else:
-        raise ValueError(f"Unknown diagram renderer: {renderer_type}. " f"Supported renderers: mermaid, plantuml, native")
+        raise ValueError(
+            f"Unknown diagram renderer: {renderer_type}. " f"Supported renderers: mermaid, plantuml, native"
+        )

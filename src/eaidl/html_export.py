@@ -219,15 +219,13 @@ def _render_native_diagram(
     # not be nodes on this particular diagram.
     # ModelClass.guid is normalised (lowercase, no braces); raw EA GUIDs from
     # the SVG still have braces and mixed case, so normalise before lookup.
-    found_guids = set(_re.findall(r'eaidl:(\{[^}]+\})', svg))
+    found_guids = set(_re.findall(r"eaidl:(\{[^}]+\})", svg))
     guid_to_url: dict = {}
     for guid in found_guids:
         normalised = guid.strip("{}").lower()
         if normalised in guid_to_cls:
             cls = guid_to_cls[normalised]
-            guid_to_url[guid] = generate_class_link(
-                namespace_path, cls.namespace, cls.name, from_page_type="diagram"
-            )
+            guid_to_url[guid] = generate_class_link(namespace_path, cls.namespace, cls.name, from_page_type="diagram")
     if guid_to_url:
         svg = rewrite_svg_links(svg, guid_to_url)
         # rewrite_svg_links does plain string replacement, works on JSON too
@@ -266,6 +264,7 @@ def generate_package_pages(
     native_extractor = None
     if config.diagrams.renderer == "native":
         from eaidl.native_diagram_extractor import NativeDiagramExtractor
+
         native_extractor = NativeDiagramExtractor.from_url(config.database_url)
 
     def process_package(package: ModelPackage, namespace_path: List[str]) -> None:
@@ -314,9 +313,7 @@ def generate_package_pages(
                 try:
                     if config.diagrams.renderer == "native":
                         ea_diagrams.append(
-                            _render_native_diagram(
-                                ea_diagram, packages, config, namespace_path, native_extractor
-                            )
+                            _render_native_diagram(ea_diagram, packages, config, namespace_path, native_extractor)
                         )
                     else:
                         # Use builder → renderer pipeline (Mermaid or PlantUML)

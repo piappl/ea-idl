@@ -53,16 +53,16 @@ from eaidl.native_diagram_model import (
 # ---------------------------------------------------------------------------
 # Layout constants (geometry only — not user-overridable)
 # ---------------------------------------------------------------------------
-PADDING_X = 8           # horizontal text padding inside a node
-PADDING_Y = 5           # vertical text padding
-HEADER_H = 22           # fixed height of the header band
-ATTR_ROW_H = 16         # height per attribute row
-NOTE_FOLD = 10          # dog-ear fold size for Note objects
-SVG_PAD = 30            # white-space margin around the whole diagram
-NOTE_INNER_PAD = 6      # padding inside note content area
-LIFELINE_HEAD_H = 55    # height of a lifeline head box in sequence diagrams
-FRAGMENT_TAB_W = 90    # width of the keyword tab on an interaction fragment
-FRAGMENT_TAB_H = 18    # height of the keyword tab
+PADDING_X = 8  # horizontal text padding inside a node
+PADDING_Y = 5  # vertical text padding
+HEADER_H = 22  # fixed height of the header band
+ATTR_ROW_H = 16  # height per attribute row
+NOTE_FOLD = 10  # dog-ear fold size for Note objects
+SVG_PAD = 30  # white-space margin around the whole diagram
+NOTE_INNER_PAD = 6  # padding inside note content area
+LIFELINE_HEAD_H = 55  # height of a lifeline head box in sequence diagrams
+FRAGMENT_TAB_W = 90  # width of the keyword tab on an interaction fragment
+FRAGMENT_TAB_H = 18  # height of the keyword tab
 ACTIVATION_BAR_W = 12  # width of execution specification (activation) box
 
 # ---------------------------------------------------------------------------
@@ -258,8 +258,12 @@ def _argb_to_css(argb: int, fallback: Optional[str] = None) -> Optional[str]:
 
 
 def _clip_to_rect(
-    cx: float, cy: float, w: float, h: float,
-    dx: float, dy: float,
+    cx: float,
+    cy: float,
+    w: float,
+    h: float,
+    dx: float,
+    dy: float,
 ) -> Tuple[float, float]:
     """
     Return the point where the ray from (cx, cy) in direction (dx, dy) first
@@ -340,84 +344,96 @@ def _render_lifeline(parent: ET.Element, node: NativeDiagramNode, style) -> None
         a.set("xlink:href", href)
         container = a
 
-    g = ET.SubElement(container, "g", **{"class": "lifeline",
-                                          "data-object-id": str(node.object_id)})
+    g = ET.SubElement(container, "g", **{"class": "lifeline", "data-object-id": str(node.object_id)})
 
     # Head box
-    ET.SubElement(g, "rect",
-                  x=str(x), y=str(y), width=str(w), height=str(head_h),
-                  fill=bg, stroke=border, **{"stroke-width": "1"})
+    ET.SubElement(
+        g, "rect", x=str(x), y=str(y), width=str(w), height=str(head_h), fill=bg, stroke=border, **{"stroke-width": "1"}
+    )
 
     # Stereotype
     name_y = y + head_h - PADDING_Y
     if node.stereotype:
-        ET.SubElement(g, "text",
-                      x=str(cx), y=str(y + 14),
-                      **{"text-anchor": "middle",
-                         "font-family": style.font_family,
-                         "font-size": "9",
-                         "font-style": "italic",
-                         "fill": style.node_header_text_color}).text = f"\u00ab{node.stereotype}\u00bb"
+        ET.SubElement(
+            g,
+            "text",
+            x=str(cx),
+            y=str(y + 14),
+            **{
+                "text-anchor": "middle",
+                "font-family": style.font_family,
+                "font-size": "9",
+                "font-style": "italic",
+                "fill": style.node_header_text_color,
+            },
+        ).text = f"\u00ab{node.stereotype}\u00bb"
         name_y = y + head_h - 3
 
-    ET.SubElement(g, "text",
-                  x=str(cx), y=str(name_y),
-                  **{"text-anchor": "middle",
-                     "font-family": style.font_family,
-                     "font-size": str(style.font_size),
-                     "font-weight": "bold",
-                     "fill": style.node_header_text_color}).text = node.name
+    ET.SubElement(
+        g,
+        "text",
+        x=str(cx),
+        y=str(name_y),
+        **{
+            "text-anchor": "middle",
+            "font-family": style.font_family,
+            "font-size": str(style.font_size),
+            "font-weight": "bold",
+            "fill": style.node_header_text_color,
+        },
+    ).text = node.name
 
     # Dashed lifeline extending downward
     line_top = y + head_h
     line_bot = y + h
-    ET.SubElement(g, "line",
-                  x1=str(cx), y1=str(line_top), x2=str(cx), y2=str(line_bot),
-                  stroke=border,
-                  **{"stroke-width": "1", "stroke-dasharray": "6,4"})
+    ET.SubElement(
+        g,
+        "line",
+        x1=str(cx),
+        y1=str(line_top),
+        x2=str(cx),
+        y2=str(line_bot),
+        stroke=border,
+        **{"stroke-width": "1", "stroke-dasharray": "6,4"},
+    )
 
 
-def _render_interaction_fragment(
-    parent: ET.Element, node: NativeDiagramNode, style
-) -> None:
+def _render_interaction_fragment(parent: ET.Element, node: NativeDiagramNode, style) -> None:
     """Render a UML CombinedFragment (alt/opt/loop) box with keyword tab."""
     x, y, w, h = _ea_to_svg(node)
     border = _argb_to_css(node.style.line_color, style.node_border_color)
 
-    g = ET.SubElement(parent, "g", **{"class": "fragment",
-                                       "data-object-id": str(node.object_id)})
+    g = ET.SubElement(parent, "g", **{"class": "fragment", "data-object-id": str(node.object_id)})
 
     # Outer dashed rectangle
-    ET.SubElement(g, "rect",
-                  x=str(x), y=str(y), width=str(w), height=str(h),
-                  fill="none", stroke=border,
-                  **{"stroke-width": "1"})
+    ET.SubElement(
+        g, "rect", x=str(x), y=str(y), width=str(w), height=str(h), fill="none", stroke=border, **{"stroke-width": "1"}
+    )
 
     # Keyword tab (pentagon) at top-left
     tw = min(FRAGMENT_TAB_W, w * 0.4)
     th = FRAGMENT_TAB_H
-    tab_pts = (
-        f"{x},{y} {x+tw},{y} {x+tw+8},{y+th/2} "
-        f"{x+tw},{y+th} {x},{y+th}"
-    )
-    ET.SubElement(g, "polygon", points=tab_pts,
-                  fill=style.node_header_color, stroke=border,
-                  **{"stroke-width": "1"})
+    tab_pts = f"{x},{y} {x+tw},{y} {x+tw+8},{y+th/2} " f"{x+tw},{y+th} {x},{y+th}"
+    ET.SubElement(g, "polygon", points=tab_pts, fill=style.node_header_color, stroke=border, **{"stroke-width": "1"})
 
     keyword = node.stereotype or "alt"
-    ET.SubElement(g, "text",
-                  x=str(x + 5), y=str(y + th - 4),
-                  **{"font-family": style.font_family,
-                     "font-size": "9",
-                     "fill": style.node_header_text_color}).text = keyword
+    ET.SubElement(
+        g,
+        "text",
+        x=str(x + 5),
+        y=str(y + th - 4),
+        **{"font-family": style.font_family, "font-size": "9", "fill": style.node_header_text_color},
+    ).text = keyword
 
     # Label text at top-right of the tab area
     if node.name:
-        ET.SubElement(g, "text",
-                      x=str(x + tw + 14), y=str(y + th - 4),
-                      **{"font-family": style.font_family,
-                         "font-size": "9",
-                         "fill": style.node_border_color}).text = node.name
+        ET.SubElement(
+            g,
+            "text",
+            x=str(x + tw + 14),
+            y=str(y + th - 4),
+            **{"font-family": style.font_family, "font-size": "9", "fill": style.node_border_color},
+        ).text = node.name
 
 
 def _render_sequence_message(
@@ -428,15 +444,14 @@ def _render_sequence_message(
 ) -> None:
     """Render one sequence message as a horizontal (or self-referencing) arrow."""
     x1 = float(msg.start_x)
-    y1 = float(-msg.start_y)   # EA Y is negative
+    y1 = float(-msg.start_y)  # EA Y is negative
     x2 = float(msg.end_x)
     y2 = float(-msg.end_y)
 
     is_return = x2 < x1  # simple heuristic: right-to-left = reply
     is_self = msg.source_object_id == msg.target_object_id
 
-    g = ET.SubElement(parent, "g", **{"class": "seq-message",
-                                       "data-seq": str(msg.seq_no)})
+    g = ET.SubElement(parent, "g", **{"class": "seq-message", "data-seq": str(msg.seq_no)})
 
     stroke = style.connector_color
     stroke_w = "1"
@@ -445,10 +460,9 @@ def _render_sequence_message(
         # Self-referencing loop: small rectangle on the right side
         loop_w, loop_h = 40, 30
         d = f"M {x1},{y1} L {x1+loop_w},{y1} L {x1+loop_w},{y1+loop_h} L {x2},{y2+loop_h}"
-        ET.SubElement(g, "path", d=d,
-                      fill="none", stroke=stroke,
-                      **{"stroke-width": stroke_w,
-                         "marker-end": "url(#arrow-open)"})
+        ET.SubElement(
+            g, "path", d=d, fill="none", stroke=stroke, **{"stroke-width": stroke_w, "marker-end": "url(#arrow-open)"}
+        )
     else:
         path_attrs: Dict[str, str] = {
             "d": f"M {x1},{y1} L {x2},{y2}",
@@ -461,10 +475,7 @@ def _render_sequence_message(
             path_attrs["stroke-dasharray"] = "6,3"
         ET.SubElement(g, "path", **path_attrs)
 
-    # Activation box at the destination end (arrowhead tip)
-    dest_id = msg.target_object_id if not is_return else msg.source_object_id
-    spans = activation_spans.get(dest_id, [])
-    # Mark this message's Y position into the spans list (collected separately)
+    # Activation box at the destination end (arrowhead tip).
     # The actual rectangles are rendered by _render_activation_bars; nothing here.
 
     # Build label: Name(params) / Name(params): retval
@@ -479,30 +490,48 @@ def _render_sequence_message(
     label_y = y1 - 5  # just above the line
 
     if msg.stereotype:
-        ET.SubElement(g, "text",
-                      x=str(mid_x), y=str(label_y - 11),
-                      **{"text-anchor": "middle",
-                         "font-family": style.font_family,
-                         "font-size": "9",
-                         "font-style": "italic",
-                         "fill": style.connector_color}).text = f"\u00ab{msg.stereotype}\u00bb"
+        ET.SubElement(
+            g,
+            "text",
+            x=str(mid_x),
+            y=str(label_y - 11),
+            **{
+                "text-anchor": "middle",
+                "font-family": style.font_family,
+                "font-size": "9",
+                "font-style": "italic",
+                "fill": style.connector_color,
+            },
+        ).text = f"\u00ab{msg.stereotype}\u00bb"
         label_y -= 2
 
     if label:
-        ET.SubElement(g, "text",
-                      x=str(mid_x), y=str(label_y),
-                      **{"text-anchor": "middle",
-                         "font-family": style.font_family,
-                         "font-size": str(style.font_size),
-                         "fill": style.node_border_color}).text = label
+        ET.SubElement(
+            g,
+            "text",
+            x=str(mid_x),
+            y=str(label_y),
+            **{
+                "text-anchor": "middle",
+                "font-family": style.font_family,
+                "font-size": str(style.font_size),
+                "fill": style.node_border_color,
+            },
+        ).text = label
 
     if ret_label:
-        ET.SubElement(g, "text",
-                      x=str(mid_x), y=str(label_y + 11),
-                      **{"text-anchor": "middle",
-                         "font-family": style.font_family,
-                         "font-size": str(style.font_size),
-                         "fill": style.node_border_color}).text = ret_label
+        ET.SubElement(
+            g,
+            "text",
+            x=str(mid_x),
+            y=str(label_y + 11),
+            **{
+                "text-anchor": "middle",
+                "font-family": style.font_family,
+                "font-size": str(style.font_size),
+                "fill": style.node_border_color,
+            },
+        ).text = ret_label
 
 
 def _compute_activation_spans(
@@ -566,7 +595,8 @@ def _render_activation_bars(
         for top, bottom in obj_spans:
             h = max(bottom - top, 4)
             ET.SubElement(
-                parent, "rect",
+                parent,
+                "rect",
                 x=str(cx_node - hw),
                 y=str(top),
                 width=str(ACTIVATION_BAR_W),
@@ -608,13 +638,15 @@ def _render_note_connector_refs(
         my = (-float(msg.start_y) + -float(msg.end_y)) / 2
 
         ET.SubElement(
-            parent, "line",
-            x1=str(nx), y1=str(ny),
-            x2=str(mx), y2=str(my),
+            parent,
+            "line",
+            x1=str(nx),
+            y1=str(ny),
+            x2=str(mx),
+            y2=str(my),
             stroke=style.connector_note_color,
             **{"stroke-width": "1", "stroke-dasharray": "5,3"},
         )
-
 
 
 # Placeholder tag replaced with <foreignObject> after ET serialisation
@@ -627,25 +659,36 @@ def _build_defs(root: ET.Element, style) -> None:
     c = style.connector_color
 
     # Open chevron (Association and default)
-    m = ET.SubElement(defs, "marker",
-                      id="arrow-open", markerWidth="10", markerHeight="7",
-                      refX="9", refY="3.5", orient="auto")
-    ET.SubElement(m, "polyline", points="0,0 9,3.5 0,7",
-                  fill="none", stroke=c, **{"stroke-width": "1.2"})
+    m = ET.SubElement(
+        defs, "marker", id="arrow-open", markerWidth="10", markerHeight="7", refX="9", refY="3.5", orient="auto"
+    )
+    ET.SubElement(m, "polyline", points="0,0 9,3.5 0,7", fill="none", stroke=c, **{"stroke-width": "1.2"})
 
     # Hollow triangle (Generalization — points *to* the parent)
-    m2 = ET.SubElement(defs, "marker",
-                       id="arrow-generalization", markerWidth="10", markerHeight="7",
-                       refX="9", refY="3.5", orient="auto")
-    ET.SubElement(m2, "polygon", points="0,0 9,3.5 0,7",
-                  fill=style.node_bg_color, stroke=c, **{"stroke-width": "1"})
+    m2 = ET.SubElement(
+        defs,
+        "marker",
+        id="arrow-generalization",
+        markerWidth="10",
+        markerHeight="7",
+        refX="9",
+        refY="3.5",
+        orient="auto",
+    )
+    ET.SubElement(m2, "polygon", points="0,0 9,3.5 0,7", fill=style.node_bg_color, stroke=c, **{"stroke-width": "1"})
 
     # Diamond (Aggregation / Composition — at source end)
-    m3 = ET.SubElement(defs, "marker",
-                       id="arrow-diamond", markerWidth="12", markerHeight="8",
-                       refX="0", refY="4", orient="auto-start-reverse")
-    ET.SubElement(m3, "polygon", points="0,4 5,0 10,4 5,8",
-                  fill=style.node_bg_color, stroke=c, **{"stroke-width": "1"})
+    m3 = ET.SubElement(
+        defs,
+        "marker",
+        id="arrow-diamond",
+        markerWidth="12",
+        markerHeight="8",
+        refX="0",
+        refY="4",
+        orient="auto-start-reverse",
+    )
+    ET.SubElement(m3, "polygon", points="0,4 5,0 10,4 5,8", fill=style.node_bg_color, stroke=c, **{"stroke-width": "1"})
 
 
 def _attr_link_href(attr, style, node=None) -> Optional[str]:
@@ -671,12 +714,7 @@ def _attr_link_href(attr, style, node=None) -> Optional[str]:
             stereotype="",
         )
     # Enum-literal fallback: self-link to the parent node
-    if (
-        node is not None
-        and node.ea_guid
-        and node.name
-        and attr.name.startswith(node.name + "_")
-    ):
+    if node is not None and node.ea_guid and node.name and attr.name.startswith(node.name + "_"):
         return _node_link_href(node, style)
     return None
 
@@ -711,16 +749,23 @@ def _render_class_node(parent: ET.Element, node: NativeDiagramNode, style) -> No
     border = _argb_to_css(node.style.line_color, style.node_border_color)
     lw = node.style.line_width if node.style.line_width > 0 else style.node_border_width
 
-    g = ET.SubElement(parent, "g", **{"class": "node-class",
-                                       "data-object-id": str(node.object_id)})
+    g = ET.SubElement(parent, "g", **{"class": "node-class", "data-object-id": str(node.object_id)})
 
     # Body rectangle (rendered before header so header border paints on top).
     # Node borders use the EA-stored dimensions so diagram layout is preserved.
     body_y = y + HEADER_H
     body_h = max(h - HEADER_H, ATTR_ROW_H * max(1, len(node.attributes)) + 2 * PADDING_Y)
-    ET.SubElement(g, "rect",
-                  x=str(x), y=str(body_y), width=str(w), height=str(body_h),
-                  fill=bg, stroke=border, **{"stroke-width": str(lw)})
+    ET.SubElement(
+        g,
+        "rect",
+        x=str(x),
+        y=str(body_y),
+        width=str(w),
+        height=str(body_h),
+        fill=bg,
+        stroke=border,
+        **{"stroke-width": str(lw)},
+    )
 
     # Header — optionally wrapped in a link to the class itself
     node_href = _node_link_href(node, style)
@@ -731,32 +776,51 @@ def _render_class_node(parent: ET.Element, node: NativeDiagramNode, style) -> No
         a.set("xlink:href", node_href)
         hdr_container = a
 
-    ET.SubElement(hdr_container, "rect",
-                  x=str(x), y=str(y), width=str(w), height=str(HEADER_H),
-                  fill=style.node_header_color,
-                  stroke=border, **{"stroke-width": str(lw)})
+    ET.SubElement(
+        hdr_container,
+        "rect",
+        x=str(x),
+        y=str(y),
+        width=str(w),
+        height=str(HEADER_H),
+        fill=style.node_header_color,
+        stroke=border,
+        **{"stroke-width": str(lw)},
+    )
 
     # Stereotype (small italic, rendered first so name sits below it)
     name_text = f"«abstract» {node.name}" if node.is_abstract else node.name
     text_y = y + HEADER_H - PADDING_Y
     if node.stereotype:
-        ET.SubElement(hdr_container, "text",
-                      x=str(x + w / 2), y=str(y + 10),
-                      **{"text-anchor": "middle",
-                         "font-family": style.font_family,
-                         "font-size": "9",
-                         "font-style": "italic",
-                         "fill": style.node_header_text_color}).text = f"«{node.stereotype}»"
+        ET.SubElement(
+            hdr_container,
+            "text",
+            x=str(x + w / 2),
+            y=str(y + 10),
+            **{
+                "text-anchor": "middle",
+                "font-family": style.font_family,
+                "font-size": "9",
+                "font-style": "italic",
+                "fill": style.node_header_text_color,
+            },
+        ).text = f"«{node.stereotype}»"
         text_y = y + HEADER_H - 2
 
     # Class name (bold)
-    ET.SubElement(hdr_container, "text",
-                  x=str(x + w / 2), y=str(text_y),
-                  **{"text-anchor": "middle",
-                     "font-family": style.font_family,
-                     "font-size": str(style.font_size),
-                     "font-weight": "bold",
-                     "fill": style.node_header_text_color}).text = name_text
+    ET.SubElement(
+        hdr_container,
+        "text",
+        x=str(x + w / 2),
+        y=str(text_y),
+        **{
+            "text-anchor": "middle",
+            "font-family": style.font_family,
+            "font-size": str(style.font_size),
+            "font-weight": "bold",
+            "fill": style.node_header_text_color,
+        },
+    ).text = name_text
 
     # Attributes — no clip applied so long labels are fully visible even if they
     # extend past the node border.  The viewBox is sized to accommodate them.
@@ -773,11 +837,17 @@ def _render_class_node(parent: ET.Element, node: NativeDiagramNode, style) -> No
             txt_parent: ET.Element = a
         else:
             txt_parent = g
-        ET.SubElement(txt_parent, "text",
-                      x=str(x + PADDING_X), y=str(ay),
-                      **{"font-family": style.font_family,
-                         "font-size": str(style.attr_font_size),
-                         "fill": style.node_border_color}).text = label
+        ET.SubElement(
+            txt_parent,
+            "text",
+            x=str(x + PADDING_X),
+            y=str(ay),
+            **{
+                "font-family": style.font_family,
+                "font-size": str(style.attr_font_size),
+                "fill": style.node_border_color,
+            },
+        ).text = label
 
 
 def _render_note_node(
@@ -798,20 +868,19 @@ def _render_note_node(
     x, y, w, h = _ea_to_svg(node)
     f = NOTE_FOLD
 
-    g = ET.SubElement(parent, "g", **{"class": "node-note",
-                                       "data-object-id": str(node.object_id)})
+    g = ET.SubElement(parent, "g", **{"class": "node-note", "data-object-id": str(node.object_id)})
 
     # Dog-eared polygon
     points = f"{x},{y} {x+w-f},{y} {x+w},{y+f} {x+w},{y+h} {x},{y+h}"
-    ET.SubElement(g, "polygon", points=points,
-                  fill=style.note_bg_color, stroke=style.note_border_color,
-                  **{"stroke-width": "1"})
+    ET.SubElement(
+        g, "polygon", points=points, fill=style.note_bg_color, stroke=style.note_border_color, **{"stroke-width": "1"}
+    )
 
     # Fold triangle
     fold_pts = f"{x+w-f},{y} {x+w},{y+f} {x+w-f},{y+f}"
-    ET.SubElement(g, "polygon", points=fold_pts,
-                  fill="#fff9c4", stroke=style.note_border_color,
-                  **{"stroke-width": "1"})
+    ET.SubElement(
+        g, "polygon", points=fold_pts, fill="#fff9c4", stroke=style.note_border_color, **{"stroke-width": "1"}
+    )
 
     # Placeholder element — replaced post-serialisation with the foreignObject
     ph = ET.SubElement(g, "desc")
@@ -849,8 +918,7 @@ def _render_connector(
     if src is None or tgt is None:
         return
 
-    g = ET.SubElement(parent, "g", **{"class": "connector",
-                                       "data-connector-id": str(conn.connector_id)})
+    g = ET.SubElement(parent, "g", **{"class": "connector", "data-connector-id": str(conn.connector_id)})
 
     geo = conn.geometry
     p1, p2 = _edge_points(src, tgt, geo.source_x, geo.source_y, geo.end_x, geo.end_y)
@@ -864,9 +932,7 @@ def _render_connector(
     all_pts = [p1] + wpts + [p2]
     d = "M " + " L ".join(f"{px},{py}" for px, py in all_pts)
 
-    stroke = _argb_to_css(conn.style.color) or (
-        style.connector_note_color if is_note_link else style.connector_color
-    )
+    stroke = _argb_to_css(conn.style.color) or (style.connector_note_color if is_note_link else style.connector_color)
     stroke_w = str(max(conn.style.line_width, 1))
 
     path_attrs: Dict[str, str] = {
@@ -891,11 +957,13 @@ def _render_connector(
     if conn.target_role:
         lx = p2[0] * 0.8 + p1[0] * 0.2
         ly = p2[1] * 0.8 + p1[1] * 0.2 - 6
-        ET.SubElement(g, "text",
-                      x=str(lx), y=str(ly),
-                      **{"font-family": style.font_family,
-                         "font-size": "9",
-                         "fill": style.node_border_color}).text = conn.target_role
+        ET.SubElement(
+            g,
+            "text",
+            x=str(lx),
+            y=str(ly),
+            **{"font-family": style.font_family, "font-size": "9", "fill": style.node_border_color},
+        ).text = conn.target_role
 
 
 # ---------------------------------------------------------------------------
@@ -915,6 +983,7 @@ def render_svg(diagram: NativeDiagram, style=None) -> str:
     """
     if style is None:
         from eaidl.config import NativeDiagramStyleConfig
+
         style = NativeDiagramStyleConfig()
 
     node_map: Dict[int, NativeDiagramNode] = {n.object_id: n for n in diagram.nodes}
@@ -926,8 +995,7 @@ def render_svg(diagram: NativeDiagram, style=None) -> str:
     if diagram.nodes:
         xs_left = [n.rect_left for n in diagram.nodes]
         xs_right = [
-            n.rect_left + max(float(n.rect_right - n.rect_left), _node_min_width(n, style))
-            for n in diagram.nodes
+            n.rect_left + max(float(n.rect_right - n.rect_left), _node_min_width(n, style)) for n in diagram.nodes
         ]
         ys_top = [-n.rect_top for n in diagram.nodes]
         ys_bot = [-n.rect_bottom for n in diagram.nodes]
@@ -941,18 +1009,18 @@ def render_svg(diagram: NativeDiagram, style=None) -> str:
     vw = max_x - min_x
     vh = max_y - min_y
 
-    root = ET.Element("svg",
-                      xmlns="http://www.w3.org/2000/svg",
-                      version="1.1",
-                      viewBox=f"{min_x} {min_y} {vw} {vh}",
-                      width=str(int(vw)),
-                      height=str(int(vh)))
+    root = ET.Element(
+        "svg",
+        xmlns="http://www.w3.org/2000/svg",
+        version="1.1",
+        viewBox=f"{min_x} {min_y} {vw} {vh}",
+        width=str(int(vw)),
+        height=str(int(vh)),
+    )
     root.set("xmlns:xlink", "http://www.w3.org/1999/xlink")
 
     # Background
-    ET.SubElement(root, "rect",
-                  x=str(min_x), y=str(min_y), width=str(vw), height=str(vh),
-                  fill=style.canvas_bg_color)
+    ET.SubElement(root, "rect", x=str(min_x), y=str(min_y), width=str(vw), height=str(vh), fill=style.canvas_bg_color)
 
     _build_defs(root, style)
 
@@ -966,13 +1034,13 @@ def render_svg(diagram: NativeDiagram, style=None) -> str:
         _render_class_content(root, diagram, node_map, style, fo_map)
 
     # Diagram caption
-    ET.SubElement(root, "text",
-                  x=str(min_x + SVG_PAD),
-                  y=str(min_y + SVG_PAD - 8),
-                  **{"font-family": style.font_family,
-                     "font-size": "13",
-                     "font-weight": "bold",
-                     "fill": style.node_border_color}).text = diagram.name
+    ET.SubElement(
+        root,
+        "text",
+        x=str(min_x + SVG_PAD),
+        y=str(min_y + SVG_PAD - 8),
+        **{"font-family": style.font_family, "font-size": "13", "font-weight": "bold", "fill": style.node_border_color},
+    ).text = diagram.name
 
     ET.indent(root, space="  ")
     svg_str = '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")
@@ -1016,7 +1084,8 @@ def _render_sequence_content(
     """Render a sequence diagram: lifelines, messages, fragments, notes."""
     # Separate node types
     lifelines = [
-        n for n in diagram.nodes
+        n
+        for n in diagram.nodes
         if n.object_type in ("Part", "Class") and n.name  # exclude unnamed stubs
     ]
     fragments = [n for n in diagram.nodes if n.object_type == "InteractionFragment"]

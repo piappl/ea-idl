@@ -172,7 +172,6 @@ class TestNativeDiagramExtractor:
 
     def test_connector_has_source_and_target(self, extractor):
         diag = extractor.extract_by_id(3)
-        object_ids = {n.object_id for n in diag.nodes}
         for conn in diag.connectors:
             assert conn.source_object_id > 0
             assert conn.target_object_id > 0
@@ -184,8 +183,7 @@ class TestNativeDiagramExtractor:
         for conn in diag.connectors:
             if conn.style.start_duid:
                 assert conn.style.start_duid in duid_map, (
-                    f"Connector {conn.connector_id} SOID={conn.style.start_duid} "
-                    f"not found in node DUIDs"
+                    f"Connector {conn.connector_id} SOID={conn.style.start_duid} " f"not found in node DUIDs"
                 )
 
     def test_notes_have_object_type(self, extractor):
@@ -196,9 +194,7 @@ class TestNativeDiagramExtractor:
     def test_class_nodes_have_attributes(self, extractor):
         diag = extractor.extract_by_id(3)
         class_nodes = [n for n in diag.nodes if n.object_type == "Class"]
-        assert any(len(n.attributes) > 0 for n in class_nodes), (
-            "Expected at least one class node with attributes"
-        )
+        assert any(len(n.attributes) > 0 for n in class_nodes), "Expected at least one class node with attributes"
 
     def test_canvas_dimensions_set(self, extractor):
         diag = extractor.extract_by_id(3)
@@ -209,8 +205,7 @@ class TestNativeDiagramExtractor:
         diag = extractor.extract_by_id(3)
         # At least some connectors should have geometry decoded
         conns_with_geometry = [
-            c for c in diag.connectors
-            if c.geometry.source_x is not None or c.geometry.edge_style != 1
+            c for c in diag.connectors if c.geometry.source_x is not None or c.geometry.edge_style != 1
         ]
         assert len(conns_with_geometry) > 0
 
@@ -249,10 +244,17 @@ class TestCoordinateHelpers:
     def test_ea_to_svg_position(self):
         """EA rect_top is negative; SVG y should be positive."""
         from eaidl.native_diagram_model import NativeObjectStyle
+
         node = NativeDiagramNode(
-            object_id=1, name="A", object_type="Class",
-            rect_left=196, rect_top=-38, rect_right=322, rect_bottom=-123,
-            z_order=0, style=NativeObjectStyle(),
+            object_id=1,
+            name="A",
+            object_type="Class",
+            rect_left=196,
+            rect_top=-38,
+            rect_right=322,
+            rect_bottom=-123,
+            z_order=0,
+            style=NativeObjectStyle(),
         )
         x, y, w, h = _ea_to_svg(node)
         assert x == 196
@@ -296,7 +298,7 @@ class TestSvgRenderer:
         diag = extractor.extract_by_id(3)
         svg = render_svg(diag)
         visible = [c for c in diag.connectors if not c.hidden]
-        assert svg.count('<path') >= len(visible)
+        assert svg.count("<path") >= len(visible)
 
     def test_viewbox_set(self, extractor):
         diag = extractor.extract_by_id(3)
@@ -328,7 +330,6 @@ class TestSvgRenderer:
 
     def test_role_label_present(self, extractor):
         """Diagram 8 has a connector with stereotype 'values' as role label."""
-        diag = extractor.extract_by_id(8)
         # The connector has stereotype=values but no target_role — grab any diagram
         # that has a connector with a target_role
         for d_id in (3, 4, 5):
@@ -434,6 +435,7 @@ class TestSvgStyleConfig:
     def test_custom_header_color_appears_in_svg(self, extractor):
         """A custom node_header_color should appear in the SVG output."""
         from eaidl.config import NativeDiagramStyleConfig
+
         style = NativeDiagramStyleConfig(node_header_color="#abcdef")
         diag = extractor.extract_by_id(3)
         svg = render_svg(diag, style=style)
@@ -441,6 +443,7 @@ class TestSvgStyleConfig:
 
     def test_custom_canvas_bg_appears(self, extractor):
         from eaidl.config import NativeDiagramStyleConfig
+
         style = NativeDiagramStyleConfig(canvas_bg_color="#112233")
         diag = extractor.extract_by_id(8)
         svg = render_svg(diag, style=style)
@@ -448,6 +451,7 @@ class TestSvgStyleConfig:
 
     def test_custom_connector_color_appears(self, extractor):
         from eaidl.config import NativeDiagramStyleConfig
+
         style = NativeDiagramStyleConfig(connector_color="#ff0000")
         diag = extractor.extract_by_id(8)
         svg = render_svg(diag, style=style)
@@ -579,26 +583,18 @@ class TestSequenceDiagram:
         """All three messages in diagram 12 should carry non-zero heights."""
         diag = extractor.extract_by_id(12)
         for msg in diag.sequence_messages:
-            assert msg.activation_bar_height > 0, (
-                f"Expected activation_bar_height > 0 for {msg.name}"
-            )
+            assert msg.activation_bar_height > 0, f"Expected activation_bar_height > 0 for {msg.name}"
 
     def test_note_connector_ref_extracted(self, extractor):
         """Note 77 in diagram 12 should reference connector id 54 (Message1)."""
         diag = extractor.extract_by_id(12)
-        note = next(
-            n for n in diag.nodes
-            if n.object_id == 77
-        )
+        note = next(n for n in diag.nodes if n.object_id == 77)
         assert note.note_connector_ref == 54
 
     def test_note_without_connector_ref_is_none(self, extractor):
         """Note 76 (plain NoteLink note) should have note_connector_ref == None."""
         diag = extractor.extract_by_id(12)
-        note = next(
-            n for n in diag.nodes
-            if n.object_id == 76
-        )
+        note = next(n for n in diag.nodes if n.object_id == 76)
         assert note.note_connector_ref is None
 
     def test_sequence_svg_contains_activation_bars(self, extractor):
@@ -624,6 +620,7 @@ class TestExcalidrawRenderer:
         diag = extractor.extract_by_id(3)
         raw = render_excalidraw(diag)
         import json
+
         doc = json.loads(raw)
         assert doc["type"] == "excalidraw"
         assert doc["version"] == 2
@@ -631,21 +628,23 @@ class TestExcalidrawRenderer:
     def test_elements_present(self, extractor):
         diag = extractor.extract_by_id(3)
         import json
+
         doc = json.loads(render_excalidraw(diag))
         assert len(doc["elements"]) > 0
 
     def test_all_element_types_valid(self, extractor):
         valid_types = {"rectangle", "text", "line", "arrow", "ellipse", "diamond"}
         import json
+
         diag = extractor.extract_by_id(3)
         doc = json.loads(render_excalidraw(diag))
         for el in doc["elements"]:
             assert el["type"] in valid_types, f"Unexpected type {el['type']!r}"
 
     def test_required_fields_present(self, extractor):
-        required = {"type", "id", "x", "y", "width", "height",
-                    "strokeColor", "fillStyle", "roughness", "opacity"}
+        required = {"type", "id", "x", "y", "width", "height", "strokeColor", "fillStyle", "roughness", "opacity"}
         import json
+
         diag = extractor.extract_by_id(3)
         doc = json.loads(render_excalidraw(diag))
         for el in doc["elements"]:
@@ -655,6 +654,7 @@ class TestExcalidrawRenderer:
     def test_class_node_elements_have_group_ids(self, extractor):
         """Class node elements should share a groupId so they move together."""
         import json
+
         diag = extractor.extract_by_id(3)
         doc = json.loads(render_excalidraw(diag))
         grouped = [el for el in doc["elements"] if el.get("groupIds")]
@@ -662,6 +662,7 @@ class TestExcalidrawRenderer:
 
     def test_unique_element_ids(self, extractor):
         import json
+
         diag = extractor.extract_by_id(3)
         doc = json.loads(render_excalidraw(diag))
         ids = [el["id"] for el in doc["elements"]]
@@ -669,6 +670,7 @@ class TestExcalidrawRenderer:
 
     def test_connectors_rendered_as_arrows(self, extractor):
         import json
+
         diag = extractor.extract_by_id(3)
         doc = json.loads(render_excalidraw(diag))
         arrows = [el for el in doc["elements"] if el["type"] == "arrow"]
@@ -676,6 +678,7 @@ class TestExcalidrawRenderer:
 
     def test_view_background_color_in_appstate(self, extractor):
         import json
+
         diag = extractor.extract_by_id(3)
         doc = json.loads(render_excalidraw(diag))
         assert "viewBackgroundColor" in doc["appState"]
@@ -683,12 +686,14 @@ class TestExcalidrawRenderer:
     def test_sequence_diagram_renders(self, extractor):
         """Sequence diagram (p6) should render without errors."""
         import json
+
         diag = extractor.extract_by_id(12)
         doc = json.loads(render_excalidraw(diag))
         assert len(doc["elements"]) > 0
 
     def test_sequence_message_arrows_present(self, extractor):
         import json
+
         diag = extractor.extract_by_id(12)
         doc = json.loads(render_excalidraw(diag))
         arrows = [el for el in doc["elements"] if el["type"] == "arrow"]
@@ -697,6 +702,7 @@ class TestExcalidrawRenderer:
     def test_sequence_lifelines_rendered(self, extractor):
         """Asset1 and Asset2 lifeline names should appear as text elements."""
         import json
+
         diag = extractor.extract_by_id(12)
         doc = json.loads(render_excalidraw(diag))
         texts = {el["text"] for el in doc["elements"] if el.get("type") == "text"}
@@ -706,6 +712,7 @@ class TestExcalidrawRenderer:
     def test_note_rendered_as_rectangle(self, extractor):
         """Notes should produce at least one rectangle element."""
         import json
+
         diag = extractor.extract_by_id(3)  # diagram 3 has notes
         doc = json.loads(render_excalidraw(diag))
         rects = [el for el in doc["elements"] if el["type"] == "rectangle"]
@@ -719,6 +726,7 @@ class TestExcalidrawRenderer:
     def test_roughness_sloppy(self, extractor):
         """Shape/arrow elements use roughness=1; text elements use roughness=0."""
         import json
+
         diag = extractor.extract_by_id(3)
         doc = json.loads(render_excalidraw(diag))
         for el in doc["elements"]:
@@ -727,12 +735,11 @@ class TestExcalidrawRenderer:
             if el["type"] == "text":
                 assert el["roughness"] == 0
             else:
-                assert el["roughness"] == 1, (
-                    f"Element {el['id']} (type={el['type']}) has roughness {el['roughness']}"
-                )
+                assert el["roughness"] == 1, f"Element {el['id']} (type={el['type']}) has roughness {el['roughness']}"
 
     def test_files_dict_present(self, extractor):
         import json
+
         diag = extractor.extract_by_id(3)
         doc = json.loads(render_excalidraw(diag))
         assert "files" in doc
@@ -740,6 +747,7 @@ class TestExcalidrawRenderer:
     def test_arrows_have_start_binding(self, extractor):
         """Arrow elements should have startBinding pointing to a real element id."""
         import json
+
         diag = extractor.extract_by_id(3)
         doc = json.loads(render_excalidraw(diag))
         element_ids = {el["id"] for el in doc["elements"]}
@@ -750,32 +758,29 @@ class TestExcalidrawRenderer:
             sb = arrow.get("startBinding")
             if sb is not None:
                 assert sb["elementId"] in element_ids, (
-                    f"Arrow {arrow['id']} startBinding.elementId {sb['elementId']!r} "
-                    "not found in elements"
+                    f"Arrow {arrow['id']} startBinding.elementId {sb['elementId']!r} " "not found in elements"
                 )
             eb = arrow.get("endBinding")
             if eb is not None:
                 assert eb["elementId"] in element_ids, (
-                    f"Arrow {arrow['id']} endBinding.elementId {eb['elementId']!r} "
-                    "not found in elements"
+                    f"Arrow {arrow['id']} endBinding.elementId {eb['elementId']!r} " "not found in elements"
                 )
 
     def test_arrows_are_bound_on_both_ends(self, extractor):
         """Most class-diagram arrows should be bound on both source and target."""
         import json
+
         diag = extractor.extract_by_id(3)
         doc = json.loads(render_excalidraw(diag))
         arrows = [el for el in doc["elements"] if el["type"] == "arrow"]
-        bound_both = [
-            a for a in arrows
-            if a.get("startBinding") is not None and a.get("endBinding") is not None
-        ]
+        bound_both = [a for a in arrows if a.get("startBinding") is not None and a.get("endBinding") is not None]
         assert len(bound_both) > 0, "Expected at least one fully-bound arrow"
 
     def test_node_rects_list_bound_arrows(self, extractor):
         """Header rectangles of nodes connected by arrows must list those arrows
         in their boundElements."""
         import json
+
         diag = extractor.extract_by_id(3)
         doc = json.loads(render_excalidraw(diag))
         element_by_id = {el["id"]: el for el in doc["elements"]}
@@ -790,17 +795,16 @@ class TestExcalidrawRenderer:
                     assert rect is not None
                     be_ids = {be["id"] for be in rect.get("boundElements", [])}
                     assert arrow["id"] in be_ids, (
-                        f"Rect {rect['id']} does not list arrow {arrow['id']} "
-                        "in its boundElements"
+                        f"Rect {rect['id']} does not list arrow {arrow['id']} " "in its boundElements"
                     )
 
     def test_binding_references_header_rects(self, extractor):
         """Arrow bindings should point to 'hdr' elements (the header rects),
         not body or attr elements."""
         import json
+
         diag = extractor.extract_by_id(3)
         doc = json.loads(render_excalidraw(diag))
-        element_by_id = {el["id"]: el for el in doc["elements"]}
         arrows = [el for el in doc["elements"] if el["type"] == "arrow"]
         for arrow in arrows:
             for key in ("startBinding", "endBinding"):
@@ -808,8 +812,7 @@ class TestExcalidrawRenderer:
                 if binding is not None:
                     eid = binding["elementId"]
                     assert eid.startswith("hdr-"), (
-                        f"Arrow {arrow['id']} {key}.elementId={eid!r} "
-                        "should start with 'hdr-'"
+                        f"Arrow {arrow['id']} {key}.elementId={eid!r} " "should start with 'hdr-'"
                     )
 
 
@@ -829,13 +832,12 @@ class TestEaGuid:
     def test_ea_guid_format(self, extractor):
         """ea_guid should look like a GUID string: {xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}."""
         import re
+
         guid_re = re.compile(r"^\{[0-9A-Fa-f-]+\}$")
         diag = extractor.extract_by_id(3)
         for node in diag.nodes:
             if node.ea_guid:
-                assert guid_re.match(node.ea_guid), (
-                    f"Node {node.name!r} ea_guid {node.ea_guid!r} is not GUID-shaped"
-                )
+                assert guid_re.match(node.ea_guid), f"Node {node.name!r} ea_guid {node.ea_guid!r} is not GUID-shaped"
 
     def test_ea_guid_unique_within_diagram(self, extractor):
         """Each ea_guid should appear at most once in a diagram."""
@@ -855,13 +857,12 @@ class TestSvgLinkMap:
 
     def test_keys_are_guid_or_fallback(self, extractor):
         import re
+
         guid_re = re.compile(r"^\{[0-9A-Fa-f-]+\}$")
         fallback_re = re.compile(r"^#\d+$")
         diag = extractor.extract_by_id(3)
         for key in svg_link_map(diag):
-            assert guid_re.match(key) or fallback_re.match(key), (
-                f"Unexpected link-map key format: {key!r}"
-            )
+            assert guid_re.match(key) or fallback_re.match(key), f"Unexpected link-map key format: {key!r}"
 
     def test_values_contain_name_and_object_id(self, extractor):
         diag = extractor.extract_by_id(3)
@@ -872,14 +873,9 @@ class TestSvgLinkMap:
     def test_guid_keys_match_node_guids(self, extractor):
         diag = extractor.extract_by_id(3)
         # Notes are excluded from the link map
-        node_guids = {
-            n.ea_guid for n in diag.nodes
-            if n.ea_guid and n.object_type != "Note"
-        }
+        node_guids = {n.ea_guid for n in diag.nodes if n.ea_guid and n.object_type != "Note"}
         map_keys = set(svg_link_map(diag).keys())
-        assert node_guids <= map_keys, (
-            "Not all non-Note node ea_guids appear as keys in svg_link_map()"
-        )
+        assert node_guids <= map_keys, "Not all non-Note node ea_guids appear as keys in svg_link_map()"
 
 
 class TestRewriteSvgLinks:
@@ -917,14 +913,14 @@ class TestSvgHyperlinks:
     def test_svg_href_contains_curlies(self, extractor):
         """Placeholder href should look like eaidl:{...guid...}."""
         import re
+
         diag = extractor.extract_by_id(3)
         svg = render_svg(diag)
-        assert re.search(r'href="eaidl:\{[0-9A-Fa-f-]+\}"', svg), (
-            "Expected eaidl:{guid} pattern in SVG href attributes"
-        )
+        assert re.search(r'href="eaidl:\{[0-9A-Fa-f-]+\}"', svg), "Expected eaidl:{guid} pattern in SVG href attributes"
 
     def test_svg_links_disabled_when_template_empty(self, extractor):
         from eaidl.config import NativeDiagramStyleConfig
+
         style = NativeDiagramStyleConfig(node_link_template="")
         diag = extractor.extract_by_id(3)
         svg = render_svg(diag, style=style)
@@ -937,6 +933,7 @@ class TestExcalidrawLinks:
 
     def test_header_rects_have_link(self, extractor):
         import json
+
         diag = extractor.extract_by_id(3)
         doc = json.loads(render_excalidraw(diag))
         rects = [el for el in doc["elements"] if el["type"] == "rectangle"]
@@ -946,17 +943,17 @@ class TestExcalidrawLinks:
 
     def test_header_link_is_placeholder(self, extractor):
         import json
+
         diag = extractor.extract_by_id(3)
         doc = json.loads(render_excalidraw(diag))
         linked = [el for el in doc["elements"] if el.get("link")]
         for el in linked:
-            assert el["link"].startswith("eaidl:"), (
-                f"Expected eaidl: prefix on link, got {el['link']!r}"
-            )
+            assert el["link"].startswith("eaidl:"), f"Expected eaidl: prefix on link, got {el['link']!r}"
 
     def test_links_disabled_when_template_empty(self, extractor):
         import json
         from eaidl.config import NativeDiagramStyleConfig
+
         style = NativeDiagramStyleConfig(node_link_template="")
         diag = extractor.extract_by_id(3)
         doc = json.loads(render_excalidraw(diag, style=style))
@@ -981,14 +978,15 @@ class TestAttributeTypeGuid:
 
     def test_type_guid_format(self, extractor):
         import re
+
         guid_re = re.compile(r"^\{[0-9A-Fa-f-]+\}$")
         diag = extractor.extract_by_id(3)
         for node in diag.nodes:
             for attr in node.attributes:
                 if attr.type_guid:
-                    assert guid_re.match(attr.type_guid), (
-                        f"Attr {attr.name!r} type_guid {attr.type_guid!r} is not GUID-shaped"
-                    )
+                    assert guid_re.match(
+                        attr.type_guid
+                    ), f"Attr {attr.name!r} type_guid {attr.type_guid!r} is not GUID-shaped"
 
     def test_type_guid_distinct_from_owner_guid(self, extractor):
         """The type_guid of an attribute should not equal the owning node's ea_guid."""
@@ -1007,34 +1005,27 @@ class TestSvgGranularLinks:
     def test_svg_has_multiple_distinct_hrefs(self, extractor):
         """A diagram with cross-referencing types should have > 1 unique eaidl: href."""
         import re
+
         diag = extractor.extract_by_id(3)
         svg = render_svg(diag)
         hrefs = set(re.findall(r'href="(eaidl:[^"]+)"', svg))
-        assert len(hrefs) > 1, (
-            "Expected multiple distinct eaidl: hrefs (one per class + one per linked type)"
-        )
+        assert len(hrefs) > 1, "Expected multiple distinct eaidl: hrefs (one per class + one per linked type)"
 
     def test_header_link_differs_from_attribute_link(self, extractor):
         """For a node with linked-type attributes, header href != at least one attr href."""
-        import re
         diag = extractor.extract_by_id(3)
         # Find a node that has ea_guid AND at least one attribute with type_guid
         candidate = next(
-            (
-                n for n in diag.nodes
-                if n.ea_guid and any(a.type_guid for a in n.attributes)
-            ),
+            (n for n in diag.nodes if n.ea_guid and any(a.type_guid for a in n.attributes)),
             None,
         )
         if candidate is None:
             pytest.skip("No suitable node found in diagram 3")
         node_href = f"eaidl:{candidate.ea_guid}"
-        attr_hrefs = {
-            f"eaidl:{a.type_guid}" for a in candidate.attributes if a.type_guid
-        }
-        assert node_href not in attr_hrefs or len(attr_hrefs) > 0, (
-            "At least one attribute href should be present alongside the header href"
-        )
+        attr_hrefs = {f"eaidl:{a.type_guid}" for a in candidate.attributes if a.type_guid}
+        assert (
+            node_href not in attr_hrefs or len(attr_hrefs) > 0
+        ), "At least one attribute href should be present alongside the header href"
         svg = render_svg(diag)
         assert node_href in svg
         for ah in attr_hrefs:
@@ -1044,6 +1035,7 @@ class TestSvgGranularLinks:
         """With node_link_template='', no <a> elements at all — verified separately
         for the attribute level (not just class level)."""
         from eaidl.config import NativeDiagramStyleConfig
+
         style = NativeDiagramStyleConfig(node_link_template="")
         diag = extractor.extract_by_id(3)
         svg = render_svg(diag, style=style)

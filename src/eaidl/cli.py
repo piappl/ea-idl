@@ -381,8 +381,14 @@ def export_model(config_obj, debug, output, output_format, diagrams_dir):
 @click.option("--config", default="config.yaml", help="Configuration file.")
 @click.option("--debug", default=False, is_flag=True, help="Enable debug.")
 @click.option("--output", "-o", default=None, help="Output directory (default: current dir).")
-@click.option("--format", "output_format", default="yaml", type=click.Choice(["yaml", "json", "svg", "excalidraw"]), show_default=True,
-              help="Serialisation format for the exported diagram AST.")
+@click.option(
+    "--format",
+    "output_format",
+    default="yaml",
+    type=click.Choice(["yaml", "json", "svg", "excalidraw"]),
+    show_default=True,
+    help="Serialisation format for the exported diagram AST.",
+)
 @click.option("--diagram-id", default=None, type=int, help="Export only this diagram ID.")
 @setup_command
 def export_diagrams(config_obj, debug, output, output_format, diagram_id):
@@ -417,12 +423,15 @@ def export_diagrams(config_obj, debug, output, output_format, diagram_id):
         dest = out_dir / filename
         if output_format == "svg":
             from eaidl.native_diagram_svg import render_svg
+
             dest.write_text(render_svg(diag, config_obj.diagrams.native_diagram_style), encoding="utf-8")
         elif output_format == "excalidraw":
             from eaidl.native_diagram_excalidraw import render_excalidraw
+
             dest.write_text(render_excalidraw(diag, config_obj.diagrams.native_diagram_style), encoding="utf-8")
         elif output_format == "json":
             import json
+
             dest.write_text(json.dumps(diag.model_dump(), indent=2), encoding="utf-8")
         else:
             dest.write_text(yaml.dump(diag.model_dump(), allow_unicode=True, sort_keys=False), encoding="utf-8")

@@ -12,7 +12,6 @@ import yaml
 from eaidl.config import Configuration
 from eaidl.load import ModelParser
 from eaidl.model import (
-
     ModelAttribute,
     ModelClass,
     ModelDiagram,

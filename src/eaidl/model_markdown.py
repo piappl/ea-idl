@@ -35,7 +35,9 @@ def render_markdown(
 
     roots = [pkg for pkg in all_pkgs if pkg.get("guid") not in all_child_guids]
     for pkg in roots:
-        _render_package(pkg, depth=2, lines=lines, pkg_by_guid=pkg_by_guid, diagrams_dir=diagrams_dir, diagram_paths=diagram_paths)
+        _render_package(
+            pkg, depth=2, lines=lines, pkg_by_guid=pkg_by_guid, diagrams_dir=diagrams_dir, diagram_paths=diagram_paths
+        )
 
     return "\n".join(lines)
 
@@ -73,9 +75,23 @@ def _render_package(
         if isinstance(child_ref, str):
             child = (pkg_by_guid or {}).get(child_ref)
             if child is not None:
-                _render_package(child, depth + 1, lines, pkg_by_guid=pkg_by_guid, diagrams_dir=diagrams_dir, diagram_paths=diagram_paths)
+                _render_package(
+                    child,
+                    depth + 1,
+                    lines,
+                    pkg_by_guid=pkg_by_guid,
+                    diagrams_dir=diagrams_dir,
+                    diagram_paths=diagram_paths,
+                )
         elif isinstance(child_ref, dict):
-            _render_package(child_ref, depth + 1, lines, pkg_by_guid=pkg_by_guid, diagrams_dir=diagrams_dir, diagram_paths=diagram_paths)
+            _render_package(
+                child_ref,
+                depth + 1,
+                lines,
+                pkg_by_guid=pkg_by_guid,
+                diagrams_dir=diagrams_dir,
+                diagram_paths=diagram_paths,
+            )
 
     lines.append("---")
     lines.append("")
