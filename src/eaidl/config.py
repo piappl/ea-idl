@@ -207,6 +207,8 @@ class Configuration(BaseModel):
     enable_maps: bool = True
     #: List of stereotypes to filter out
     filter_stereotypes: Optional[List[str]] = None
+    #: List of stereotypes to keep even if they match filter_stereotypes or private_stereotypes
+    keep_stereotypes: Optional[List[str]] = None
     #: List of stereotypes to privatize (replace type with 'any' instead of removing)
     private_stereotypes: Optional[List[str]] = None
     #: If True, collapse empty unions by default and use keep_union_stereotype to preserve them

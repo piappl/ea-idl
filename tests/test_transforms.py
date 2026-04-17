@@ -160,6 +160,246 @@ def test_filter_stereotypes() -> None:
     assert "attr_2" in render(config, [mod])
 
 
+def test_keep_stereotypes_attribute() -> None:
+    """keep_stereotypes prevents attribute removal even when filter matches."""
+    config = Configuration(template="idl_just_defs.jinja2")
+    config.filter_stereotypes = ["hibw", "lobw"]
+    config.keep_stereotypes = ["mibw"]
+    mod = ModelPackage(name="root", package_id=0, object_id=1, guid=str(uuid.uuid4()))
+    cls = ModelClass(
+        name="Measurement",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=2,
+        namespace=["root"],
+        is_struct=True,
+        parent=mod,
+    )
+    mod.classes = [cls]
+    # hibw+mibw attribute — should survive because mibw is in keep
+    cls.attributes.append(
+        ModelAttribute(
+            name="high_field",
+            alias="high_field",
+            parent=cls,
+            type="string",
+            guid=str(uuid.uuid4()),
+            attribute_id=10,
+            stereotypes=["hibw", "mibw"],
+            namespace=[],
+        )
+    )
+    # lobw+mibw attribute — should survive because mibw is in keep
+    cls.attributes.append(
+        ModelAttribute(
+            name="low_field",
+            alias="low_field",
+            parent=cls,
+            type="string",
+            guid=str(uuid.uuid4()),
+            attribute_id=11,
+            stereotypes=["lobw", "mibw"],
+            namespace=[],
+        )
+    )
+    # hibw-only attribute — should be removed
+    cls.attributes.append(
+        ModelAttribute(
+            name="hibw_only_field",
+            alias="hibw_only_field",
+            parent=cls,
+            type="string",
+            guid=str(uuid.uuid4()),
+            attribute_id=12,
+            stereotypes=["hibw"],
+            namespace=[],
+        )
+    )
+    filter_stereotypes([mod], config)
+    result = render(config, [mod])
+    assert "high_field" in result
+    assert "low_field" in result
+    assert "hibw_only_field" not in result
+
+
+def test_keep_stereotypes_class() -> None:
+    """keep_stereotypes prevents class removal even when filter matches."""
+    config = Configuration(template="idl_just_defs.jinja2")
+    config.filter_stereotypes = ["lobw"]
+    config.keep_stereotypes = ["mibw"]
+    mod = ModelPackage(name="root", package_id=0, object_id=1, guid=str(uuid.uuid4()))
+    # Class with lobw+mibw — should survive
+    cls_kept = ModelClass(
+        name="KeptClass",
+        stereotypes=[config.stereotypes.idl_struct, "lobw", "mibw"],
+        object_id=2,
+        namespace=["root"],
+        is_struct=True,
+        parent=mod,
+    )
+    # Class with lobw only — should be removed
+    cls_removed = ModelClass(
+        name="RemovedClass",
+        stereotypes=[config.stereotypes.idl_struct, "lobw"],
+        object_id=3,
+        namespace=["root"],
+        is_struct=True,
+        parent=mod,
+    )
+    mod.classes = [cls_kept, cls_removed]
+    filter_stereotypes([mod], config)
+    result = render(config, [mod])
+    assert "KeptClass" in result
+    assert "RemovedClass" not in result
+
+
+def test_keep_stereotypes_not_set() -> None:
+    """Without keep_stereotypes, filtering works as before."""
+    config = Configuration(template="idl_just_defs.jinja2")
+    config.filter_stereotypes = ["lobw"]
+    mod = ModelPackage(name="root", package_id=0, object_id=1, guid=str(uuid.uuid4()))
+    cls = ModelClass(
+        name="MyStruct",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=2,
+        namespace=["root"],
+        is_struct=True,
+        parent=mod,
+    )
+    mod.classes = [cls]
+    cls.attributes.append(
+        ModelAttribute(
+            name="removed_attr",
+            alias="removed_attr",
+            parent=cls,
+            type="string",
+            guid=str(uuid.uuid4()),
+            attribute_id=10,
+            stereotypes=["lobw"],
+            namespace=[],
+        )
+    )
+    cls.attributes.append(
+        ModelAttribute(
+            name="kept_attr",
+            alias="kept_attr",
+            parent=cls,
+            type="string",
+            guid=str(uuid.uuid4()),
+            attribute_id=11,
+            stereotypes=[],
+            namespace=[],
+        )
+    )
+    filter_stereotypes([mod], config)
+    result = render(config, [mod])
+    assert "removed_attr" not in result
+    assert "kept_attr" in result
+
+
+def test_keep_stereotypes_bandwidth_scenario() -> None:
+    """Full scenario: hibw, lobw, and mibw configs produce correct output."""
+
+    def mod_template():
+        return _build_bandwidth_struct()
+
+    # hibw config: filter lobw, keep nothing special
+    config_hibw = Configuration(template="idl_just_defs.jinja2")
+    config_hibw.filter_stereotypes = ["lobw"]
+    mod = mod_template()
+    filter_stereotypes([mod], config_hibw)
+    result = render(config_hibw, [mod])
+    assert "only_high" in result
+    assert "only_low" not in result
+    assert "both_high" in result
+    assert "both_low" not in result
+
+    # lobw config: filter hibw, keep nothing special
+    config_lobw = Configuration(template="idl_just_defs.jinja2")
+    config_lobw.filter_stereotypes = ["hibw"]
+    mod = mod_template()
+    filter_stereotypes([mod], config_lobw)
+    result = render(config_lobw, [mod])
+    assert "only_high" not in result
+    assert "only_low" in result
+    assert "both_high" not in result
+    assert "both_low" in result
+
+    # mibw config: filter both hibw and lobw, keep mibw
+    config_mibw = Configuration(template="idl_just_defs.jinja2")
+    config_mibw.filter_stereotypes = ["hibw", "lobw"]
+    config_mibw.keep_stereotypes = ["mibw"]
+    mod = mod_template()
+    filter_stereotypes([mod], config_mibw)
+    result = render(config_mibw, [mod])
+    assert "only_high" not in result
+    assert "only_low" not in result
+    assert "both_high" in result
+    assert "both_low" in result
+
+
+def _build_bandwidth_struct() -> ModelPackage:
+    config = Configuration(template="idl_just_defs.jinja2")
+    mod = ModelPackage(name="root", package_id=0, object_id=1, guid=str(uuid.uuid4()))
+    cls = ModelClass(
+        name="BandwidthStruct",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=2,
+        namespace=["root"],
+        is_struct=True,
+        parent=mod,
+    )
+    mod.classes = [cls]
+    cls.attributes.append(
+        ModelAttribute(
+            name="only_high",
+            alias="only_high",
+            parent=cls,
+            type="string",
+            guid=str(uuid.uuid4()),
+            attribute_id=10,
+            stereotypes=["hibw"],
+            namespace=[],
+        )
+    )
+    cls.attributes.append(
+        ModelAttribute(
+            name="only_low",
+            alias="only_low",
+            parent=cls,
+            type="string",
+            guid=str(uuid.uuid4()),
+            attribute_id=11,
+            stereotypes=["lobw"],
+            namespace=[],
+        )
+    )
+    cls.attributes.append(
+        ModelAttribute(
+            name="both_high",
+            alias="both_high",
+            parent=cls,
+            type="string",
+            guid=str(uuid.uuid4()),
+            attribute_id=12,
+            stereotypes=["hibw", "mibw"],
+            namespace=[],
+        )
+    )
+    cls.attributes.append(
+        ModelAttribute(
+            name="both_low",
+            alias="both_low",
+            parent=cls,
+            type="string",
+            guid=str(uuid.uuid4()),
+            attribute_id=13,
+            stereotypes=["lobw", "mibw"],
+            namespace=[],
+        )
+    )
+    return mod
+
+
 def build_union_structure(config: Configuration) -> ModelPackage:
     mod = ModelPackage(name="root", package_id=0, object_id=10, guid=str(uuid.uuid4()))
     cls_1 = ModelClass(

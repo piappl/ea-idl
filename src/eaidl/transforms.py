@@ -95,6 +95,13 @@ def convert_map_stereotype(
     traverse_packages(packages, class_visitor=process_class)
 
 
+def _is_kept(stereotypes: List[str], keep_stereotypes: Optional[List[str]]) -> bool:
+    """Check if an element should be kept based on its stereotypes."""
+    if not keep_stereotypes:
+        return False
+    return bool(set(stereotypes) & set(keep_stereotypes))
+
+
 def _filter_stereotypes(root: ModelPackage, current: ModelPackage, config: Configuration) -> None:
     """Filter classes/attributes/packages with unwanted stereotypes.
 
@@ -108,7 +115,7 @@ def _filter_stereotypes(root: ModelPackage, current: ModelPackage, config: Confi
         for cls in current.classes[:]:
             # Fist try to remove whole classes tagged with stereotypes that
             # is configured to be removed.
-            if filter in cls.stereotypes:
+            if filter in cls.stereotypes and not _is_kept(cls.stereotypes, config.keep_stereotypes):
                 log.warning("Filtering class based on stereotype " + "::".join(cls.namespace + [cls.name]))
                 current.classes.remove(cls)
                 # Not we still have to remove all attributes that reference it...
@@ -120,6 +127,8 @@ def _filter_stereotypes(root: ModelPackage, current: ModelPackage, config: Confi
         for cls in current.classes:
             # Now we look at remaining attributes, and remove those tagged
             for attr in cls.attributes[:]:
+                if _is_kept(attr.stereotypes, config.keep_stereotypes):
+                    continue
                 for filter in config.filter_stereotypes:
                     if filter in attr.stereotypes:
                         log.warning(
@@ -143,7 +152,7 @@ def _filter_stereotypes(root: ModelPackage, current: ModelPackage, config: Confi
 
     for pkg in current.packages[:]:
         for filter in config.filter_stereotypes:
-            if filter in pkg.stereotypes:
+            if filter in pkg.stereotypes and not _is_kept(pkg.stereotypes, config.keep_stereotypes):
                 current.packages.remove(pkg)
     for pkg in current.packages:
         _filter_stereotypes(root, pkg, config)
@@ -225,7 +234,7 @@ def _privatize_stereotypes(root: ModelPackage, current: ModelPackage, config: Co
     # Pass 1: Privatize classes - remove them but replace references with 'any'
     for stereotype in config.private_stereotypes:
         for cls in current.classes[:]:
-            if stereotype in cls.stereotypes:
+            if stereotype in cls.stereotypes and not _is_kept(cls.stereotypes, config.keep_stereotypes):
                 log.info(
                     "Privatizing class %s (stereotype: %s)",
                     "::".join(cls.namespace + [cls.name]),
@@ -237,6 +246,8 @@ def _privatize_stereotypes(root: ModelPackage, current: ModelPackage, config: Co
     # Pass 2: Privatize individual attributes - replace type with 'any'
     for cls in current.classes:
         for attr in cls.attributes:
+            if _is_kept(attr.stereotypes, config.keep_stereotypes):
+                continue
             for stereotype in config.private_stereotypes:
                 if stereotype in attr.stereotypes:
                     attr_fqn = "::".join(cls.namespace + [cls.name]) + "." + attr.name
@@ -252,7 +263,7 @@ def _privatize_stereotypes(root: ModelPackage, current: ModelPackage, config: Co
     # Pass 3: Privatize packages - privatize all classes within, then remove package
     for pkg in current.packages[:]:
         for stereotype in config.private_stereotypes:
-            if stereotype in pkg.stereotypes:
+            if stereotype in pkg.stereotypes and not _is_kept(pkg.stereotypes, config.keep_stereotypes):
                 class_count = _count_classes_in_package(pkg)
                 log.info(
                     "Privatizing package %s (stereotype: %s) — %d class(es)",
