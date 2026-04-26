@@ -532,22 +532,84 @@ def test_filter_one_union_member() -> None:
     print(render(config, [mod]))
 
 
-def test_filter_collapsed_union_clears_generalization() -> None:
-    """A class that inherits (generalization) from a collapsed union must not be left with a
-    dangling generalization pointer to the now-removed union."""
+def test_filter_collapsed_union_redirects_generalization_to_class() -> None:
+    """When a single-member union is collapsed to a *class* type, child classes that inherit
+    from the union must be redirected to inherit from that class — same way attributes
+    referencing the union get rewired."""
+    config = Configuration(template="idl_just_defs.jinja2", collapse_empty_unions_by_default=True)
+    mod = ModelPackage(name="root", package_id=0, object_id=10, guid=str(uuid.uuid4()))
+
+    target = ModelClass(
+        name="RealParent",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=50,
+        namespace=["root"],
+        is_struct=True,
+        parent=mod,
+    )
+    union = ModelClass(
+        name="ClassUnion",
+        stereotypes=[config.stereotypes.idl_union],
+        object_id=1,
+        namespace=["root"],
+        is_union=True,
+        parent=mod,
+        attributes=[
+            ModelAttribute(
+                name="member",
+                alias="member",
+                type="RealParent",
+                namespace=["root"],
+                attribute_id=200,
+                guid=str(uuid.uuid4()),
+                connector=ModelConnection(
+                    connector_id=200,
+                    connector_type="Association",
+                    start_object_id=1,
+                    end_object_id=50,
+                ),
+            )
+        ],
+    )
+    child = ModelClass(
+        name="Child",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=100,
+        namespace=["root"],
+        is_struct=True,
+        parent=mod,
+        generalization=["root", "ClassUnion"],
+        depends_on=[1],
+    )
+    mod.classes = [target, union, child]
+
+    filter_empty_unions([mod], config)
+
+    assert find_class([mod], lambda c: c.name == "ClassUnion") is None
+    child_after = find_class([mod], lambda c: c.name == "Child")
+    assert child_after is not None
+    assert child_after.generalization == ["root", "RealParent"]
+    assert 1 not in child_after.depends_on
+    assert 50 in child_after.depends_on
+    rendered = render(config, [mod])
+    assert "ClassUnion" not in rendered
+    assert "struct Child: root::RealParent" in rendered
+
+
+def test_filter_collapsed_union_clears_generalization_for_primitive() -> None:
+    """When a single-member union collapses to a *primitive*, the dangling generalization is
+    cleared (you can't inherit from a primitive)."""
     config = Configuration(template="idl_just_defs.jinja2", collapse_empty_unions_by_default=True)
     mod = build_union_structure(config)
 
-    # Make the union collapsible: give it a single member so it gets collapsed.
     un = find_class([mod], lambda c: c.object_id == 1)
     assert un is not None
     un.attributes = [
         ModelAttribute(name="member", alias="member", type="string", attribute_id=123, guid=str(uuid.uuid4()))
     ]
 
-    # Add a child class that inherits from the union.
-    child_empty = ModelClass(
-        name="ChildOfEmptyUnion",
+    child = ModelClass(
+        name="ChildOfPrimitiveUnion",
         stereotypes=[config.stereotypes.idl_struct],
         object_id=100,
         namespace=["root"],
@@ -555,23 +617,19 @@ def test_filter_collapsed_union_clears_generalization() -> None:
         parent=mod,
         generalization=["root", "ClassUnion"],
     )
-    mod.classes.append(child_empty)
+    mod.classes.append(child)
 
     filter_empty_unions([mod], config)
 
-    # Union must be gone.
     assert find_class([mod], lambda c: c.name == "ClassUnion") is None
-    # Child must no longer hold a dangling reference to it.
-    child_after = find_class([mod], lambda c: c.name == "ChildOfEmptyUnion")
+    child_after = find_class([mod], lambda c: c.name == "ChildOfPrimitiveUnion")
     assert child_after is not None
-    assert child_after.generalization is None, f"Child still inherits from removed union: {child_after.generalization}"
-    # And the rendered IDL must not mention the dead union.
-    rendered = render(config, [mod])
-    assert "ClassUnion" not in rendered
+    assert child_after.generalization is None
+    assert "ClassUnion" not in render(config, [mod])
 
 
 def test_filter_empty_union_clears_generalization() -> None:
-    """Same as above, but for an *empty* union (no members)."""
+    """An empty union has no replacement type — dangling generalization must be cleared."""
     config = Configuration(template="idl_just_defs.jinja2", collapse_empty_unions_by_default=True)
     mod = build_union_structure(config)
 
@@ -591,7 +649,7 @@ def test_filter_empty_union_clears_generalization() -> None:
     assert find_class([mod], lambda c: c.name == "ClassUnion") is None
     child_after = find_class([mod], lambda c: c.name == "ChildOfEmptyUnion")
     assert child_after is not None
-    assert child_after.generalization is None, f"Child still inherits from removed union: {child_after.generalization}"
+    assert child_after.generalization is None
     assert "ClassUnion" not in render(config, [mod])
 
 

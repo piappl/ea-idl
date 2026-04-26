@@ -312,23 +312,54 @@ def privatize_stereotypes(
         _privatize_stereotypes(package, package, config)
 
 
-def _clear_generalization_to(roots: List[ModelPackage], target_namespace: List[str]) -> None:
-    """Clear generalization on every class that inherits from the given (about-to-be-removed) class.
+def _retarget_generalization(
+    roots: List[ModelPackage],
+    old_namespace: List[str],
+    new_namespace: Optional[List[str]],
+    old_object_id: int,
+    new_object_id: Optional[int],
+) -> None:
+    """Retarget (or clear) generalization on every class that inherits from a removed class.
 
-    Without this, removing a union leaves child classes with a dangling generalization
-    namespace pointing to a class that no longer exists in the model.
+    Mirrors the attribute-rewiring done when collapsing a union: classes whose
+    generalization points at the removed class are redirected to ``new_namespace``
+    when one is available, or cleared otherwise. ``depends_on`` is updated to
+    match.
+
+    :param roots: Root packages to walk.
+    :param old_namespace: Namespace path (incl. class name) of the removed class.
+    :param new_namespace: Namespace path the children should inherit from instead.
+        Pass ``None`` when no valid replacement exists (empty union, or single
+        member is a primitive type that can't be inherited from).
+    :param old_object_id: object_id of the removed class.
+    :param new_object_id: object_id of the replacement class, if any.
     """
     from eaidl.tree_utils import traverse_packages
 
     def visit(cls: ModelClass, _pkg: ModelPackage) -> None:
-        if cls.generalization == target_namespace:
+        if cls.generalization != old_namespace:
+            return
+        if new_namespace is None:
             log.warning(
-                "Clearing dangling generalization on %s::%s (parent %s was removed)",
+                "Clearing dangling generalization on %s::%s (parent %s was removed and has no replacement)",
                 "::".join(cls.namespace),
                 cls.name,
-                "::".join(target_namespace),
+                "::".join(old_namespace),
             )
             cls.generalization = None
+        else:
+            log.info(
+                "Retargeting generalization on %s::%s: %s -> %s",
+                "::".join(cls.namespace),
+                cls.name,
+                "::".join(old_namespace),
+                "::".join(new_namespace),
+            )
+            cls.generalization = list(new_namespace)
+        if old_object_id in cls.depends_on:
+            cls.depends_on.remove(old_object_id)
+            if new_object_id is not None and new_object_id not in cls.depends_on:
+                cls.depends_on.append(new_object_id)
 
     traverse_packages(roots, class_visitor=visit)
 
@@ -360,6 +391,7 @@ def _filter_empty_unions(roots: List[ModelPackage], current: ModelPackage, confi
         all_attrs = inherited_attrs + cls.attributes
         attr_count = len(all_attrs)
 
+        old_namespace = cls.namespace + [cls.name]
         if cls.is_union and attr_count == 0:
             log.warning("Removing empty union %s::%s", "::".join(cls.namespace), cls.name)
             # This is empty union
@@ -368,7 +400,7 @@ def _filter_empty_unions(roots: List[ModelPackage], current: ModelPackage, confi
                     root,
                     lambda a: a.connector is not None and a.connector.end_object_id == cls.object_id,
                 )
-            _clear_generalization_to(roots, cls.namespace + [cls.name])
+            _retarget_generalization(roots, old_namespace, None, cls.object_id, None)
             current.classes.remove(cls)
         elif cls.is_union and attr_count == 1:
             log.warning("Collapsing one element union %s::%s", "::".join(cls.namespace), cls.name)
@@ -394,7 +426,12 @@ def _filter_empty_unions(roots: List[ModelPackage], current: ModelPackage, confi
                         attr.connector = single_attr.connector
                         attr.connector.connector_id = old.connector_id  # type: ignore
                         attr.connector.start_object_id = old.start_object_id  # type: ignore
-            _clear_generalization_to(roots, cls.namespace + [cls.name])
+            new_namespace: Optional[List[str]] = None
+            new_object_id: Optional[int] = None
+            if single_attr.connector is not None and single_attr.type is not None:
+                new_namespace = list(single_attr.namespace) + [single_attr.type]
+                new_object_id = single_attr.connector.end_object_id
+            _retarget_generalization(roots, old_namespace, new_namespace, cls.object_id, new_object_id)
             current.classes.remove(cls)
     for pkg in current.packages:
         _filter_empty_unions(roots, pkg, config)
