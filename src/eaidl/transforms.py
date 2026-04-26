@@ -312,6 +312,27 @@ def privatize_stereotypes(
         _privatize_stereotypes(package, package, config)
 
 
+def _clear_generalization_to(roots: List[ModelPackage], target_namespace: List[str]) -> None:
+    """Clear generalization on every class that inherits from the given (about-to-be-removed) class.
+
+    Without this, removing a union leaves child classes with a dangling generalization
+    namespace pointing to a class that no longer exists in the model.
+    """
+    from eaidl.tree_utils import traverse_packages
+
+    def visit(cls: ModelClass, _pkg: ModelPackage) -> None:
+        if cls.generalization == target_namespace:
+            log.warning(
+                "Clearing dangling generalization on %s::%s (parent %s was removed)",
+                "::".join(cls.namespace),
+                cls.name,
+                "::".join(target_namespace),
+            )
+            cls.generalization = None
+
+    traverse_packages(roots, class_visitor=visit)
+
+
 def _filter_empty_unions(roots: List[ModelPackage], current: ModelPackage, config: Configuration) -> None:
     """Filter empty or single-element unions from the model.
 
@@ -347,6 +368,7 @@ def _filter_empty_unions(roots: List[ModelPackage], current: ModelPackage, confi
                     root,
                     lambda a: a.connector is not None and a.connector.end_object_id == cls.object_id,
                 )
+            _clear_generalization_to(roots, cls.namespace + [cls.name])
             current.classes.remove(cls)
         elif cls.is_union and attr_count == 1:
             log.warning("Collapsing one element union %s::%s", "::".join(cls.namespace), cls.name)
@@ -372,6 +394,7 @@ def _filter_empty_unions(roots: List[ModelPackage], current: ModelPackage, confi
                         attr.connector = single_attr.connector
                         attr.connector.connector_id = old.connector_id  # type: ignore
                         attr.connector.start_object_id = old.start_object_id  # type: ignore
+            _clear_generalization_to(roots, cls.namespace + [cls.name])
             current.classes.remove(cls)
     for pkg in current.packages:
         _filter_empty_unions(roots, pkg, config)

@@ -532,6 +532,69 @@ def test_filter_one_union_member() -> None:
     print(render(config, [mod]))
 
 
+def test_filter_collapsed_union_clears_generalization() -> None:
+    """A class that inherits (generalization) from a collapsed union must not be left with a
+    dangling generalization pointer to the now-removed union."""
+    config = Configuration(template="idl_just_defs.jinja2", collapse_empty_unions_by_default=True)
+    mod = build_union_structure(config)
+
+    # Make the union collapsible: give it a single member so it gets collapsed.
+    un = find_class([mod], lambda c: c.object_id == 1)
+    assert un is not None
+    un.attributes = [
+        ModelAttribute(name="member", alias="member", type="string", attribute_id=123, guid=str(uuid.uuid4()))
+    ]
+
+    # Add a child class that inherits from the union.
+    child_empty = ModelClass(
+        name="ChildOfEmptyUnion",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=100,
+        namespace=["root"],
+        is_struct=True,
+        parent=mod,
+        generalization=["root", "ClassUnion"],
+    )
+    mod.classes.append(child_empty)
+
+    filter_empty_unions([mod], config)
+
+    # Union must be gone.
+    assert find_class([mod], lambda c: c.name == "ClassUnion") is None
+    # Child must no longer hold a dangling reference to it.
+    child_after = find_class([mod], lambda c: c.name == "ChildOfEmptyUnion")
+    assert child_after is not None
+    assert child_after.generalization is None, f"Child still inherits from removed union: {child_after.generalization}"
+    # And the rendered IDL must not mention the dead union.
+    rendered = render(config, [mod])
+    assert "ClassUnion" not in rendered
+
+
+def test_filter_empty_union_clears_generalization() -> None:
+    """Same as above, but for an *empty* union (no members)."""
+    config = Configuration(template="idl_just_defs.jinja2", collapse_empty_unions_by_default=True)
+    mod = build_union_structure(config)
+
+    child = ModelClass(
+        name="ChildOfEmptyUnion",
+        stereotypes=[config.stereotypes.idl_struct],
+        object_id=101,
+        namespace=["root"],
+        is_struct=True,
+        parent=mod,
+        generalization=["root", "ClassUnion"],
+    )
+    mod.classes.append(child)
+
+    filter_empty_unions([mod], config)
+
+    assert find_class([mod], lambda c: c.name == "ClassUnion") is None
+    child_after = find_class([mod], lambda c: c.name == "ChildOfEmptyUnion")
+    assert child_after is not None
+    assert child_after.generalization is None, f"Child still inherits from removed union: {child_after.generalization}"
+    assert "ClassUnion" not in render(config, [mod])
+
+
 def test_find_unused_classes() -> None:
     """Test finding unused classes based on root property."""
     config = Configuration(template="idl_just_defs.jinja2")
