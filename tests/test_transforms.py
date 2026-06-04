@@ -4,16 +4,18 @@ from eaidl.transforms import (
     convert_map_stereotype,
     filter_stereotypes,
     filter_empty_unions,
-    find_class,
     find_unused_classes,
     filter_unused_classes,
     flatten_abstract_classes,
     privatize_stereotypes,
     resolve_typedef_defaults,
+    apply_transforms,
 )
 from eaidl.model import ModelClass, ModelPackage, ModelAttribute, ModelConnection, ModelAnnotation
 from eaidl.config import Configuration
+from eaidl.load import ModelParser
 from eaidl.generate import render
+from eaidl.tree_utils import find_class
 
 
 def test_convert_map_stereotype() -> None:
@@ -2322,3 +2324,17 @@ def test_privatize_stereotypes_no_matches() -> None:
     privatize_stereotypes([mod], config)
     assert len(mod.classes) == 1
     assert cls.attributes[0].type == "string"
+
+
+def test_apply_transforms_filters_stereotypes():
+    config = Configuration(
+        database_url="sqlite+pysqlite:///tests/data/nafv4.qea",
+        root_packages=["core"],
+        filter_stereotypes=["idlEnum"],
+    )
+    packages = ModelParser(config).load()
+    assert find_class(packages, lambda c: c.name == "MeasurementTypeEnum") is not None
+
+    apply_transforms(config, packages)
+
+    assert find_class(packages, lambda c: c.name == "MeasurementTypeEnum") is None

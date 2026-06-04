@@ -3,15 +3,7 @@ import logging
 from jinja2 import Environment, PackageLoader, select_autoescape
 from eaidl.load import ModelPackage
 from eaidl.config import Configuration
-from eaidl.transforms import (
-    convert_map_stereotype,
-    filter_stereotypes,
-    filter_empty_unions,
-    filter_unused_classes,
-    flatten_abstract_classes,
-    privatize_stereotypes,
-    resolve_typedef_defaults,
-)
+from eaidl.transforms import apply_transforms
 
 log = logging.getLogger(__name__)
 
@@ -74,28 +66,10 @@ def render(config: Configuration, packages: List[ModelPackage]) -> str:
 
 
 def generate(config: Configuration, packages: List[ModelPackage]) -> str:
-    if config.enable_maps:
-        convert_map_stereotype(packages, config)
-    # Flatten abstract classes before filtering stereotypes
-    # This ensures abstract class attributes are merged into concrete classes
-    # before any stereotype-based filtering happens
-    if config.flatten_abstract_classes:
-        flatten_abstract_classes(packages)
-    if config.private_stereotypes is not None:
-        privatize_stereotypes(packages, config)
-    if config.filter_stereotypes is not None:
-        filter_stereotypes(packages, config)
-    if config.filter_stereotypes is not None or config.private_stereotypes is not None:
-        filter_empty_unions(packages, config)
-    if config.filter_unused_classes:
-        filter_unused_classes(packages, config, config.unused_root_property, remove=True)
+    apply_transforms(config, packages)
 
-    # Note: Cycle detection and forward declaration marking now happens
-    # during load time (in ModelParser.package_parse_children) to allow
-    # topological sorting to proceed with valid circular dependencies.
-
-    # Resolve default values for string typedef attributes so they are
-    # not rendered as qualified object references
-    resolve_typedef_defaults(packages, config)
+    # Note: Cycle detection and forward declaration marking happens during
+    # load time (in ModelParser.package_parse_children) to allow topological
+    # sorting to proceed with valid circular dependencies.
 
     return render(config, packages)

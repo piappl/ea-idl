@@ -3,7 +3,7 @@
 import json
 import pytest
 from click.testing import CliRunner
-from eaidl.cli import cli, run, change, diagram, packages, export_diagrams
+from eaidl.cli import cli, run, change, diagram, packages, export_diagrams, docs
 
 
 @pytest.fixture
@@ -293,3 +293,34 @@ class TestExportDiagramsCommand:
         )
         assert result.exit_code == 0
         assert "Exported" in result.output
+
+
+class TestDocsCommand:
+    """Tests for the 'docs' command."""
+
+    @pytest.fixture
+    def filter_config(self, tmp_path, test_db_path):
+        config = tmp_path / "docs_config.yaml"
+        config.write_text(
+            f'database_url: "sqlite+pysqlite:///{test_db_path.as_posix()}"\n'
+            "root_packages:\n"
+            '  - "core"\n'
+            "filter_stereotypes:\n"
+            '  - "idlEnum"\n'
+            'reserved_words_action: "allow"\n'
+        )
+        return config
+
+    def test_docs_applies_transforms_by_default(self, runner, filter_config, tmp_path):
+        out = tmp_path / "docs_out"
+        result = runner.invoke(docs, ["--config", str(filter_config), "--output", str(out)])
+        assert result.exit_code == 0, result.output
+        page = out / "classes" / "core" / "data" / "MeasurementTypeEnum.html"
+        assert not page.exists()
+
+    def test_docs_raw_skips_transforms(self, runner, filter_config, tmp_path):
+        out = tmp_path / "docs_out_raw"
+        result = runner.invoke(docs, ["--config", str(filter_config), "--output", str(out), "--raw"])
+        assert result.exit_code == 0, result.output
+        page = out / "classes" / "core" / "data" / "MeasurementTypeEnum.html"
+        assert page.exists()

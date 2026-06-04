@@ -10,7 +10,7 @@ from eaidl.tree_utils import collect_packages
 from eaidl.generate import generate
 from eaidl.diagram import PackageDiagramGenerator
 from eaidl.html_export import export_html
-from eaidl.transforms import flatten_abstract_classes
+from eaidl.transforms import flatten_abstract_classes, apply_transforms
 from eaidl.json_schema_importer import JsonSchemaImporter
 
 log = logging.getLogger(__name__)
@@ -190,18 +190,28 @@ def packages(config_obj, debug, output, format):
 @click.option("--config", default="config.yaml", help="Configuration file.")
 @click.option("--debug", default=False, is_flag=True, help="Enable debug.")
 @click.option("--output", default="./_docs", help="Output directory for HTML documentation.")
-@click.option("--no-diagrams", is_flag=True, help="Skip diagram generation.")
+@click.option(
+    "--raw",
+    is_flag=True,
+    help="Render the raw loaded model without applying model transforms "
+    "(stereotype filtering, privatization, empty-union collapse, map "
+    "conversion, abstract-class flattening, unused-class pruning). By default "
+    "the docs mirror the IDL produced by the 'run' command.",
+)
 @setup_command
-def docs(config_obj, debug, output, no_diagrams):
-    """Generate interactive HTML documentation from EA model."""
+def docs(config_obj, debug, output, raw):
+    """Generate interactive HTML documentation from EA model.
+
+    By default the same model transforms used by the 'run' command are applied,
+    so the documentation mirrors the generated IDL. Pass --raw to skip them and
+    render the unprocessed loaded model.
+    """
     parser = ModelParser(config_obj)
     model = parser.load()
 
-    # Apply transformations (same as run command)
-    if config_obj.flatten_abstract_classes:
-        flatten_abstract_classes(model)
+    if not raw:
+        apply_transforms(config_obj, model)
 
-    # Export HTML documentation
     output_path = Path(output)
     export_html(config_obj, model, output_path)
 

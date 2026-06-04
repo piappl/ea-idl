@@ -6,6 +6,7 @@ from eaidl.config import Configuration
 from eaidl.load import ModelParser
 from eaidl.html_export import export_html
 from eaidl.transforms import flatten_abstract_classes
+from eaidl.transforms import apply_transforms
 
 
 @pytest.fixture
@@ -151,3 +152,35 @@ class TestHTMLExport:
         assert "type" in first_entry
         assert "namespace" in first_entry
         assert "url" in first_entry
+
+
+class TestHTMLExportTransforms:
+    """HTML export reflects the transformed model."""
+
+    @pytest.fixture
+    def filtered_config(self):
+        return Configuration(
+            database_url="sqlite+pysqlite:///tests/data/nafv4.qea",
+            root_packages=["core"],
+            filter_stereotypes=["idlEnum"],
+        )
+
+    def test_transforms_remove_filtered_class_page(self, filtered_config, test_output_dir):
+        parser = ModelParser(filtered_config)
+        packages = parser.load()
+        apply_transforms(filtered_config, packages)
+
+        export_html(filtered_config, packages, test_output_dir)
+
+        page = test_output_dir / "classes" / "core" / "data" / "MeasurementTypeEnum.html"
+        assert not page.exists()
+
+    def test_raw_keeps_filtered_class_page(self, filtered_config, test_output_dir):
+        parser = ModelParser(filtered_config)
+        packages = parser.load()
+        # Raw path: no apply_transforms call.
+
+        export_html(filtered_config, packages, test_output_dir)
+
+        page = test_output_dir / "classes" / "core" / "data" / "MeasurementTypeEnum.html"
+        assert page.exists()

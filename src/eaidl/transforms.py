@@ -839,3 +839,25 @@ def resolve_typedef_defaults(packages: List[ModelPackage], config: Configuration
             attr.properties["default"] = ModelAnnotation(value=value, value_type=resolved_type)
 
     traverse_packages(packages, class_visitor=fix_defaults)
+
+
+def apply_transforms(config: Configuration, packages: List[ModelPackage]) -> None:
+    """Apply the full model transform pipeline in place.
+
+    Shared by IDL generation (``generate``) and HTML docs (``docs`` command)
+    so both render the same transformed model. Steps run in the same order and
+    under the same configuration guards as the historical ``generate`` body.
+    """
+    if config.enable_maps:
+        convert_map_stereotype(packages, config)
+    if config.flatten_abstract_classes:
+        flatten_abstract_classes(packages)
+    if config.private_stereotypes is not None:
+        privatize_stereotypes(packages, config)
+    if config.filter_stereotypes is not None:
+        filter_stereotypes(packages, config)
+    if config.filter_stereotypes is not None or config.private_stereotypes is not None:
+        filter_empty_unions(packages, config)
+    if config.filter_unused_classes:
+        filter_unused_classes(packages, config, config.unused_root_property, remove=True)
+    resolve_typedef_defaults(packages, config)

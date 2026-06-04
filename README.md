@@ -129,6 +129,22 @@ uv run eaidl docs --config config/sqlite.yaml --output ./docs
 uv run eaidl docs --config config/sqlite.yaml --output ./docs --debug
 ```
 
+By default the docs apply the same model transforms as the `run` command
+(stereotype filtering, privatization, empty-union collapse, map conversion,
+abstract-class flattening and unused-class pruning), so the documentation
+mirrors the generated IDL. Use `--raw` to skip all transforms and document the
+unprocessed loaded model:
+
+```sh
+# Document the raw model, no transforms applied
+uv run eaidl docs --config config/sqlite.yaml --output ./docs --raw
+```
+
+> **Note:** Classes removed by transforms (e.g. via `filter_stereotypes`) get
+> no class page and drop out of auto-generated class diagrams. EA-authored
+> (hand-drawn) diagrams still render filtered classes as nodes, but their
+> cross-reference links won't resolve since the class is no longer in the model.
+
 ## Regenerate docs
 
 ```sh
