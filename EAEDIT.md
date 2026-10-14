@@ -10,9 +10,11 @@ and its tagged values, and a new connector is checked against the profile's rule
 ```python
 from eaedit import Session
 
-s = Session.open("model.qea", focus=["Model::Demo"], policy="connected", catalogues=["profile.xml"])
+# The focus package must already exist when the session opens, so focus the root and create Demo inside it.
+s = Session.open("model.qea", focus=["Model"], policy="connected", catalogues=["docs/examples/eaedit-catalogue.yaml"])
 s.create_package(parent="Model", name="Demo")
 s.create_element(package="Model::Demo", name="Engine", stereotype="Example::Block")
+s.create_element(package="Model::Demo", name="Controller", stereotype="Example::Block")
 s.set_tag(target="Model::Demo::Engine", name="owner", value="Propulsion team")
 s.connect(source="Model::Demo::Controller", target="Model::Demo::Engine", type="Association")
 print(s.preview().report)   # what would change, new integrity issues, warnings
@@ -28,7 +30,7 @@ uv run eaedit catalogue build profile.xml model.qea -o catalogue.yaml
 uv run eaedit catalogue show catalogue.yaml [Example::Block]
 ```
 
-`-c/--catalogue` and `--focus` can be repeated. `--policy` (default `connected`) and `--author` are described below.
+`-c/--catalogue` and `--focus` can be repeated. A `--focus` package must already exist when the session opens. `--policy` (default `connected`) and `--author` are described below.
 
 ## Sessions, focus and policies
 
@@ -85,7 +87,7 @@ Notes:
 A catalogue lists stereotypes: base types they apply to, tags (type, values, default), inheritance and
 connector end constraints. Sources, most authoritative first:
 
-1. **YAML** (and the IDL catalogue from `eaidl catalogue`);
+1. **YAML** (including the IDL catalogue written by the `eaidl catalogue` command);
 2. **MDG technology XML**;
 3. **inferred** from a `.qea` (also from the model being edited, unless `infer=False`).
 
@@ -108,7 +110,7 @@ stereotypes:
 
 A file may hold one catalogue (a mapping) or several (a list). `eaedit catalogue build` merges any mix of sources
 into one YAML file (one catalogue per profile); `eaedit catalogue show` lists a catalogue or prints one stereotype
-with its inherited tags. `eaidl catalogue -o idl.yaml` writes the stereotypes eaidl itself reads.
+with its inherited tags. A different command, `eaidl catalogue -o idl.yaml` (the eaidl CLI, not eaedit), writes the stereotypes eaidl itself reads.
 
 **MDG errata.** Vendor MDG files sometimes contain mistakes that break their own rules. The parser applies a small
 table of known textual fixes before parsing and records them in the catalogue's `source.errata`. Example: the
@@ -168,7 +170,7 @@ Automated tests cannot prove EA accepts the result. Check once by hand:
    `uv run eaedit apply copy.qea docs/examples/eaedit-example.yaml -c docs/examples/eaedit-catalogue.yaml`
 3. Open the file in EA.
 4. Run Project > Integrity Check with all checks enabled; expect no errors.
-5. Confirm that `Engine` and `Controller` show the `Block` stereotype with their tags (`owner`, `kind`) in the
+5. Confirm that `Engine` and `Controller` show the `Block` stereotype with their catalogue tags (`owner`, `kind`) in the
    Properties window.
 6. Confirm that the connector between them appears in the Relationships window.
 
