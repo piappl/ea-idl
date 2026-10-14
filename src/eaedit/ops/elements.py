@@ -187,7 +187,7 @@ def cascade_delete(session, elements: Iterable[Key], diagrams: Iterable[Key] = (
     add(_where(session, "t_xref", ("attr_client",), guids))
     add(_where(session, "t_taggedvalue", ("attr_elementid",), guids))
     add(_where(session, "t_document", ("attr_elementid",), guids))
-    _clear_references(session, rows)
+    clear_references(session, rows)
     for table, key in rows:
         session.drop(table, key)
 
@@ -215,7 +215,7 @@ def _strip_text_refs(value: TextRefs, gone: set[Ref], unset: Any) -> TextRefs | 
     return TextRefs(text, tuple(ref for mark, ref in zip(marks, value.refs) if mark in kept))
 
 
-def _clear_references(session, rows: dict[tuple[str, Key], Record]) -> None:
+def clear_references(session, rows: dict[tuple[str, Key], Record]) -> None:
     """Reset references from surviving rows into ``rows`` to EA's "nothing" value, keeping names held as text.
 
     Covers ID references (``Ref``/``TextRefs``), GUID columns and GUIDs embedded in text, per the table map.
@@ -254,8 +254,10 @@ def _clear_references(session, rows: dict[tuple[str, Key], Record]) -> None:
                         changed[rule.column] = unset(rule.column)
                 elif isinstance(rule, EmbeddedGuidRule) and isinstance(value, str):
                     current = changed.get(rule.column, value)
+                    # EA writes a side letter after LFSP/LFEP GUIDs (``LFSP={GUID}L;``).
+                    tail = "[LR]?;?" if rule.column == "attr_styleex" else ";?"
                     text = re.sub(
-                        rule.pattern + ";?", lambda m: "" if m.group(1).upper() in guids else m.group(0), current
+                        rule.pattern + tail, lambda m: "" if m.group(1).upper() in guids else m.group(0), current
                     )
                     if text != current:
                         changed[rule.column] = text or None
