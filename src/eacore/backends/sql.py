@@ -8,10 +8,11 @@ from pathlib import Path
 
 import sqlalchemy as sa
 
+from eacore.changes import ChangeSet
 from eacore.naming import column_key
 from eacore.records import Key, LoadIssue, Record, RecordSet, key_str
 from eacore.tablemap import EA_TABLEMAP, ContentKey, GuidKey, Row, TableMap
-from eacore.translate import IdMaps, RidMaps, candidate_key, decode_row
+from eacore.translate import IdMaps, RidMaps, candidate_key, decode_row, encode_value
 
 
 class NotAnEaRepositoryError(ValueError):
@@ -152,6 +153,82 @@ class SqlBackend:
             name for name, rows in raw.items() if rows and not self.tablemap.is_mapped(name)
         )
         return rs
+
+    def _info(self, table: str) -> _TableInfo:
+        try:
+            return self._schema[table]
+        except KeyError:
+            raise ValueError(f"{self.url}: table {table} does not exist") from None
+
+    def _column(self, info: _TableInfo, key: str) -> str:
+        try:
+            return info.columns[key]
+        except KeyError:
+            raise ValueError(f"{info.table.name} has no column for {key}") from None
+
+    def _next_id(self, conn, info: _TableInfo, sequences: dict[str, int]) -> int:
+        column = info.table.c[info.columns[info.surrogate]]
+        current = conn.execute(sa.select(sa.func.max(column))).scalar() or 0
+        return max(current, sequences.get(info.table.name, 0)) + 1
+
+    def apply(self, changes: ChangeSet) -> None:
+        """Write ``changes`` in one transaction, touching only affected rows and columns.
+
+        Refuses if the file changed since ``load()`` or another program holds a lock.
+        IDs for new rows are allocated before anything is written, so references between new
+        rows resolve; EA's schema has no foreign keys, so statement order does not matter.
+        """
+        if not self._schema:
+            raise RuntimeError("call load() before apply()")
+        if changes.is_empty():
+            return
+        if self._file_hash() != self._hash:
+            raise ConcurrentModificationError(f"{self.path} changed since it was loaded")
+        ridmaps: RidMaps = {table: dict(rids) for table, rids in self._rids.items()}
+        try:
+            with self._write_engine.begin() as conn:
+                sequences = self._read_sequences(conn)
+                next_ids: dict[str, int] = {}
+                for insert in changes.inserts:
+                    record = insert.record
+                    info = self._info(record.table)
+                    if info.surrogate:
+                        new_id = next_ids.get(record.table) or self._next_id(conn, info, sequences)
+                        ridmaps.setdefault(record.table, {})[record.key] = new_id
+                        next_ids[record.table] = new_id + 1
+                for delete in changes.deletes:
+                    info = self._info(delete.table)
+                    rid = self._rids[delete.table][delete.key]
+                    conn.execute(sa.delete(info.table).where(self._rid_column(info) == rid))
+                    ridmaps[delete.table].pop(delete.key, None)
+                for update in changes.updates:
+                    info = self._info(update.table)
+                    spec = self.tablemap.spec(update.table)
+                    values = {
+                        self._column(info, column): encode_value(spec, column, new, ridmaps)
+                        for column, (_old, new) in update.changes.items()
+                    }
+                    rid = self._rids[update.table][update.key]
+                    conn.execute(sa.update(info.table).where(self._rid_column(info) == rid).values(values))
+                for insert in changes.inserts:
+                    record = insert.record
+                    info = self._info(record.table)
+                    spec = self.tablemap.spec(record.table)
+                    values = {
+                        self._column(info, column): encode_value(spec, column, value, ridmaps)
+                        for column, value in record.values.items()
+                    }
+                    if info.surrogate:
+                        values[info.columns[info.surrogate]] = ridmaps[record.table][record.key]
+                    result = conn.execute(sa.insert(info.table).values(values))
+                    if not info.surrogate:
+                        ridmaps.setdefault(record.table, {})[record.key] = result.lastrowid
+        except sa.exc.OperationalError as exc:
+            if "locked" in str(exc).lower() or "busy" in str(exc).lower():
+                raise RepositoryLockedError(f"{self.path} is locked by another program") from exc
+            raise
+        self._rids = ridmaps
+        self._hash = self._file_hash()
 
     def _unique_keys(self, rs: RecordSet, table: str, candidates: list[tuple[int, Key | None]]) -> list[Key]:
         """Make keys unique: missing GUIDs and duplicates get a suffix and are reported."""
