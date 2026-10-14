@@ -365,5 +365,17 @@ EA_TABLEMAP = TableMap(
         "t_testtypes",
         "t_trxtypes",
     ),
-    volatile=(),
+    # Columns EA rewrites on records a commit was not about (evidence: nafv4.qea git history, Task 10).
+    # Whenever a diagram is saved EA bumps its ModifiedDate and renumbers Sequence of every object on it by a
+    # uniform offset (relative z-order unchanged): a98332bc (attribute rename: all 14 objects +1), 1a5e981b
+    # (genlinks edit: all 14 objects -1), 023499e8 (notes added: 11 existing objects +3); 16 diagram saves in total.
+    # Not listed although they also change on every diagram save, because the same column carries real data:
+    # t_diagram.StyleEx (only the SaveTag key changes) and the diagram's DGS t_xref.Description (a swimlane
+    # segment is appended). t_object.ModifiedDate is not volatile: it changed 3 times, twice with a package move
+    # of that element (a97ac559, b7944f62) and once alone on MessageTypeEnum (421588e5), never on elements
+    # untouched by the commit; attribute edits (6bae0ef6, 9ef25a9e) left it alone.
+    volatile=(
+        ("t_diagram", "attr_modifieddate"),
+        ("t_diagramobjects", "attr_sequence"),
+    ),
 )

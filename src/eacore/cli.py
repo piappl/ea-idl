@@ -85,3 +85,17 @@ def check_command(path, fmt) -> None:
         click.echo(f"{errors} error(s), {len(issues) - errors} warning(s)")
     if any(i.severity == "error" for i in issues):
         raise SystemExit(1)
+
+
+@cli.command("history")
+@click.argument("path", type=click.Path(exists=True, dir_okay=False))
+@click.option("--out", "out_dir", type=click.Path(file_okay=False), required=True, help="Output directory.")
+@click.option(
+    "--template", type=click.Path(exists=True, dir_okay=False), default=None, help="Empty .qea for round-trips."
+)
+def history_command(path, out_dir, template) -> None:
+    """Diff and check every git version of PATH; write per-commit diffs and summary.md."""
+    from eacore.history import run_history
+
+    summary = run_history(Path(path), Path(out_dir), Path(template) if template else None)
+    click.echo(f"{len(summary['versions'])} versions, {len(summary['pairs'])} diffs -> {out_dir}/summary.md")
