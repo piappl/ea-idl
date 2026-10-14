@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 import yaml
@@ -103,3 +104,17 @@ def test_load_rejects_unknown_format(tmp_path):
     bad.write_text("eaedit: 2\nops: []\n", encoding="utf-8")
     with pytest.raises(InvalidOperationError, match="version"):
         load(bad)
+
+
+def test_example_change_file_applies_to_empty_model(empty_path, qea_copy):
+    examples = Path(__file__).parents[2] / "docs" / "examples"
+    model = qea_copy(empty_path)
+    session = Session.open(model, catalogues=[examples / "eaedit-catalogue.yaml"], policy="package", focus=["Model"])
+    replay(session, examples / "eaedit-example.yaml")
+
+    assert not session.warnings
+    assert [i for i in session.preview().new_issues if i.severity == "error"] == []
+    session.commit()
+    reopened = Session.open(model)
+    assert reopened.get("Model::Demo::Engine")["stereotypes"]
+    assert len(reopened.find_connectors(source="Model::Demo::Controller")) == 1

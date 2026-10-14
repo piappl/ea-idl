@@ -1,0 +1,20 @@
+profile: Example
+source:
+  kind: yaml
+  file: eaedit-catalogue.yaml
+stereotypes:
+  - name: Block
+    applies_to: [Class]
+    tags:
+      - name: owner
+      - name: kind
+        type: enumeration
+        values: [hardware, software]
+        default: software
+  - name: Uses
+    applies_to: [Association]
+    constraints:
+      - role: client
+        target: Example::Block
+      - role: supplier
+        target: Example::Block

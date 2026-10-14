@@ -1,0 +1,22 @@
+# Works on tests/data/empty.qea (root package "Model") with docs/examples/eaedit-catalogue.yaml.
+eaedit: 1
+author: example
+ops:
+  - op: create_package
+    at: "2026-01-01 10:00:00"
+    args: {parent: Model, name: Demo}
+  - op: create_element
+    at: "2026-01-01 10:00:01"
+    args: {package: Model::Demo, name: Engine, stereotype: Example::Block}
+  - op: create_element
+    at: "2026-01-01 10:00:02"
+    args: {package: Model::Demo, name: Controller, stereotype: Example::Block}
+  - op: set_tag
+    at: "2026-01-01 10:00:03"
+    args: {target: Model::Demo::Engine, name: owner, value: Propulsion team}
+  - op: add_attribute
+    at: "2026-01-01 10:00:04"
+    args: {el: Model::Demo::Engine, name: power, type: int}
+  - op: connect
+    at: "2026-01-01 10:00:05"
+    args: {source: Model::Demo::Controller, target: Model::Demo::Engine, type: Association, stereotype: Example::Uses}

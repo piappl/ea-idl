@@ -11,6 +11,7 @@ EA-IDL converts Enterprise Architect database models to IDL format. Standalone C
 | [MODEL.md](./MODEL.md) | EA modeling conventions, stereotypes |
 | [CONTRIBUTING.md](./CONTRIBUTING.md) | Development workflow, validators, testing |
 | [EACORE.md](./EACORE.md) | eacore: record layer, diff, integrity check for .qea |
+| [EAEDIT.md](./EAEDIT.md) | eaedit: scoped editing of .qea with stereotype catalogues |
 | [scripts/README.md](./scripts/README.md) | Diagram export scripts |
 
 ## Essential Info for AI Assistants
