@@ -8,6 +8,7 @@ from eacore.records import Record, RecordSet, Ref, TextRefs, key_str
 
 MAX_VALUE = 200
 REPOSITORY = "Repository settings"
+ELEMENT_TABLES = ("t_object", "t_diagram")
 PARENT_COLUMNS = ("attr_object_id", "attr_elementid", "attr_operationid")
 
 
@@ -63,17 +64,57 @@ def describe(rs: RecordSet, record: Record) -> str:
     return f"{record.table} {prefix}{label} [{key_str(record.key)}]"
 
 
-def _group(rs: RecordSet, table: str, key) -> str:
+def _owner_element(rs: RecordSet, table: str, key) -> Record | None:
+    """Nearest t_object/t_diagram that is the record itself or an ancestor; None if the chain reaches a package."""
+    record = rs.get(table, key)
+    seen: set = set()
+    while record is not None and (record.table, record.key) not in seen:
+        seen.add((record.table, record.key))
+        if record.table in ELEMENT_TABLES:
+            return record
+        spec = rs.tablemap.spec(record.table) if rs.tablemap else None
+        if record.table == "t_package" or spec is None or spec.owner is None:
+            return None
+        value = record.values.get(spec.owner)
+        if isinstance(value, Ref):
+            record = rs.resolve(value)
+        elif spec.owner_is_guid and isinstance(value, str):
+            candidates = rs.by_guid(value)
+            record = rs.resolve(candidates[0]) if candidates else None
+        else:
+            return None
+    return None
+
+
+def _heading(element: Record) -> str:
+    values = element.values
+    name = values.get("attr_name") or key_str(element.key)
+    if element.table == "t_diagram":
+        return f"Diagram {name}"
+    stereotype = values.get("attr_stereotype")
+    prefix = f"\u00ab{stereotype}\u00bb " if stereotype else ""
+    return f"{prefix}{name} ({values.get('attr_object_type')})"
+
+
+def _group(rs: RecordSet, table: str, key) -> tuple[str, tuple[str, str] | None, str]:
+    """Package path, owning element identity (or None) and its heading."""
     owner = rs.owner_package(Ref(table, key))
-    return package_path(rs, owner) if owner else REPOSITORY
+    package = package_path(rs, owner) if owner else REPOSITORY
+    element = _owner_element(rs, table, key)
+    if element is None:
+        return package, None, ""
+    return package, (element.table, key_str(element.key)), _heading(element)
 
 
 def render_text(changes: ChangeSet, before: RecordSet, after: RecordSet) -> str:
-    """Changes grouped by owning package; repository-wide rows last."""
-    groups: dict[str, list[tuple[str, str]]] = {}
+    """Changes grouped by owning package, then owning element; repository-wide rows last."""
+    # package -> element id -> (heading, [(sort key, text)]); element id None holds package-level changes
+    groups: dict[str, dict[tuple[str, str] | None, tuple[str, list[tuple[str, str]]]]] = {}
 
-    def add(group: str, sort_key: str, text: str) -> None:
-        groups.setdefault(group, []).append((sort_key, text))
+    def add(group: tuple[str, tuple[str, str] | None, str], sort_key: str, text: str) -> None:
+        package, element, heading = group
+        entry = groups.setdefault(package, {}).setdefault(element, (heading, []))
+        entry[1].append((sort_key, text))
 
     for delete in changes.deletes:
         record = delete.record or before.get(delete.table, delete.key)
@@ -96,7 +137,14 @@ def render_text(changes: ChangeSet, before: RecordSet, after: RecordSet) -> str:
     out = []
     for group in sorted(groups, key=lambda g: (g == REPOSITORY, g)):
         out.append(f"== {group} ==")
-        out.extend(text for _, text in sorted(groups[group]))
+        elements = groups[group]
+        if None in elements:
+            out.extend(text for _, text in sorted(elements[None][1]))
+        for element in sorted((e for e in elements if e is not None), key=lambda e: (elements[e][0], e)):
+            heading, items = elements[element]
+            out.append(f"  {heading}")
+            for _, text in sorted(items):
+                out.extend(f"    {line}" for line in text.split("\n"))
         out.append("")
     return "\n".join(out) if out else "No changes.\n"
 
@@ -134,11 +182,22 @@ def to_json(changes: ChangeSet) -> str:
     return json.dumps(data, indent=2, ensure_ascii=False)
 
 
+def _dump_value(value: Any) -> str:
+    """Lossless single-line form of a value, for textconv."""
+    if isinstance(value, Ref):
+        return f"->{value.table}:{key_str(value.key)}"
+    if isinstance(value, TextRefs):
+        return f"{value.template!r} % [{', '.join(_dump_value(r) for r in value.refs)}]"
+    if isinstance(value, bytes):
+        return f"hex:{value.hex()}"
+    return repr(value)
+
+
 def dump_text(rs: RecordSet) -> str:
     """One line per value, sorted: ``table<TAB>key<TAB>column<TAB>value``. Used for git textconv."""
     lines = []
     for table in rs.tables():
         for record in sorted(rs.records(table), key=lambda r: key_str(r.key)):
             for column in sorted(record.values):
-                lines.append(f"{table}\t{key_str(record.key)}\t{column}\t{fmt_value(record.values[column])}")
+                lines.append(f"{table}\t{key_str(record.key)}\t{column}\t{_dump_value(record.values[column])}")
     return "\n".join(lines) + "\n"
