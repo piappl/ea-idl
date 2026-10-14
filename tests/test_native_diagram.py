@@ -2477,7 +2477,9 @@ class TestSvgStyleConfig:
             target_navigability="Navigable",
         )
         assert composed.get("marker-start") == "url(#diamond-filled-start)"
-        assert composed.get("marker-end") == "url(#arrow-open)"
+        # EA draws a plain line at the end opposite a diamond even when the
+        # role is explicitly Navigable (verified in all reference exports).
+        assert composed.get("marker-end") is None
         blocked = path(
             connector_type="Association",
             direction="Source -> Destination",
@@ -2490,6 +2492,49 @@ class TestSvgStyleConfig:
         realization = path(connector_type="Realisation", source_is_aggregate=0, target_is_aggregate=0)
         assert realization.get("stroke-dasharray") == "5,3"
         assert realization.get("marker-end") == "url(#arrow-generalization)"
+
+    def test_diamond_link_keeps_opposite_end_plain(self, extractor):
+        """EA exports aggregate links with the diamond only: a Navigable role
+        style never adds a navigability arrow at the end opposite a diamond
+        (all 26 diamond groups in the reference exports show a plain line)."""
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        connector = diagram.connectors[0].model_copy(
+            update={
+                "source_object_id": first.object_id,
+                "target_object_id": second.object_id,
+                "hidden": False,
+                "geometry": diagram.connectors[0].geometry.model_copy(
+                    update={
+                        "source_x": None,
+                        "source_y": None,
+                        "end_x": None,
+                        "end_y": None,
+                        "waypoints": [],
+                    }
+                ),
+            }
+        )
+        style = NativeDiagramStyleConfig(compact_nodes=True)
+        current = connector.model_copy(
+            update={
+                "connector_type": "Aggregation",
+                "direction": "Source -> Destination",
+                "source_is_aggregate": 0,
+                "target_is_aggregate": 2,
+                "source_navigability": "Navigable",
+                "target_navigability": "Unspecified",
+            }
+        )
+        svg = render_svg(diagram.model_copy(update={"nodes": [first, second], "connectors": [current]}), style=style)
+        root = ET.fromstring(svg)
+        ns = "{http://www.w3.org/2000/svg}"
+        path = root.find(f'.//{ns}g[@class="connector"]/{ns}path')
+        assert path.get("marker-end") == "url(#diamond-filled-end)"
+        assert path.get("marker-start") is None
 
     def test_compact_long_name_fits_ea_bounds(self, extractor):
         from xml.etree import ElementTree as ET
@@ -2860,6 +2905,12 @@ class TestSequenceDiagram:
         assert path.get("stroke-dasharray") is None
         assert path.get("marker-end") == "url(#arrow-sequence)"
         assert [text.text for text in group.findall(ns + "text")] == ["NodeStatus()"]
+        # EA exports every P6 message head as a closed, filled 12x8 triangle.
+        marker = root.find(f".//{ns}marker[@id='arrow-sequence']")
+        head_shape = marker.find(ns + "polygon")
+        assert head_shape is not None
+        assert head_shape.get("points") == "0,0 12,4 0,8"
+        assert head_shape.get("fill") == "#69738c"
 
     def test_sequence_message_stereotype(self, extractor):
         """Message1 has stereotype 'ResourceMessage'."""

@@ -1158,8 +1158,9 @@ def _build_defs(root: ET.Element, style, diagram: NativeDiagram) -> None:
     sequence_marker = ET.SubElement(
         defs, "marker", id="arrow-sequence", markerWidth="12", markerHeight="8", refX="12", refY="4", orient="auto"
     )
+    # EA exports every sequence message head as a closed, filled 12x8 triangle.
     ET.SubElement(
-        sequence_marker, "polyline", points="0,0 12,4 0,8", fill="none", stroke="#69738c", **{"stroke-width": "1"}
+        sequence_marker, "polygon", points="0,0 12,4 0,8", fill="#69738c", stroke="#69738c", **{"stroke-width": "1"}
     )
 
     # EA's activity-flow head is 16 units long and 12 units wide. Keep its
@@ -2336,11 +2337,9 @@ def _render_connector(
         if conn.target_is_aggregate or is_aggregation and not conn.source_is_aggregate:
             kind = "filled" if conn.target_is_aggregate == 2 or ctype == "Composition" else "open"
             path_attrs["marker-end"] = f"url(#diamond-{kind}-end)"
-        if ctype in ("Association", "Aggregation", "Composition"):
-            if source_arrow and "marker-start" not in path_attrs:
-                path_attrs["marker-start"] = "url(#arrow-open-start)"
-            if target_arrow and "marker-end" not in path_attrs:
-                path_attrs["marker-end"] = "url(#arrow-open)"
+        # EA exports diamond links with a plain line at the opposite end
+        # (26/26 diamond groups across the reference exports), even when the
+        # role style says Navigable; no navigability arrow is added there.
     elif ctype == "ControlFlow" and style.ea_detail_nodes:
         path_attrs["marker-end"] = "url(#arrow-control)"
     elif ctype == "InformationFlow" and style.ea_detail_nodes:
