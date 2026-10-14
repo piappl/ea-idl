@@ -1,6 +1,6 @@
 """Stuff related to application configuration."""
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from typing import TypeAlias, List, Dict, Optional, Literal
 
 #: General JSON type
@@ -87,12 +87,22 @@ class NativeDiagramStyleConfig(BaseModel):
     """Text colour inside the header band."""
     node_bg_color: str = "#ffffff"
     """Fill colour of the node body (attribute compartment)."""
+    stereotype_bg_colors: Dict[str, str] = Field(default_factory=dict)
+    """Fallback fills by stereotype when an EA object has no explicit fill."""
     part_bg_color: str = "#dbeafe"
     """Fill colour of Part nodes inside composite structure diagrams."""
     node_border_color: str = "#2c5282"
     """Border / outline colour of class nodes."""
     node_border_width: int = 1
     """Border line width in pixels."""
+    respect_ea_colors: bool = True
+    """Use EA object/link colours instead of the configured palette."""
+    compact_nodes: bool = False
+    """Render each class as a small labelled card without attributes."""
+    ea_detail_nodes: bool = False
+    """Keep EA class bounds and render fitting attributes and visible notes."""
+    compact_connector_labels: bool = True
+    """Show relationship text on compact diagrams; disable for dense source views."""
 
     # --- note colours ---
     note_bg_color: str = "#fffde7"
@@ -107,6 +117,10 @@ class NativeDiagramStyleConfig(BaseModel):
     """Default stroke colour for connectors."""
     connector_note_color: str = "#718096"
     """Stroke colour for NoteLink connectors (dashed)."""
+    control_flow_color: Optional[str] = None
+    """Fallback stroke and arrow colour for EA activity control flows."""
+    information_flow_color: Optional[str] = None
+    """Fallback stroke and arrow colour for EA information flows."""
 
     # --- canvas ---
     canvas_bg_color: str = "#f7fafc"

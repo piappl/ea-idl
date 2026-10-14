@@ -9,7 +9,7 @@ from eaidl.native_diagram_extractor import (
 )
 from eaidl.native_diagram_model import NativeDiagram, NativeDiagramNode
 from eaidl.native_diagram_excalidraw import render_excalidraw
-from eaidl.native_diagram_svg import render_svg, _ea_to_svg, _clip_to_rect, _ea_html_to_xhtml
+from eaidl.native_diagram_svg import render_svg, _ea_to_svg, _clip_to_rect, _edge_points, _ea_html_to_xhtml
 from eaidl.native_diagram_svg import svg_link_map, rewrite_svg_links
 
 
@@ -134,6 +134,16 @@ def extractor():
 
 
 class TestNativeDiagramExtractor:
+    def test_show_foreign_controls_package_qualifiers(self, extractor):
+        diagram = extractor.extract_by_id(3)
+        assert diagram.show_foreign is True
+        qualified = {node.object_id: node.display_context for node in diagram.nodes}
+        assert any(context for context in qualified.values())
+
+        unqualified = extractor._extract_nodes(3, 8, show_foreign=False)
+        assert all(node.display_context is None for node in unqualified)
+        assert {node.object_id for node in unqualified} == set(qualified)
+
     def test_extract_all_returns_diagrams(self, extractor):
         diagrams = extractor.extract_all()
         assert len(diagrams) > 0
@@ -426,6 +436,2135 @@ class TestEaHtmlToXhtml:
 
 
 class TestSvgStyleConfig:
+    def test_ea_detail_mode_keeps_bounds_and_visible_note(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+        from eaidl.native_diagram_model import NativeDiagramAttribute
+
+        diagram = extractor.extract_by_id(3)
+        node = next(n for n in diagram.nodes if n.object_type == "Class")
+        node = node.model_copy(
+            update={
+                "rect_left": 0,
+                "rect_right": 140,
+                "rect_top": 0,
+                "rect_bottom": -110,
+                "note_text": "Visible class documentation.",
+                "attributes": [NativeDiagramAttribute(name="hidden", type="string", visibility="Public")],
+                "style": node.style.model_copy(update={"extra": {"Notes": "1000", "AttPub": "0"}}),
+            }
+        )
+        svg = render_svg(
+            diagram.model_copy(update={"nodes": [node], "connectors": []}),
+            style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+        )
+        root = ET.fromstring(svg)
+        ns = {"s": "http://www.w3.org/2000/svg"}
+        card = root.find('.//s:g[@class="node-class"]', ns)
+        assert card.find("s:rect", ns).get("width") == "140.0"
+        texts = [e.text or "" for e in card.findall("s:text", ns)]
+        assert any("Visible class" in line for line in texts)
+        assert not any("hidden" in line for line in texts)
+
+    def test_ea_detail_orders_attributes_below_external_parent(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+        from eaidl.native_diagram_model import NativeDiagramAttribute
+
+        diagram = extractor.extract_by_id(3)
+        node = next(n for n in diagram.nodes if n.object_type == "Class")
+        node = node.model_copy(
+            update={
+                "rect_left": 0,
+                "rect_right": 180,
+                "rect_top": 0,
+                "rect_bottom": -120,
+                "parent_name": "Action",
+                "attributes": [
+                    NativeDiagramAttribute(name="zeta", type="string"),
+                    NativeDiagramAttribute(name="alpha", type="string"),
+                ],
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "nodes": [node],
+                        "connectors": [],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        card = root.find('.//{http://www.w3.org/2000/svg}g[@class="node-class"]')
+        texts = [element.text or "" for element in card.findall("{http://www.w3.org/2000/svg}text")]
+        assert texts[0] == "Action"
+        assert texts.index("alpha: string") < texts.index("zeta: string")
+
+    def test_ea_detail_wraps_class_names_from_box_width(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        base = next(node for node in diagram.nodes if node.object_type == "Class")
+        system = base.model_copy(
+            update={
+                "name": "Enabling Unmanned Platform Control System",
+                "stereotype": "System",
+                "display_context": None,
+                "parent_name": None,
+                "note_text": None,
+                "rect_left": 0,
+                "rect_right": 157,
+                "rect_top": 0,
+                "rect_bottom": -58,
+                "attributes": [],
+            }
+        )
+        constraint = base.model_copy(
+            update={
+                "object_id": 99999,
+                "name": " UxV Control Interface should mesh with the right vehicle.",
+                "stereotype": "ResourceConstraint",
+                "display_context": None,
+                "parent_name": None,
+                "note_text": "Constraint description.",
+                "rect_left": 200,
+                "rect_right": 381,
+                "rect_top": 0,
+                "rect_bottom": -137,
+                "attributes": [],
+                "style": base.style.model_copy(update={"extra": {"Notes": "1000"}}),
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "nodes": [system, constraint],
+                        "connectors": [],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True, font_size=10),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        system_card = root.find(f".//{ns}g[@data-object-id='{system.object_id}']")
+        constraint_card = root.find(f".//{ns}g[@data-object-id='{constraint.object_id}']")
+
+        def names(card):
+            return [
+                (item.text, item.get("y")) for item in card.findall(ns + "text") if item.get("font-weight") == "bold"
+            ]
+
+        assert names(system_card) == [("Enabling Unmanned Platform", "29.0"), ("Control System", "42.0")]
+        assert names(constraint_card) == [
+            (" UxV Control Interface should mesh with", "29.0"),
+            ("the right vehicle.", "42.0"),
+        ]
+        assert constraint_card.find(ns + "line").get("y1") == "50.0"
+
+    def test_ea_detail_diagram_hides_fields_and_shows_foreign_package_footer(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+        from eaidl.native_diagram_model import NativeDiagramAttribute
+
+        diagram = extractor.extract_by_id(3)
+        base = next(node for node in diagram.nodes if node.object_type == "Class")
+        node = base.model_copy(
+            update={
+                "name": "DetectMCM",
+                "display_context": "mcm",
+                "foreign_package_path": "stanag4817::p7::aep105::base::task_specialization::mcm",
+                "rect_left": 10,
+                "rect_right": 146,
+                "rect_top": 0,
+                "rect_bottom": -49,
+                "attributes": [NativeDiagramAttribute(name="p_detection", type="float")],
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "nodes": [node],
+                        "connectors": [],
+                        "hide_attributes": True,
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        card = root.find(f".//{ns}g[@data-object-id='{node.object_id}']")
+        assert card.find(ns + "rect").get("height") == "49.0"
+        texts = [item.text for item in card.findall(ns + "text")]
+        assert "DetectMCM" in texts
+        assert "mcm::DetectMCM" not in texts
+        assert "p_detection: float" not in texts
+        assert texts[-2:] == [
+            "(from stanag4817::p7::aep105::",
+            "base::task_specialization::mcm)",
+        ]
+        assert all(item.get("font-style") == "italic" for item in card.findall(ns + "text")[-2:])
+
+    def test_ea_inherited_fields_keep_owner_and_stereotype_groups(self, extractor):
+        from eaidl.native_diagram_model import NativeDiagramAttribute
+        from eaidl.native_diagram_svg import _ea_attribute_rows
+
+        diagram = extractor.extract_by_id(3)
+        base = next(node for node in diagram.nodes if node.object_type == "Class")
+        node = base.model_copy(
+            update={
+                "parent_name": "BaseOtherEntity",
+                "attributes": [
+                    NativeDiagramAttribute(name="products", type="Products"),
+                    NativeDiagramAttribute(
+                        name="timestamp", type="Time", inherited_from="BaseOtherEntity", inheritance_depth=1
+                    ),
+                    NativeDiagramAttribute(
+                        name="identifier", type="GUID", inherited_from="BaseWhat", inheritance_depth=2
+                    ),
+                    NativeDiagramAttribute(
+                        name="description",
+                        type="Description",
+                        stereotype="optional",
+                        inherited_from="BaseOtherEntity",
+                        inheritance_depth=1,
+                    ),
+                ],
+            }
+        )
+        assert [(attr.name, baseline) for attr, baseline in _ea_attribute_rows(node)] == [
+            ("products", 67),
+            ("timestamp", 96),
+            ("identifier", 125),
+            ("description", 171),
+        ]
+
+    def test_ea_detail_stereotype_fills_when_object_has_no_explicit_colour(self, extractor):
+        from eaidl.config import NativeDiagramStyleConfig
+        from eaidl.native_diagram_svg import _node_background
+
+        diagram = extractor.extract_by_id(3)
+        node = next(n for n in diagram.nodes if n.object_type == "Class")
+        node = node.model_copy(
+            update={
+                "stereotype": "idlStruct",
+                "style": node.style.model_copy(update={"background_color": -1}),
+            }
+        )
+        assert _node_background(node, NativeDiagramStyleConfig(ea_detail_nodes=True)) == "#ef7d00"
+        assert (
+            _node_background(
+                node.model_copy(update={"stereotype": "Standard"}), NativeDiagramStyleConfig(ea_detail_nodes=True)
+            )
+            == "#ffd618"
+        )
+        assert (
+            _node_background(
+                node, NativeDiagramStyleConfig(ea_detail_nodes=True, stereotype_bg_colors={"idlStruct": "#123456"})
+            )
+            == "#123456"
+        )
+        explicit = node.model_copy(
+            update={
+                "style": node.style.model_copy(update={"background_color": 0x302010}),
+            }
+        )
+        assert _node_background(explicit, NativeDiagramStyleConfig(ea_detail_nodes=True)) == "#102030"
+
+    def test_sequence_self_message_uses_stored_return_y(self):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+        from eaidl.native_diagram_model import NativeSequenceMessage
+        from eaidl.native_diagram_svg import _render_sequence_message
+
+        message = NativeSequenceMessage(
+            connector_id=1,
+            source_object_id=2,
+            target_object_id=2,
+            start_x=100,
+            start_y=-250,
+            end_x=100,
+            end_y=-265,
+        )
+        root = ET.Element("g")
+        _render_sequence_message(root, message, {}, NativeDiagramStyleConfig())
+        path = root.find(".//path")
+        assert path.get("d") == "M 100.0,250.0 L 140.0,250.0 L 140.0,265.0 L 100.0,265.0"
+
+    def test_nested_sequence_part_head_follows_parent(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+        from eaidl.native_diagram_svg import _render_lifeline
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        parent = first.model_copy(
+            update={
+                "rect_left": 0,
+                "rect_right": 200,
+                "rect_top": -50,
+                "rect_bottom": -400,
+            }
+        )
+        child = second.model_copy(
+            update={
+                "rect_left": 25,
+                "rect_right": 100,
+                "rect_top": -50,
+                "rect_bottom": -400,
+                "parent_object_id": parent.object_id,
+            }
+        )
+        root = ET.Element("g")
+        _render_lifeline(root, child, NativeDiagramStyleConfig(), parent)
+        head = root.find(".//rect")
+        assert (head.get("y"), head.get("height")) == ("100.0", "25")
+
+    def test_statechart_uses_rounded_states_and_final_node(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        state = first.model_copy(
+            update={
+                "name": "ACTIVE",
+                "object_type": "State",
+                "rect_left": 0,
+                "rect_right": 120,
+                "rect_top": 0,
+                "rect_bottom": -60,
+            }
+        )
+        final = second.model_copy(
+            update={
+                "name": "Final",
+                "object_type": "StateNode",
+                "rect_left": 150,
+                "rect_right": 170,
+                "rect_top": 0,
+                "rect_bottom": -20,
+            }
+        )
+        transition = diagram.connectors[0].model_copy(
+            update={
+                "source_object_id": state.object_id,
+                "target_object_id": final.object_id,
+                "connector_type": "StateFlow",
+                "transition_event": "TaskStateEnum.ACTIVE",
+                "geometry": diagram.connectors[0].geometry.model_copy(update={"waypoints": []}),
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "diagram_type": "Statechart",
+                        "nodes": [state, final],
+                        "connectors": [transition],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        groups = root.findall('.//{http://www.w3.org/2000/svg}g[@class="node-state"]')
+        assert groups[0].find("{http://www.w3.org/2000/svg}rect").get("rx") == "20"
+        assert len(groups[1].findall("{http://www.w3.org/2000/svg}ellipse")) == 2
+        assert any(text.text == "TaskStateEnum.ACTIVE" for text in root.iter("{http://www.w3.org/2000/svg}text"))
+
+    def test_stale_class_bend_does_not_pull_connector_off_diagram(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        source = first.model_copy(
+            update={
+                "rect_left": 0,
+                "rect_right": 100,
+                "rect_top": 0,
+                "rect_bottom": -80,
+                "attributes": [],
+            }
+        )
+        target = second.model_copy(
+            update={
+                "rect_left": 200,
+                "rect_right": 300,
+                "rect_top": -10,
+                "rect_bottom": -90,
+                "attributes": [],
+            }
+        )
+        connector = diagram.connectors[0].model_copy(
+            update={
+                "source_object_id": source.object_id,
+                "target_object_id": target.object_id,
+                "connector_type": "Abstraction",
+                "geometry": diagram.connectors[0].geometry.model_copy(
+                    update={
+                        "edge_style": 2,
+                        "waypoints": [[1000, -1000]],
+                    }
+                ),
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "nodes": [source, target],
+                        "connectors": [connector],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        path = root.find('.//{http://www.w3.org/2000/svg}g[@class="connector"]/{http://www.w3.org/2000/svg}path')
+        assert path.get("d") == "M 100.0,45.0 L 200.0,45.0"
+
+    def test_waypoint_clipping_uses_first_and_last_bend(self, extractor):
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        source = first.model_copy(
+            update={
+                "rect_left": 0,
+                "rect_right": 100,
+                "rect_top": -200,
+                "rect_bottom": -260,
+            }
+        )
+        target = second.model_copy(
+            update={
+                "rect_left": 200,
+                "rect_right": 300,
+                "rect_top": 0,
+                "rect_bottom": -60,
+            }
+        )
+        assert _edge_points(source, target, 0, 0, None, None, [(50, 100), (250, 100)]) == (
+            (50, 200),
+            (250, 60),
+        )
+
+    def test_ea_endpoint_offsets_project_to_node_border(self, extractor):
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        source = first.model_copy(
+            update={
+                "rect_left": 0,
+                "rect_right": 100,
+                "rect_top": 0,
+                "rect_bottom": -60,
+            }
+        )
+        target = second.model_copy(
+            update={
+                "rect_left": 200,
+                "rect_right": 300,
+                "rect_top": 0,
+                "rect_bottom": -60,
+            }
+        )
+        assert _edge_points(source, target, 0, -1, 0, -1) == ((100, 30), (200, 30))
+
+    def test_ea_edge_modes_follow_shared_row_and_column(self, extractor):
+        from eaidl.native_diagram_svg import _ea_straight_route
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        source = first.model_copy(
+            update={
+                "rect_left": 0,
+                "rect_right": 100,
+                "rect_top": 0,
+                "rect_bottom": -60,
+            }
+        )
+        target = second.model_copy(
+            update={
+                "rect_left": 300,
+                "rect_right": 400,
+                "rect_top": -10,
+                "rect_bottom": -140,
+            }
+        )
+        connector = diagram.connectors[0].model_copy(
+            update={
+                "source_object_id": source.object_id,
+                "target_object_id": target.object_id,
+                "geometry": diagram.connectors[0].geometry.model_copy(
+                    update={
+                        "edge_style": 2,
+                        "source_x": None,
+                        "source_y": None,
+                        "end_x": None,
+                        "end_y": None,
+                        "waypoints": [],
+                    }
+                ),
+            }
+        )
+        assert _ea_straight_route(source, target, connector, []) == [(100.0, 30.0), (300.0, 30.0)]
+
+        target = target.model_copy(
+            update={
+                "rect_left": 40,
+                "rect_right": 140,
+                "rect_top": -500,
+                "rect_bottom": -560,
+            }
+        )
+        connector = connector.model_copy(
+            update={
+                "geometry": connector.geometry.model_copy(update={"edge_style": 3}),
+            }
+        )
+        assert _ea_straight_route(source, target, connector, []) == [(70.0, 60.0), (70.0, 500.0)]
+
+        offset_connector = connector.model_copy(
+            update={
+                "geometry": connector.geometry.model_copy(update={"source_x": 29, "end_x": 49}),
+            }
+        )
+        assert _ea_straight_route(source, target, offset_connector, []) is None
+
+        target = target.model_copy(
+            update={
+                "rect_top": -120,
+                "rect_bottom": -180,
+            }
+        )
+        connector = connector.model_copy(
+            update={
+                "geometry": connector.geometry.model_copy(update={"source_x": 35}),
+            }
+        )
+        assert _ea_straight_route(source, target, connector, []) == [(85.0, 60.0), (85.0, 120.0)]
+
+    def test_stale_path_does_not_bend_straight_orthogonal_edge(self, extractor):
+        from eaidl.native_diagram_svg import _ea_straight_route
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        source = first.model_copy(
+            update={
+                "rect_left": 200,
+                "rect_right": 300,
+                "rect_top": 0,
+                "rect_bottom": -60,
+            }
+        )
+        target = second.model_copy(
+            update={
+                "rect_left": 0,
+                "rect_right": 100,
+                "rect_top": 0,
+                "rect_bottom": -80,
+            }
+        )
+        connector = diagram.connectors[0].model_copy(
+            update={
+                "source_object_id": source.object_id,
+                "target_object_id": target.object_id,
+                "geometry": diagram.connectors[0].geometry.model_copy(
+                    update={
+                        "edge_style": 4,
+                        "source_x": 0,
+                        "source_y": 0,
+                        "end_x": None,
+                        "end_y": None,
+                    }
+                ),
+            }
+        )
+        assert _ea_straight_route(source, target, connector, [(150, 140)]) == [
+            (200.0, 30.0),
+            (100.0, 30.0),
+        ]
+
+    def test_saved_association_bend_beats_implicit_property_anchor(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+        from eaidl.native_diagram_model import NativeDiagramAttribute
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        source = first.model_copy(
+            update={
+                "rect_left": 250,
+                "rect_right": 443,
+                "rect_top": -160,
+                "rect_bottom": -330,
+                "attributes": [NativeDiagramAttribute(name="constraints", type="Constraint")],
+            }
+        )
+        target = second.model_copy(
+            update={
+                "rect_left": 53,
+                "rect_right": 215,
+                "rect_top": -918,
+                "rect_bottom": -1033,
+            }
+        )
+        base = diagram.connectors[0]
+        connector = base.model_copy(
+            update={
+                "connector_type": "Association",
+                "source_object_id": source.object_id,
+                "target_object_id": target.object_id,
+                "target_role": "constraints",
+                "source_feature_guid": None,
+                "target_feature_guid": None,
+                "geometry": base.geometry.model_copy(
+                    update={
+                        "source_x": -1,
+                        "source_y": 26,
+                        "end_x": -46,
+                        "end_y": 54,
+                        "edge_style": 4,
+                        "waypoints": [[88, -219]],
+                    }
+                ),
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "nodes": [source, target],
+                        "connectors": [connector],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        path = root.find(f".//{ns}g[@data-connector-id='{connector.connector_id}']/{ns}path")
+        assert path.get("d") == "M 250.0,219.0 L 88.0,219.0 L 88.0,918.0"
+
+    def test_named_association_keeps_geometry_outside_property_link_case(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+        from eaidl.native_diagram_model import NativeDiagramAttribute
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        source = first.model_copy(
+            update={
+                "rect_left": 80,
+                "rect_right": 170,
+                "rect_top": -89,
+                "rect_bottom": -174,
+                "attributes": [NativeDiagramAttribute(name="header", type="Header")],
+            }
+        )
+        target = second.model_copy(
+            update={
+                "rect_left": 504,
+                "rect_right": 594,
+                "rect_top": -75,
+                "rect_bottom": -145,
+                "attributes": [],
+            }
+        )
+        base = diagram.connectors[0]
+        connector = base.model_copy(
+            update={
+                "connector_type": "Association",
+                "source_object_id": source.object_id,
+                "target_object_id": target.object_id,
+                "target_role": "header",
+                "source_feature_guid": None,
+                "target_feature_guid": None,
+                "geometry": base.geometry.model_copy(
+                    update={
+                        "edge_style": 2,
+                        "waypoints": [],
+                        "source_x": 42,
+                        "source_y": 12,
+                        "end_x": -45,
+                        "end_y": -2,
+                    }
+                ),
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "nodes": [source, target],
+                        "connectors": [connector],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        path = root.find(f".//{ns}g[@data-connector-id='{connector.connector_id}']/{ns}path")
+        assert float(path.get("d").split(",")[1].split()[0]) < 130
+
+        # A target above the source also uses its geometric attachment, even
+        # when its role happens to match a source attribute.
+        target = target.model_copy(update={"rect_top": 0, "rect_bottom": -70})
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "nodes": [source, target],
+                        "connectors": [
+                            connector.model_copy(
+                                update={
+                                    "geometry": connector.geometry.model_copy(
+                                        update={
+                                            "source_x": None,
+                                            "source_y": None,
+                                            "end_x": None,
+                                            "end_y": None,
+                                        }
+                                    ),
+                                }
+                            )
+                        ],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        path = root.find(f".//{ns}g[@data-connector-id='{connector.connector_id}']/{ns}path")
+        assert float(path.get("d").split(",")[1].split()[0]) < 130
+
+    def test_ea_association_name_and_stereotype_use_saved_mid_label_slots(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+        from eaidl.native_diagram_model import NativeLabelPosition
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        source = first.model_copy(
+            update={
+                "rect_left": 0,
+                "rect_right": 100,
+                "rect_top": 0,
+                "rect_bottom": -60,
+                "attributes": [],
+            }
+        )
+        target = second.model_copy(
+            update={
+                "rect_left": 250,
+                "rect_right": 350,
+                "rect_top": 0,
+                "rect_bottom": -60,
+                "attributes": [],
+            }
+        )
+        base = diagram.connectors[0]
+        connector = base.model_copy(
+            update={
+                "connector_type": "Association",
+                "name": "plotsContributionToContact",
+                "stereotype": "AssociatedEntity",
+                "source_object_id": source.object_id,
+                "target_object_id": target.object_id,
+                "source_role": None,
+                "target_role": None,
+                "geometry": base.geometry.model_copy(
+                    update={
+                        "edge_style": 2,
+                        "waypoints": [],
+                        "source_x": None,
+                        "source_y": None,
+                        "end_x": None,
+                        "end_y": None,
+                        "labels": {"LMT": NativeLabelPosition(cx=108, cy=14), "LMB": NativeLabelPosition(cx=77, cy=14)},
+                    }
+                ),
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "nodes": [source, target],
+                        "connectors": [connector],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        group = root.find(f".//{ns}g[@data-connector-id='{connector.connector_id}']")
+        texts = [item.text for item in group.findall(ns + "text")]
+        assert texts == ["plotsContributionToContact", "«AssociatedEntity»"]
+
+    def test_ea_rectangular_association_uses_bottom_then_left_route(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        source = first.model_copy(
+            update={
+                "rect_left": 39,
+                "rect_right": 179,
+                "rect_top": -14,
+                "rect_bottom": -145,
+                "attributes": [],
+            }
+        )
+        target = second.model_copy(
+            update={
+                "rect_left": 664,
+                "rect_right": 808,
+                "rect_top": -325,
+                "rect_bottom": -427,
+                "attributes": [],
+            }
+        )
+        base = diagram.connectors[0]
+        connector = base.model_copy(
+            update={
+                "connector_type": "Association",
+                "source_object_id": source.object_id,
+                "target_object_id": target.object_id,
+                "source_role": None,
+                "target_role": None,
+                "geometry": base.geometry.model_copy(
+                    update={
+                        "edge_style": 3,
+                        "waypoints": [],
+                        "source_x": -67,
+                        "source_y": -36,
+                        "end_x": -69,
+                        "end_y": -23,
+                    }
+                ),
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "nodes": [source, target],
+                        "connectors": [connector],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        path = root.find(f".//{ns}g[@data-connector-id='{connector.connector_id}']/{ns}path")
+        assert path.get("d") == "M 109.0,145.0 L 109.0,397.0 L 664.0,397.0"
+
+    def test_ea_cancel_transition_uses_saved_orange_state_colour(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        base = diagram.connectors[0]
+        connector = base.model_copy(
+            update={
+                "connector_type": "StateFlow",
+                "transition_event": "TaskAdminActionEnum.CANCEL",
+                "source_object_id": first.object_id,
+                "target_object_id": second.object_id,
+                "style": base.style.model_copy(update={"color": -1}),
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "nodes": [first, second],
+                        "connectors": [connector],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        path = root.find(f".//{ns}g[@data-connector-id='{connector.connector_id}']/{ns}path")
+        assert path.get("stroke") == "#ff4500"
+        assert path.get("marker-end") == "url(#arrow-state-cancel)"
+        assert root.find(f".//{ns}marker[@id='arrow-state-cancel']") is not None
+        assert root.find(f".//{ns}marker[@id='arrow-state-action']") is None
+
+    def test_superimposed_distinct_nodes_keep_visible_connector(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        first = first.model_copy(
+            update={
+                "rect_left": 0,
+                "rect_right": 100,
+                "rect_top": 0,
+                "rect_bottom": -60,
+                "attributes": [],
+            }
+        )
+        second = second.model_copy(
+            update={
+                "rect_left": 0,
+                "rect_right": 100,
+                "rect_top": 0,
+                "rect_bottom": -60,
+                "attributes": [],
+            }
+        )
+        connector = diagram.connectors[0].model_copy(
+            update={
+                "source_object_id": first.object_id,
+                "target_object_id": second.object_id,
+                "geometry": diagram.connectors[0].geometry.model_copy(
+                    update={
+                        "waypoints": [],
+                        "edge_style": 4,
+                    }
+                ),
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "nodes": [first, second],
+                        "connectors": [connector],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        path = root.find('.//{http://www.w3.org/2000/svg}g[@class="connector"]/{http://www.w3.org/2000/svg}path')
+        assert path.get("d") == "M 50.0,30.0 L 53.0,85.0"
+
+    def test_enclosing_node_paints_below_connector_and_roles(self, extractor):
+        """A P2 architecture must not hide the flow between its nested roles."""
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        architecture = first.model_copy(
+            update={
+                "object_id": 999001,
+                "name": "Architecture",
+                "stereotype": "ResourceArchitecture",
+                "rect_left": 0,
+                "rect_right": 400,
+                "rect_top": 0,
+                "rect_bottom": -200,
+                "style": first.style.model_copy(update={"background_color": -1}),
+            }
+        )
+        first = first.model_copy(
+            update={
+                "rect_left": 30,
+                "rect_right": 110,
+                "rect_top": -60,
+                "rect_bottom": -120,
+            }
+        )
+        second = second.model_copy(
+            update={
+                "rect_left": 280,
+                "rect_right": 360,
+                "rect_top": -60,
+                "rect_bottom": -120,
+            }
+        )
+        flow = diagram.connectors[0].model_copy(
+            update={
+                "source_object_id": first.object_id,
+                "target_object_id": second.object_id,
+                "connector_type": "InformationFlow",
+                "top_mid_label": "TaskAdmin",
+                "bottom_mid_label": "«ResourceExchange»",
+                "hidden": False,
+                "geometry": diagram.connectors[0].geometry.model_copy(update={"waypoints": []}),
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "diagram_type": "Custom",
+                        "nodes": [architecture, first, second],
+                        "connectors": [flow],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(
+                    ea_detail_nodes=True, stereotype_bg_colors={"ResourceArchitecture": "#ef7d00"}
+                ),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        groups = [child.get("id") for child in root if child.tag == ns + "g"]
+        assert groups.index("containers") < groups.index("connectors") < groups.index("nodes")
+        background = root.find(f"{ns}g[@id='containers']/{ns}g/{ns}rect")
+        assert background.get("fill") == "#ef7d00"
+        labels = [element.text for element in root.findall(f".//{ns}g[@class='connector']/{ns}text")]
+        assert labels == ["TaskAdmin", "«ResourceExchange»"]
+
+    def test_activity_node_shapes_and_final_state(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        base = next(n for n in diagram.nodes if n.object_type == "Class")
+        activity = base.model_copy(
+            update={
+                "object_id": 999011,
+                "name": "Flow",
+                "object_type": "Activity",
+                "rect_left": 0,
+                "rect_right": 300,
+                "rect_top": 0,
+                "rect_bottom": -300,
+            }
+        )
+        decision = base.model_copy(
+            update={
+                "object_id": 999012,
+                "name": "condition?",
+                "object_type": "Decision",
+                "rect_left": 100,
+                "rect_right": 130,
+                "rect_top": -100,
+                "rect_bottom": -130,
+            }
+        )
+        final = base.model_copy(
+            update={
+                "object_id": 999013,
+                "name": "",
+                "object_type": "StateNode",
+                "ntype": 101,
+                "rect_left": 100,
+                "rect_right": 120,
+                "rect_top": -240,
+                "rect_bottom": -260,
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "diagram_type": "Custom",
+                        "nodes": [activity, decision, final],
+                        "connectors": [],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        assert root.find(f".//{ns}g[@data-object-id='999012']/{ns}polygon") is not None
+        assert len(root.findall(f".//{ns}g[@data-object-id='999013']/{ns}ellipse")) == 2
+
+    def test_activity_action_label_and_icon(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        base = next(n for n in diagram.nodes if n.object_type == "Class")
+        action = base.model_copy(
+            update={
+                "object_type": "Action",
+                "name": "Load context",
+                "rect_left": 255,
+                "rect_right": 403,
+                "rect_top": -328,
+                "rect_bottom": -375,
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "diagram_type": "Custom",
+                        "nodes": [action],
+                        "connectors": [],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        group = root.find(f".//{ns}g[@class='node-activity']")
+        label = group.find(ns + "text")
+        assert (label.get("y"), label.get("font-weight")) == ("344.0", "bold")
+        assert group.find(ns + "path") is not None
+
+    def test_activity_object_flow_keeps_naf_colour(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        connector = diagram.connectors[0].model_copy(
+            update={
+                "source_object_id": first.object_id,
+                "target_object_id": second.object_id,
+                "connector_type": "ObjectFlow",
+                "hidden": False,
+                "geometry": diagram.connectors[0].geometry.model_copy(update={"waypoints": []}),
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "diagram_type": "Custom",
+                        "nodes": [first, second],
+                        "connectors": [connector],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True, control_flow_color="#69738c"),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        path = root.find(f".//{ns}g[@class='connector']/{ns}path")
+        assert path.get("stroke") == "#69738c"
+        assert path.get("marker-end") == "url(#arrow-information)"
+
+    def test_decision_guard_uses_bend_when_decision_label_is_below(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        decision = first.model_copy(
+            update={
+                "object_type": "Decision",
+                "name": "condition?",
+                "rect_left": 100,
+                "rect_right": 126,
+                "rect_top": -100,
+                "rect_bottom": -134,
+                "style": first.style.model_copy(update={"extra": {"LBL": "CX=60:CY=14:OX=-20:OY=32:HDN=0"}}),
+            }
+        )
+        target = second.model_copy(
+            update={
+                "object_type": "Action",
+                "rect_left": 250,
+                "rect_right": 350,
+                "rect_top": -200,
+                "rect_bottom": -250,
+            }
+        )
+        connector = diagram.connectors[0].model_copy(
+            update={
+                "connector_type": "ControlFlow",
+                "name": "yes",
+                "hidden": False,
+                "source_object_id": decision.object_id,
+                "target_object_id": target.object_id,
+                "geometry": diagram.connectors[0].geometry.model_copy(update={"waypoints": [[210, -117]]}),
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "diagram_type": "Custom",
+                        "nodes": [decision, target],
+                        "connectors": [connector],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        guard = root.find(f".//{ns}g[@class='connector']/{ns}text")
+        assert guard.get("x") == "202.0"
+        assert guard.get("text-anchor") == "middle"
+        decision_text = root.find(f".//{ns}g[@data-object-id='{decision.object_id}']/{ns}text")
+        assert decision_text.get("y") == "142.0"
+
+    def test_activity_flows_meet_diamond_vertices_with_ea_arrowheads(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        action = first.model_copy(
+            update={
+                "object_type": "Action",
+                "rect_left": 63,
+                "rect_right": 163,
+                "rect_top": 0,
+                "rect_bottom": -40,
+            }
+        )
+        decision = second.model_copy(
+            update={
+                "object_type": "Decision",
+                "rect_left": 100,
+                "rect_right": 126,
+                "rect_top": -100,
+                "rect_bottom": -134,
+            }
+        )
+        left = first.model_copy(
+            update={
+                "object_id": 900001,
+                "object_type": "Action",
+                "rect_left": 0,
+                "rect_right": 80,
+                "rect_top": -230,
+                "rect_bottom": -270,
+            }
+        )
+        right = first.model_copy(
+            update={
+                "object_id": 900002,
+                "object_type": "Action",
+                "rect_left": 150,
+                "rect_right": 230,
+                "rect_top": -230,
+                "rect_bottom": -270,
+            }
+        )
+        merge = second.model_copy(
+            update={
+                "object_id": 900003,
+                "object_type": "MergeNode",
+                "rect_left": 100,
+                "rect_right": 126,
+                "rect_top": -300,
+                "rect_bottom": -334,
+            }
+        )
+        bar = second.model_copy(
+            update={
+                "object_id": 900004,
+                "object_type": "Synchronization",
+                "rect_left": 50,
+                "rect_right": 176,
+                "rect_top": -370,
+                "rect_bottom": -377,
+            }
+        )
+        base = diagram.connectors[0]
+
+        def flow(cid, source, target, waypoints=None):
+            return base.model_copy(
+                update={
+                    "connector_id": cid,
+                    "connector_type": "ControlFlow",
+                    "hidden": False,
+                    "source_object_id": source.object_id,
+                    "target_object_id": target.object_id,
+                    "geometry": base.geometry.model_copy(
+                        update={
+                            "source_x": None,
+                            "source_y": None,
+                            "end_x": None,
+                            "end_y": None,
+                            "waypoints": waypoints or [],
+                            "edge_style": 3,
+                        }
+                    ),
+                }
+            )
+
+        flows = [
+            flow(1, action, decision),
+            flow(2, left, merge, [[40, -317]]),
+            flow(3, right, merge, [[190, -317]]),
+            flow(4, merge, bar),
+        ]
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "diagram_type": "Custom",
+                        "nodes": [action, decision, left, right, merge, bar],
+                        "connectors": flows,
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        paths = {
+            int(group.get("data-connector-id")): group.find(ns + "path")
+            for group in root.findall(f".//{ns}g[@class='connector']")
+        }
+        assert paths[1].get("d").endswith("L 113.0,100.0")
+        assert paths[2].get("d").endswith("L 100.0,317.0")
+        assert paths[3].get("d").endswith("L 126.0,317.0")
+        assert paths[4].get("d") == "M 113.0,334.0 L 113.0,370.0"
+        assert all(path.get("marker-end") == "url(#arrow-control)" for path in paths.values())
+        marker = root.find(f".//{ns}marker[@id='arrow-control']")
+        assert (marker.get("markerWidth"), marker.get("markerHeight"), marker.get("refX"), marker.get("refY")) == (
+            "16",
+            "12",
+            "16",
+            "6",
+        )
+        assert marker.find(ns + "polygon").get("points") == "0,0 16,6 0,12"
+
+    def test_far_single_bend_does_not_detour_into_merge_diamond(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        pin = first.model_copy(
+            update={
+                "object_type": "ActionPin",
+                "rect_left": 200,
+                "rect_right": 216,
+                "rect_top": -309,
+                "rect_bottom": -325,
+            }
+        )
+        merge = second.model_copy(
+            update={
+                "object_type": "MergeNode",
+                "rect_left": 100,
+                "rect_right": 126,
+                "rect_top": -300,
+                "rect_bottom": -334,
+            }
+        )
+        base = diagram.connectors[0]
+        flow = base.model_copy(
+            update={
+                "connector_type": "ObjectFlow",
+                "hidden": False,
+                "source_object_id": pin.object_id,
+                "target_object_id": merge.object_id,
+                "geometry": base.geometry.model_copy(
+                    update={
+                        "source_x": None,
+                        "source_y": None,
+                        "end_x": None,
+                        "end_y": None,
+                        "edge_style": 4,
+                        "waypoints": [[500, -400]],
+                    }
+                ),
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "diagram_type": "Custom",
+                        "nodes": [pin, merge],
+                        "connectors": [flow],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        path = root.find('.//{http://www.w3.org/2000/svg}g[@class="connector"]/{http://www.w3.org/2000/svg}path')
+        assert path.get("d") == "M 200.0,317.0 L 126.0,317.0"
+
+        authored = flow.model_copy(
+            update={
+                "geometry": flow.geometry.model_copy(
+                    update={
+                        "waypoints": [[180, -280], [160, -280]],
+                    }
+                ),
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "diagram_type": "Custom",
+                        "nodes": [pin, merge],
+                        "connectors": [authored],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        path = root.find('.//{http://www.w3.org/2000/svg}g[@class="connector"]/{http://www.w3.org/2000/svg}path')
+        assert "L 180.0,280.0 L 160.0,280.0" in path.get("d")
+
+    def test_statechart_state_note_and_legend_render(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        base = next(n for n in diagram.nodes if n.object_type == "Class")
+        state = base.model_copy(
+            update={
+                "object_type": "State",
+                "name": "PLANNING",
+                "note_text": "Task is being planned",
+                "rect_left": 0,
+                "rect_right": 120,
+                "rect_top": 0,
+                "rect_bottom": -60,
+                "style": base.style.model_copy(update={"extra": {"Notes": "1000"}}),
+            }
+        )
+        legend = base.model_copy(
+            update={
+                "object_id": 999017,
+                "object_type": "Text",
+                "name": "Transition types",
+                "rect_left": 200,
+                "rect_right": 423,
+                "rect_top": 0,
+                "rect_bottom": -72,
+                "legend_entries": [("TaskStateEnum.xxx", "#000000"), ("TaskAdminActionEnum.yyy", "#ff0000")],
+                "legend_background_color": "#e2e0dd",
+                "legend_text_color": "#003060",
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "diagram_type": "Statechart",
+                        "nodes": [state, legend],
+                        "connectors": [],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        state_group = root.find(f".//{ns}g[@data-object-id='{state.object_id}']")
+        assert state_group.find(ns + "line") is not None
+        assert any(text.text == "Task is being planned" for text in state_group.findall(ns + "text"))
+        legend_group = root.find(f".//{ns}g[@data-object-id='999017']")
+        assert legend_group.find(ns + "rect").get("fill") == "#e2e0dd"
+        assert len(legend_group.findall(ns + "line")) == 2
+
+    def test_stateflow_event_uses_ea_label_offset(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+        from eaidl.native_diagram_model import NativeLabelPosition
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        first = first.model_copy(update={"object_type": "State"})
+        second = second.model_copy(update={"object_type": "State"})
+        connector = diagram.connectors[0].model_copy(
+            update={
+                "connector_type": "StateFlow",
+                "transition_event": "TaskStateEnum.ACTIVE",
+                "source_object_id": first.object_id,
+                "target_object_id": second.object_id,
+                "hidden": False,
+                "geometry": diagram.connectors[0].geometry.model_copy(
+                    update={
+                        "waypoints": [],
+                        "labels": {"LMT": NativeLabelPosition(cx=100, cy=14, ox=10, oy=7)},
+                    }
+                ),
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "diagram_type": "Statechart",
+                        "nodes": [first, second],
+                        "connectors": [connector],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        group = root.find(f".//{ns}g[@class='connector']")
+        label = group.find(ns + "text")
+        assert label.get("text-anchor") == "start"
+        assert label.get("font-size") == "10"
+        assert group.find(ns + "path").get("stroke") == "#69738c"
+
+    def test_curved_stateflow_follows_saved_waypoint_side_and_label(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+        from eaidl.native_diagram_model import NativeLabelPosition
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        first = first.model_copy(
+            update={
+                "object_type": "State",
+                "rect_left": 40,
+                "rect_right": 160,
+                "rect_top": -66,
+                "rect_bottom": -126,
+            }
+        )
+        second = second.model_copy(
+            update={
+                "object_type": "State",
+                "rect_left": 253,
+                "rect_right": 373,
+                "rect_top": -66,
+                "rect_bottom": -126,
+            }
+        )
+        base = diagram.connectors[0]
+        for waypoint, expected_y, expected_label_y in (
+            ([207, -129], 112, 135),
+            ([207, -47], 78, 73),
+        ):
+            connector = base.model_copy(
+                update={
+                    "connector_type": "StateFlow",
+                    "transition_event": "parse",
+                    "source_object_id": first.object_id,
+                    "target_object_id": second.object_id,
+                    "hidden": False,
+                    "style": base.style.model_copy(update={"mode": 10}),
+                    "geometry": base.geometry.model_copy(
+                        update={
+                            "edge_style": 2,
+                            "waypoints": [waypoint],
+                            "labels": {"LMT": NativeLabelPosition(cx=23, cy=14, ox=-5, oy=22)},
+                        }
+                    ),
+                }
+            )
+            root = ET.fromstring(
+                render_svg(
+                    diagram.model_copy(
+                        update={
+                            "diagram_type": "Statechart",
+                            "nodes": [first, second],
+                            "connectors": [connector],
+                        }
+                    ),
+                    style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+                )
+            )
+            ns = "{http://www.w3.org/2000/svg}"
+            group = root.find(f".//{ns}g[@class='connector']")
+            path = group.find(ns + "path")
+            label = group.find(ns + "text")
+            assert path.get("d").startswith(f"M 160.0,{expected_y}.0 C")
+            assert float(label.get("y")) == expected_label_y
+
+    def test_ea_decision_label_uses_saved_label_box(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        base = next(n for n in diagram.nodes if n.object_type == "Class")
+        decision = base.model_copy(
+            update={
+                "object_type": "Decision",
+                "name": "Update Triggered?",
+                "rect_left": 266,
+                "rect_right": 292,
+                "rect_top": -1023,
+                "rect_bottom": -1057,
+                "style": base.style.model_copy(
+                    update={
+                        "extra": {"LBL": "CX=44:CY=27:OX=40:OY=6:HDN=0"},
+                    }
+                ),
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "diagram_type": "Custom",
+                        "nodes": [decision],
+                        "connectors": [],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        labels = root.findall(f".//{ns}g[@class='node-activity']/{ns}text")
+        assert [label.text for label in labels] == ["Update", "Triggered?"]
+        assert [float(label.get("y")) for label in labels] == [1039, 1052]
+        assert all(float(label.get("x")) > 300 for label in labels)
+
+    def test_ea_objectflow_branch_guard_is_drawn_beside_diamond(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        decision = first.model_copy(
+            update={
+                "object_type": "Decision",
+                "name": "Continue?",
+                "rect_left": 100,
+                "rect_right": 126,
+                "rect_top": -100,
+                "rect_bottom": -134,
+            }
+        )
+        action = second.model_copy(
+            update={
+                "object_type": "Action",
+                "rect_left": 100,
+                "rect_right": 200,
+                "rect_top": -190,
+                "rect_bottom": -240,
+            }
+        )
+        branch = diagram.connectors[0].model_copy(
+            update={
+                "connector_type": "ObjectFlow",
+                "name": "Yes",
+                "hidden": False,
+                "source_object_id": decision.object_id,
+                "target_object_id": action.object_id,
+                "geometry": diagram.connectors[0].geometry.model_copy(update={"waypoints": []}),
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "diagram_type": "Custom",
+                        "nodes": [decision, action],
+                        "connectors": [branch],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        label = next(t for t in root.findall(f".//{ns}g[@class='connector']/{ns}text") if t.text == "Yes")
+        assert float(label.get("y")) >= 134
+
+    def test_activity_flow_ignores_short_stale_detour_on_horizontal_route(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        source = first.model_copy(
+            update={
+                "object_type": "Decision",
+                "rect_left": 729,
+                "rect_right": 755,
+                "rect_top": -1443,
+                "rect_bottom": -1477,
+            }
+        )
+        target = second.model_copy(
+            update={
+                "object_type": "MergeNode",
+                "rect_left": 96,
+                "rect_right": 122,
+                "rect_top": -1443,
+                "rect_bottom": -1477,
+            }
+        )
+        branch = diagram.connectors[0].model_copy(
+            update={
+                "connector_type": "ControlFlow",
+                "name": "No",
+                "hidden": False,
+                "source_object_id": source.object_id,
+                "target_object_id": target.object_id,
+                "geometry": diagram.connectors[0].geometry.model_copy(
+                    update={
+                        "edge_style": 4,
+                        "waypoints": [[451, -1480], [451, -1446]],
+                    }
+                ),
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "diagram_type": "Custom",
+                        "nodes": [source, target],
+                        "connectors": [branch],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        path = root.find(f".//{ns}g[@class='connector']/{ns}path")
+        assert "451" not in path.get("d")
+
+    def test_ea_attribute_baseline_clears_next_row(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+        from eaidl.native_diagram_model import NativeDiagramAttribute
+
+        diagram = extractor.extract_by_id(3)
+        node = next(n for n in diagram.nodes if n.object_type == "Class")
+        node = node.model_copy(
+            update={
+                "rect_left": 0,
+                "rect_right": 220,
+                "rect_top": 0,
+                "rect_bottom": -90,
+                "attributes": [
+                    NativeDiagramAttribute(name="authoriser", type="Authority"),
+                    NativeDiagramAttribute(name="degree", type="CountMeasurement"),
+                ],
+                "note_text": None,
+                "parent_name": None,
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "nodes": [node],
+                        "connectors": [],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        group = root.find(f".//{ns}g[@data-object-id='{node.object_id}']")
+        row_lines = group.findall(ns + "line")
+        label = next(text for text in group.findall(ns + "text") if "authoriser" in (text.text or ""))
+        assert len(row_lines) == 1  # EA separates the header, not each attribute.
+        assert label.get("y") == "51.0"
+
+    def test_diagonal_stateflow_uses_state_corners(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        source = first.model_copy(
+            update={
+                "object_type": "State",
+                "name": "ACTIVE",
+                "note_text": "Executing",
+                "rect_left": 468,
+                "rect_right": 588,
+                "rect_top": -622,
+                "rect_bottom": -682,
+            }
+        )
+        target = second.model_copy(
+            update={
+                "object_type": "State",
+                "name": "PREEMPTING",
+                "note_text": "Preempting",
+                "rect_left": 277,
+                "rect_right": 419,
+                "rect_top": -742,
+                "rect_bottom": -802,
+            }
+        )
+        connector = diagram.connectors[0].model_copy(
+            update={
+                "connector_type": "StateFlow",
+                "source_object_id": source.object_id,
+                "target_object_id": target.object_id,
+                "hidden": False,
+                "geometry": diagram.connectors[0].geometry.model_copy(
+                    update={
+                        "edge_style": 4,
+                        "source_x": -23,
+                        "source_y": 2,
+                        "end_x": -23,
+                        "end_y": 2,
+                        "waypoints": [],
+                    }
+                ),
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "diagram_type": "Statechart",
+                        "nodes": [source, target],
+                        "connectors": [connector],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        path = root.find(f".//{ns}g[@class='connector']/{ns}path")
+        assert path.get("d") == "M 468.0,674.0 L 366.46,742.0"
+
+    def test_later_stateflow_gets_line_jump_at_crossing(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.native_diagram_svg import _ea_line_jumps
+
+        base = extractor.extract_by_id(3).connectors[0]
+        first = base.model_copy(update={"connector_id": 1, "connector_type": "StateFlow"})
+        second = base.model_copy(update={"connector_id": 2, "connector_type": "StateFlow"})
+        parent = ET.Element("g")
+        old = ET.SubElement(parent, "g", **{"data-connector-id": "1"})
+        ET.SubElement(old, "path", d="M 0,50 L 100,50")
+        new = ET.SubElement(parent, "g", **{"data-connector-id": "2"})
+        new_path = ET.SubElement(new, "path", d="M 0,0 L 100,100")
+        _ea_line_jumps(parent, [first, second])
+        assert "A 6 -6 180 0 0" in new_path.get("d")
+        assert old.find("path").get("d") == "M 0,50 L 100,50"
+
+    def test_horizontal_controlflow_bridges_earlier_activity_flow(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.native_diagram_svg import _ea_line_jumps
+
+        base = extractor.extract_by_id(3).connectors[0]
+        first = base.model_copy(update={"connector_id": 1, "connector_type": "ObjectFlow"})
+        second = base.model_copy(update={"connector_id": 2, "connector_type": "ControlFlow"})
+        parent = ET.Element("g")
+        old = ET.SubElement(parent, "g", **{"data-connector-id": "1"})
+        ET.SubElement(old, "path", d="M 100,0 L 100,100")
+        new = ET.SubElement(parent, "g", **{"data-connector-id": "2"})
+        new_path = ET.SubElement(new, "path", d="M 300,50 L 0,50")
+        _ea_line_jumps(parent, [first, second])
+        assert "A 6 -6 180 0 0" in new_path.get("d")
+
+    def test_routed_association_bridges_vertical_crossings(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.native_diagram_svg import _ea_line_jumps
+
+        base = extractor.extract_by_id(3).connectors[0]
+        connectors = [
+            base.model_copy(
+                update={
+                    "connector_id": number,
+                    "connector_type": "Association",
+                }
+            )
+            for number in (1, 2, 3)
+        ]
+        parent = ET.Element("g")
+        for number, route in (
+            (1, "M 150,0 L 150,200"),
+            (2, "M 250,0 L 250,200"),
+            (3, "M 0,0 L 0,100 L 400,100"),
+        ):
+            group = ET.SubElement(parent, "g", **{"data-connector-id": str(number)})
+            ET.SubElement(group, "path", d=route)
+        _ea_line_jumps(parent, connectors)
+        path = parent.findall("g")[-1].find("path")
+        assert path.get("d").count("A 6 -6 180 0 0") == 2
+
+    def test_feature_link_attaches_to_attribute_side(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+        from eaidl.native_diagram_model import NativeDiagramAttribute
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        source = first.model_copy(
+            update={
+                "rect_left": 0,
+                "rect_right": 100,
+                "rect_top": 0,
+                "rect_bottom": -90,
+                "attributes": [NativeDiagramAttribute(name="Provider", type="Actor", ea_guid="{provider}")],
+            }
+        )
+        target = second.model_copy(
+            update={
+                "rect_left": 200,
+                "rect_right": 300,
+                "rect_top": 0,
+                "rect_bottom": -90,
+            }
+        )
+        connector = diagram.connectors[0].model_copy(
+            update={
+                "source_object_id": source.object_id,
+                "target_object_id": target.object_id,
+                "source_feature_guid": "{provider}",
+                "source_feature_side": "L",
+                "geometry": diagram.connectors[0].geometry.model_copy(update={"waypoints": []}),
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "nodes": [source, target],
+                        "connectors": [connector],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(compact_nodes=True),
+            )
+        )
+        path = root.find('.//{http://www.w3.org/2000/svg}g[@class="connector"]/{http://www.w3.org/2000/svg}path')
+        assert path.get("d").startswith("M 100.0,47.0 L ")
+
+    def test_ea_detail_property_group_expands_class_and_anchors_row(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+        from eaidl.native_diagram_model import NativeDiagramAttribute
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        source = first.model_copy(
+            update={
+                "rect_left": 0,
+                "rect_right": 200,
+                "rect_top": 0,
+                "rect_bottom": -70,
+                "parent_name": None,
+                "note_text": None,
+                "attributes": [
+                    NativeDiagramAttribute(name="node", type="GUID", ea_guid="{node}"),
+                    NativeDiagramAttribute(
+                        name="authority",
+                        type="Authority",
+                        stereotype="optional",
+                        lower_bound="0",
+                        upper_bound="1",
+                        ea_guid="{authority}",
+                    ),
+                ],
+            }
+        )
+        target = second.model_copy(
+            update={
+                "rect_left": 300,
+                "rect_right": 400,
+                "rect_top": 0,
+                "rect_bottom": -90,
+                "attributes": [],
+            }
+        )
+        connector = diagram.connectors[0].model_copy(
+            update={
+                "source_object_id": source.object_id,
+                "target_object_id": target.object_id,
+                "source_feature_guid": "{authority}",
+                "source_feature_side": "R",
+                "target_feature_guid": None,
+                "geometry": diagram.connectors[0].geometry.model_copy(update={"waypoints": []}),
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "nodes": [source, target],
+                        "connectors": [connector],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        card = root.find(f".//{ns}g[@data-object-id='{source.object_id}']")
+        assert card.find(ns + "rect").get("height") == "89.0"
+        assert len(card.findall(ns + "line")) == 1
+        texts = [(item.text, item.get("y")) for item in card.findall(ns + "text")]
+        assert ("«optional»", "68.0") in texts
+        assert ("authority: Authority [0..1]", "81.0") in texts
+        path = root.find(f".//{ns}g[@class='connector']/{ns}path")
+        assert path.get("d").startswith("M 200.0,77.0 L ")
+
+    def test_association_class_link_is_drawn(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        association_class = first.model_copy(
+            update={
+                "object_id": 999999,
+                "rect_left": 100,
+                "rect_right": 200,
+                "rect_top": -150,
+                "rect_bottom": -220,
+            }
+        )
+        connector = diagram.connectors[0].model_copy(
+            update={
+                "source_object_id": first.object_id,
+                "target_object_id": second.object_id,
+                "association_class_object_id": association_class.object_id,
+                "hidden": False,
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "nodes": [first, second, association_class],
+                        "connectors": [connector],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(compact_nodes=True),
+            )
+        )
+        link = root.find('.//{http://www.w3.org/2000/svg}path[@class="association-class-link"]')
+        assert link is not None
+        assert link.get("stroke-dasharray") == "5,3"
+
+    def test_connector_directions_aggregates_and_dependencies(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        first, second = [n for n in diagram.nodes if n.object_type == "Class"][:2]
+        connector = diagram.connectors[0].model_copy(
+            update={
+                "source_object_id": first.object_id,
+                "target_object_id": second.object_id,
+                "hidden": False,
+                "geometry": diagram.connectors[0].geometry.model_copy(
+                    update={
+                        "source_x": None,
+                        "source_y": None,
+                        "end_x": None,
+                        "end_y": None,
+                        "waypoints": [],
+                    }
+                ),
+            }
+        )
+        style = NativeDiagramStyleConfig(compact_nodes=True)
+
+        def path(**changes):
+            current = connector.model_copy(update=changes)
+            svg = render_svg(
+                diagram.model_copy(update={"nodes": [first, second], "connectors": [current]}), style=style
+            )
+            root = ET.fromstring(svg)
+            return root.find('.//{http://www.w3.org/2000/svg}g[@class="connector"]/{http://www.w3.org/2000/svg}path')
+
+        assert (
+            path(
+                connector_type="Association", direction="Unspecified", source_is_aggregate=0, target_is_aggregate=0
+            ).get("marker-end")
+            is None
+        )
+        assert (
+            path(
+                connector_type="Association",
+                direction="Source -> Destination",
+                source_is_aggregate=0,
+                target_is_aggregate=0,
+            ).get("marker-end")
+            == "url(#arrow-open)"
+        )
+        assert (
+            path(connector_type="Aggregation", source_is_aggregate=0, target_is_aggregate=1).get("marker-end")
+            == "url(#diamond-open-end)"
+        )
+        assert (
+            path(connector_type="Aggregation", source_is_aggregate=2, target_is_aggregate=0).get("marker-start")
+            == "url(#diamond-filled-start)"
+        )
+        composed = path(
+            connector_type="Association",
+            direction="Source -> Destination",
+            source_is_aggregate=2,
+            target_is_aggregate=0,
+            source_navigability="Non-Navigable",
+            target_navigability="Navigable",
+        )
+        assert composed.get("marker-start") == "url(#diamond-filled-start)"
+        assert composed.get("marker-end") == "url(#arrow-open)"
+        blocked = path(
+            connector_type="Association",
+            direction="Source -> Destination",
+            source_is_aggregate=0,
+            target_is_aggregate=0,
+            source_navigability="Non-Navigable",
+            target_navigability="Non-Navigable",
+        )
+        assert blocked.get("marker-end") is None
+        realization = path(connector_type="Realisation", source_is_aggregate=0, target_is_aggregate=0)
+        assert realization.get("stroke-dasharray") == "5,3"
+        assert realization.get("marker-end") == "url(#arrow-generalization)"
+
+    def test_compact_long_name_fits_ea_bounds(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        node = next(n for n in diagram.nodes if n.object_type == "Class")
+        node = node.model_copy(
+            update={
+                "name": "SecurityReferenceBaseType",
+                "rect_left": 0,
+                "rect_right": 110,
+                "rect_top": 0,
+                "rect_bottom": -70,
+            }
+        )
+        style = NativeDiagramStyleConfig(compact_nodes=True, font_size=16)
+        svg = render_svg(diagram.model_copy(update={"nodes": [node], "connectors": []}), style=style)
+        root = ET.fromstring(svg)
+        ns = {"s": "http://www.w3.org/2000/svg"}
+        card = root.find('.//s:g[@class="node-class"]', ns)
+        labels = card.findall("s:text", ns)
+        assert "".join(label.text or "" for label in labels) == node.name
+        assert len(labels) > 1
+        assert all(0 < float(label.get("y")) < 70 for label in labels)
+
+    def test_compact_connector_labels_can_be_hidden(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        style = NativeDiagramStyleConfig(compact_nodes=True, compact_connector_labels=False)
+        root = ET.fromstring(render_svg(diagram, style=style))
+        ns = {"s": "http://www.w3.org/2000/svg"}
+        connectors = root.findall('.//s:g[@class="connector"]', ns)
+        assert connectors
+        assert all(not connector.findall("s:text", ns) for connector in connectors)
+
+    def test_compact_stereotype_fill_and_explicit_ea_override(self, extractor):
+        """Compact cards use profile fills while preserving diagram overrides."""
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        node = next(n for n in diagram.nodes if n.object_type == "Class")
+        style = NativeDiagramStyleConfig(
+            compact_nodes=True,
+            stereotype_bg_colors={"InformationElement": "#66b2e4"},
+        )
+
+        def fill(card):
+            svg = render_svg(diagram.model_copy(update={"nodes": [card], "connectors": []}), style=style)
+            root = ET.fromstring(svg)
+            return root.find(
+                ".//{http://www.w3.org/2000/svg}g[@class='node-class']/{http://www.w3.org/2000/svg}rect"
+            ).get("fill")
+
+        card = node.model_copy(
+            update={
+                "stereotype": "InformationElement",
+                "style": node.style.model_copy(update={"background_color": -1}),
+            }
+        )
+        assert fill(card) == "#66b2e4"
+        assert (
+            fill(
+                card.model_copy(
+                    update={
+                        "style": card.style.model_copy(update={"background_color": 0x8CE6F0}),
+                    }
+                )
+            )
+            == "#f0e68c"
+        )
+
     def test_default_style_renders(self, extractor):
         """render_svg() with default style (style=None) should work fine."""
         diag = extractor.extract_by_id(3)
@@ -457,14 +2596,15 @@ class TestSvgStyleConfig:
         svg = render_svg(diag, style=style)
         assert "#ff0000" in svg
 
-    def test_note_foreignobject_rendered(self, extractor):
-        """Notes should produce <foreignObject> elements in SVG output."""
+    def test_note_text_rendered_as_svg(self, extractor):
+        """Notes should remain visible in renderers without foreignObject support."""
         diag = extractor.extract_by_id(3)
         notes = [n for n in diag.nodes if n.object_type == "Note"]
         if not notes:
             pytest.skip("No Note nodes in diagram 3")
         svg = render_svg(diag)
-        assert "<foreignObject" in svg
+        assert 'class="node-note"' in svg
+        assert "<foreignObject" not in svg
 
     def test_note_html_content_in_svg(self, extractor):
         """Rich HTML note content (bold/italic/list) should appear in SVG."""
@@ -473,8 +2613,182 @@ class TestSvgStyleConfig:
         if not notes:
             pytest.skip("No Note nodes with text in diagram 3")
         svg = render_svg(diag)
-        # At minimum, the foreignObject div wrapper should be present
-        assert 'xmlns="http://www.w3.org/1999/xhtml"' in svg
+        assert "<text" in svg
+        assert "<foreignObject" not in svg
+
+    def test_ea_note_preserves_list_markers_and_font(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        base = next(n for n in diagram.nodes if n.object_type == "Class")
+        note = base.model_copy(
+            update={
+                "object_type": "Note",
+                "name": "",
+                "rect_left": 0,
+                "rect_right": 260,
+                "rect_top": 0,
+                "rect_bottom": -149,
+                "note_text": "Intro.\r\n<ul><li>first item</li><li>second item</li></ul>",
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "diagram_type": "Custom",
+                        "nodes": [note],
+                        "connectors": [],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        group = root.find(f".//{ns}g[@class='node-note']")
+        labels = group.findall(ns + "text")
+        assert [label.text for label in labels] == ["Intro.", "- first item", "- second item"]
+        assert labels[0].get("y") == "24.0"
+        assert all(label.get("font-size") == "10" for label in labels)
+        assert group.findall(ns + "polygon")[1].get("fill") == "#dcdcdc"
+
+        code_note = note.model_copy(
+            update={
+                "note_text": "first\n  second",
+                "style": note.style.model_copy(update={"font_size": 80, "extra": {"font": "Courier New"}}),
+            }
+        )
+        code_root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "diagram_type": "Custom",
+                        "nodes": [code_note],
+                        "connectors": [],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        code_label = code_root.find(f".//{ns}g[@class='node-note']/{ns}text")
+        assert code_label.get("font-family") == "Courier New"
+        assert code_label.get("font-size") == "10"
+        assert [label.text for label in code_root.findall(f".//{ns}g[@class='node-note']/{ns}text")] == [
+            "first",
+            "  second",
+        ]
+
+        calibri_note = note.model_copy(
+            update={
+                "style": note.style.model_copy(
+                    update={
+                        "font_size": 90,
+                        "extra": {"font": "Calibri"},
+                    }
+                ),
+            }
+        )
+        calibri_root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "diagram_type": "Custom",
+                        "nodes": [calibri_note],
+                        "connectors": [],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True, font_family="Carlito"),
+            )
+        )
+        calibri_label = calibri_root.find(f".//{ns}g[@class='node-note']/{ns}text")
+        assert calibri_label.get("font-family") == "Carlito"
+
+    def test_ea_page_frame_follows_object_bounds(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        node = next(n for n in diagram.nodes if n.object_type == "Class")
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "name": "L7 : Example",
+                        "diagram_type": "Custom",
+                        "nodes": [node],
+                        "connectors": [],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        frame = root.find(f".//{ns}g[@id='ea-page-frame']")
+        rect = frame.find(ns + "rect")
+        assert float(rect.get("x")) == node.rect_left - 29
+        assert float(rect.get("y")) == -node.rect_top - 34
+        assert frame.find(ns + "text").text == "L7 L7 : Example"
+
+    def test_statechart_frame_tab_tracks_its_label_width(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(3)
+        base = next(n for n in diagram.nodes if n.object_type == "Class")
+        frame = base.model_copy(
+            update={
+                "object_type": "StateMachine",
+                "name": "States",
+                "rect_left": 20,
+                "rect_right": 600,
+                "rect_top": -20,
+                "rect_bottom": -320,
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "diagram_type": "Statechart",
+                        "name": "Task server state machine",
+                        "nodes": [frame],
+                        "connectors": [],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        group = root.find(f".//{ns}g[@data-object-id='{frame.object_id}']")
+        rects = group.findall(ns + "rect")
+        assert [rect.get("stroke-width") for rect in rects] == ["2", None]
+        assert group.find(ns + "polygon").get("points").startswith("20.0,40.0 150")
+
+        state = frame.model_copy(
+            update={
+                "object_type": "State",
+                "name": "CQL2 JSON\r\n(interchange format)",
+                "rect_left": 40,
+                "rect_right": 160,
+                "rect_top": -60,
+                "rect_bottom": -120,
+            }
+        )
+        state_root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "diagram_type": "Statechart",
+                        "nodes": [state],
+                        "connectors": [],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        labels = state_root.findall(f".//{ns}g[@class='node-state']/{ns}text")
+        assert [label.text for label in labels] == ["CQL2 JSON", "(interchange format)"]
 
     def test_note_placeholder_fully_replaced(self, extractor):
         """The raw placeholder string must not appear in the final SVG."""
@@ -505,6 +2819,47 @@ class TestSequenceDiagram:
         assert "Message1" in names
         assert "Message2" in names
         assert "AlternativeMessage" in names
+
+    def test_ea_sequence_lifeline_and_reverse_async_message(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(12)
+        lifeline = next(n for n in diagram.nodes if n.object_type in ("Part", "Class"))
+        lifeline = lifeline.model_copy(update={"name": "UPCS", "classifier_name": "Control System"})
+        message = diagram.sequence_messages[0].model_copy(
+            update={
+                "name": "NodeStatus",
+                "stereotype": "ResourceMessage",
+                "call_type": "Asynchronous",
+                "start_x": 300,
+                "end_x": 140,
+                "param_values": None,
+                "source_object_id": lifeline.object_id,
+                "target_object_id": lifeline.object_id + 1,
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "nodes": [lifeline],
+                        "connectors": [],
+                        "sequence_messages": [message],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        head = root.find(f".//{ns}g[@class='lifeline']")
+        assert " ".join(text.text or "" for text in head.findall(ns + "text")) == "UPCS: Control System"
+        assert head.find(ns + "rect").get("stroke") == "#9a8484"
+        group = root.find(f".//{ns}g[@class='seq-message']")
+        path = group.find(ns + "path")
+        assert path.get("stroke-dasharray") is None
+        assert path.get("marker-end") == "url(#arrow-sequence)"
+        assert [text.text for text in group.findall(ns + "text")] == ["NodeStatus()"]
 
     def test_sequence_message_stereotype(self, extractor):
         """Message1 has stereotype 'ResourceMessage'."""
@@ -567,6 +2922,72 @@ class TestSequenceDiagram:
         assert "fragment" in svg
         assert "InteractionFragment1" in svg
 
+    def test_sequence_fragment_uses_ea_kind_and_tab_geometry(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(12)
+        base = diagram.nodes[0]
+        fragment = base.model_copy(
+            update={
+                "object_type": "InteractionFragment",
+                "ntype": 4,
+                "name": "repeat status",
+                "rect_left": 40,
+                "rect_right": 574,
+                "rect_top": -154,
+                "rect_bottom": -513,
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "nodes": [fragment],
+                        "connectors": [],
+                        "sequence_messages": [],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        group = root.find(f".//{ns}g[@class='fragment']")
+        assert group.find(ns + "text").text == "loop repeat status"
+        assert group.find(ns + "text").get("font-size") == "10"
+        assert group.find(ns + "polygon").get("fill") == "#f1faed"
+        assert group.find(ns + "polygon").get("points").startswith("40.0,154.0 40.0,174.0")
+
+        alternatives = fragment.model_copy(
+            update={
+                "ntype": 0,
+                "name": "",
+                "interaction_operands": [
+                    ("Payload reporting directly", 137),
+                    ("Vehicle reporting on payload's behalf", 182),
+                ],
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "nodes": [alternatives],
+                        "connectors": [],
+                        "sequence_messages": [],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        group = root.find(f".//{ns}g[@class='fragment']")
+        assert [text.text for text in group.findall(ns + "text")] == [
+            "alt",
+            "[Payload reporting directly]",
+            "[Vehicle reporting on payload's behalf]",
+        ]
+        assert group.find(ns + "line").get("y1") == "291.0"
+
     def test_sequence_svg_dashed_lifelines(self, extractor):
         """Lifeline dashed lines should use stroke-dasharray."""
         diag = extractor.extract_by_id(12)
@@ -602,6 +3023,52 @@ class TestSequenceDiagram:
         diag = extractor.extract_by_id(12)
         svg = render_svg(diag)
         assert 'id="activation-bars"' in svg
+
+    def test_sequence_boundary_renders_division_and_label(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diagram = extractor.extract_by_id(12)
+        base = next(n for n in diagram.nodes if n.object_type in ("Class", "Part"))
+        boundary = base.model_copy(
+            update={
+                "object_type": "Boundary",
+                "name": "Patrol is activated",
+                "rect_left": 30,
+                "rect_right": 512,
+                "rect_top": -118,
+                "rect_bottom": -146,
+            }
+        )
+        root = ET.fromstring(
+            render_svg(
+                diagram.model_copy(
+                    update={
+                        "diagram_type": "Sequence",
+                        "nodes": [boundary],
+                        "connectors": [],
+                        "sequence_messages": [],
+                    }
+                ),
+                style=NativeDiagramStyleConfig(ea_detail_nodes=True),
+            )
+        )
+        ns = "{http://www.w3.org/2000/svg}"
+        group = root.find(f".//{ns}g[@class='sequence-boundary']")
+        assert group.find(ns + "rect").get("stroke-width") == "2"
+        assert group.find(ns + "text").text == "Patrol is activated"
+        assert group.find(ns + "text").get("y") == "134.0"
+
+    def test_ea_sequence_export_does_not_infer_activation_from_message_height(self, extractor):
+        from xml.etree import ElementTree as ET
+        from eaidl.config import NativeDiagramStyleConfig
+
+        diag = extractor.extract_by_id(12)
+        root = ET.fromstring(render_svg(diag, style=NativeDiagramStyleConfig(ea_detail_nodes=True)))
+        ns = "{http://www.w3.org/2000/svg}"
+        group = root.find(f".//{ns}g[@id='activation-bars']")
+        assert group is not None
+        assert not group.findall(ns + "rect")
 
     def test_sequence_svg_contains_note_message_ref_line(self, extractor):
         """Rendered SVG for sequence diagram should contain note-message-refs group."""
