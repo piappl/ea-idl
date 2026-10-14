@@ -169,6 +169,11 @@ class SqlBackend:
         )
         return rs
 
+    def columns(self, table: str) -> list[str]:
+        """Column keys of ``table`` in schema order, without the surrogate id column. Requires ``load()``."""
+        info = self._info(table)
+        return [key for key in info.columns if key != info.surrogate]
+
     def _info(self, table: str) -> _TableInfo:
         try:
             return self._schema[table]

@@ -103,6 +103,18 @@ class RecordSet:
     def __len__(self) -> int:
         return sum(len(rows) for rows in self._tables.values())
 
+    def copy(self) -> RecordSet:
+        """Independent copy, so a session can edit without touching the loaded state.
+
+        Values are immutable, so copying each ``values`` dict is enough; ``meta`` is copied one level deep.
+        """
+        other = RecordSet(self.tablemap)
+        other.issues = list(self.issues)
+        other.meta = {k: dict(v) if isinstance(v, dict) else v for k, v in self.meta.items()}
+        for name, rows in self._tables.items():
+            other._tables[name] = {key: Record(r.table, r.key, dict(r.values), r.rid) for key, r in rows.items()}
+        return other
+
     def same_records(self, other: RecordSet) -> bool:
         """True if both hold equal records in every table (row ids ignored)."""
         mine = {name: rows for name, rows in self._tables.items() if rows}

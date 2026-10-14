@@ -68,3 +68,11 @@ def test_sqlalchemy_url_form(nafv4_path):
     backend = SqlBackend(f"sqlite+pysqlite:///{nafv4_path.as_posix()}")
     assert backend.path == nafv4_path
     assert len(backend.load()) > 0
+
+
+def test_columns_lists_column_keys(nafv4_path):
+    backend = SqlBackend.for_file(nafv4_path)
+    backend.load()
+    columns = backend.columns("t_object")
+    assert "attr_name" in columns
+    assert "attr_object_id" not in columns

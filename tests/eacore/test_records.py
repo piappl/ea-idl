@@ -61,3 +61,21 @@ def test_key_str_and_hashable_values():
     assert key_str(G1) == G1
     assert key_str((Ref("t_diagram", G1), "ABCD1234")) == f"(t_diagram:{G1}, ABCD1234)"
     assert hash(TextRefs("idref1={0};", (Ref("t_connector", G1),)))
+
+
+def test_copy_is_independent(nafv4_path):
+    from eacore.backends.sql import load_file
+
+    original = load_file(nafv4_path)
+    copy = original.copy()
+    assert copy.same_records(original)
+    assert copy.meta == original.meta and copy.issues == original.issues
+    victim = next(copy.records("t_object"))
+    victim.values["attr_name"] = "changed"
+    other = next(r for r in copy.records("t_object") if r is not victim)
+    copy.remove("t_object", other.key)
+    copy.meta["sequences"]["t_object"] = -1
+    assert not copy.same_records(original)
+    assert original.get("t_object", victim.key).values["attr_name"] != "changed"
+    assert original.get("t_object", other.key) is not None
+    assert original.meta["sequences"].get("t_object") != -1
