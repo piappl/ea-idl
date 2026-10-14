@@ -86,7 +86,7 @@ def parse_object_style(raw: Optional[str]) -> NativeObjectStyle:
         DUID       — diagram-unique placement ID
         HideIcon   — 0/1
         NSL        — (unknown flag)
-        BCol       — background colour (ARGB int, -1 = default)
+        BCol       — background colour (Windows COLORREF int, -1 = default)
         BFol       — (unknown)
         LCol       — line/border colour (-1 = default)
         LWth       — line width (-1 = default)
@@ -383,7 +383,14 @@ class NativeDiagramExtractor:
     def _extract_diagram(self, t_diagram) -> NativeDiagram:
         diagram_id: int = t_diagram.attr_diagram_id
         diagram_type = getattr(t_diagram, "attr_diagram_type", None)
-        nodes = self._extract_nodes(diagram_id)
+        show_foreign = bool(int(getattr(t_diagram, "attr_showforeign", 1) or 0))
+        style_ex = getattr(t_diagram, "attr_styleex", None) or ""
+        pdata = getattr(t_diagram, "attr_pdata", None) or ""
+        show_fqn = _parse_kv(style_ex).get("ShowFQN") == "1"
+        hide_attributes = _parse_kv(pdata).get("HideAtts") == "1"
+        nodes = self._extract_nodes(
+            diagram_id, getattr(t_diagram, "attr_package_id", 0) or 0, show_foreign=show_foreign, show_fqn=show_fqn
+        )
         connectors = self._extract_connectors(diagram_id)
         sequence_messages = self._extract_sequence_messages(diagram_id) if diagram_type == "Sequence" else []
         return NativeDiagram(
@@ -395,15 +402,23 @@ class NativeDiagramExtractor:
             notes=getattr(t_diagram, "attr_notes", None),
             canvas_width=getattr(t_diagram, "attr_cx", 0) or 0,
             canvas_height=getattr(t_diagram, "attr_cy", 0) or 0,
+            show_foreign=show_foreign,
+            show_fqn=show_fqn,
+            hide_attributes=hide_attributes,
             nodes=nodes,
             connectors=connectors,
             sequence_messages=sequence_messages,
         )
 
-    def _extract_nodes(self, diagram_id: int) -> List[NativeDiagramNode]:
+    def _extract_nodes(
+        self, diagram_id: int, diagram_package_id: int = 0, show_foreign: bool = True, show_fqn: bool = False
+    ) -> List[NativeDiagramNode]:
         TDiagramObjects = _base.classes.t_diagramobjects
         TObject = _base.classes.t_object
+        TPackage = _base.classes.t_package
         TAttribute = _base.classes.t_attribute
+        TConnector = _base.classes.t_connector
+        TXref = _base.classes.t_xref
 
         rows = (
             self.session.query(TDiagramObjects, TObject)
@@ -413,6 +428,78 @@ class NativeDiagramExtractor:
             .all()
         )
 
+        object_ids = [t_obj.attr_object_id for _, t_obj in rows]
+        package_ids = {t_obj.attr_package_id for _, t_obj in rows if t_obj.attr_package_id}
+        package_names = (
+            {
+                package_id: name
+                for package_id, name in self.session.query(TPackage.attr_package_id, TPackage.attr_name)
+                .filter(TPackage.attr_package_id.in_(package_ids))
+                .all()
+            }
+            if package_ids
+            else {}
+        )
+        package_paths: Dict[int, str] = {}
+        if show_fqn and package_ids:
+            parents: Dict[int, Tuple[int, str]] = {}
+            pending = set(package_ids)
+            while pending:
+                package_rows = (
+                    self.session.query(
+                        TPackage.attr_package_id,
+                        TPackage.attr_parent_id,
+                        TPackage.attr_name,
+                    )
+                    .filter(TPackage.attr_package_id.in_(pending))
+                    .all()
+                )
+                pending = set()
+                for package_id, parent_id, name in package_rows:
+                    parents[package_id] = (parent_id or 0, name or "")
+                    if parent_id and parent_id not in parents:
+                        pending.add(parent_id)
+            for package_id in package_ids:
+                names = []
+                current = package_id
+                while current in parents:
+                    parent, name = parents[current]
+                    if parent == 0:
+                        break  # EA omits its outermost Model package.
+                    names.append(name)
+                    current = parent
+                package_paths[package_id] = "::".join(reversed(names))
+        nested_parent_ids = {
+            t_obj.attr_parentid
+            for _, t_obj in rows
+            if getattr(t_obj, "attr_object_type", None) == "Class" and getattr(t_obj, "attr_parentid", 0)
+        }
+        nested_parent_names = (
+            {
+                object_id: name
+                for object_id, name, object_type in self.session.query(
+                    TObject.attr_object_id, TObject.attr_name, TObject.attr_object_type
+                )
+                .filter(TObject.attr_object_id.in_(nested_parent_ids))
+                .all()
+                if object_type == "Class" and name
+            }
+            if nested_parent_ids
+            else {}
+        )
+        parent_names: Dict[int, str] = {}
+        if object_ids:
+            parent_rows = (
+                self.session.query(TConnector.attr_start_object_id, TConnector.attr_end_object_id, TObject.attr_name)
+                .join(TObject, TConnector.attr_end_object_id == TObject.attr_object_id)
+                .filter(TConnector.attr_connector_type == "Generalization")
+                .filter(TConnector.attr_start_object_id.in_(object_ids))
+                .all()
+            )
+            for child_id, parent_id, parent_name in parent_rows:
+                if parent_id not in object_ids:
+                    parent_names.setdefault(child_id, parent_name)
+
         nodes: List[NativeDiagramNode] = []
         for t_do, t_obj in rows:
             object_id: int = t_obj.attr_object_id
@@ -420,9 +507,17 @@ class NativeDiagramExtractor:
 
             style = parse_object_style(getattr(t_do, "attr_objectstyle", None))
 
-            # For Note objects, text lives in Name or Note fields
-            note_text: Optional[str] = None
+            # For Note objects, text can live in Name or Note. Classes carry
+            # documentation in the same Note column.
+            note_text: Optional[str] = getattr(t_obj, "attr_note", None) or None
             note_connector_ref: Optional[int] = None
+            legend_title: Optional[str] = None
+            legend_entries: List[Tuple[str, str]] = []
+            legend_is_line = False
+            legend_background_color: Optional[str] = None
+            legend_text_color: Optional[str] = None
+            classifier_name: Optional[str] = None
+            interaction_operands: List[Tuple[str, int]] = []
             if object_type == "Note":
                 note_text = getattr(t_obj, "attr_note", None) or getattr(t_obj, "attr_name", None)
                 # PDATA4 may contain 'idref1=<connector_id>;' linking note to a sequence message
@@ -434,6 +529,65 @@ class NativeDiagramExtractor:
                         except ValueError:
                             pass
                         break
+            elif object_type == "InteractionFragment":
+                xref = (
+                    self.session.query(TXref)
+                    .filter(TXref.attr_client == getattr(t_obj, "attr_ea_guid", None))
+                    .filter(TXref.attr_name == "Partitions")
+                    .first()
+                )
+                if xref is not None:
+                    for encoded in re.findall(r"@PAR;(.*?)@ENDPAR;", xref.attr_description or "", re.DOTALL):
+                        values = _parse_kv(encoded)
+                        if values.get("Size", "").isdigit():
+                            interaction_operands.append((values.get("Name", ""), int(values["Size"])))
+                    # EA stores the bottom partition first in t_xref.
+                    interaction_operands.reverse()
+            elif object_type == "Text" and getattr(t_obj, "attr_ntype", 0) == 76:
+                xref = (
+                    self.session.query(TXref)
+                    .filter(TXref.attr_client == getattr(t_obj, "attr_ea_guid", None))
+                    .filter(TXref.attr_name == "CustomProperties")
+                    .first()
+                )
+                if xref is not None:
+                    for prop in re.findall(r"@PROP=(.*?)@ENDPROP;", xref.attr_description or "", re.DOTALL):
+                        name_match = re.search(r"@NAME=(.*?)@ENDNAME;", prop)
+                        color_match = re.search(r"#Back_Ground_Color#=(\d+);", prop)
+                        line_color_match = re.search(r"#Pen_Color#=(\d+);", prop)
+                        title_match = re.search(r"#TITLE#=(.*?);", prop)
+                        if title_match:
+                            legend_title = title_match.group(1)
+                            background_match = re.search(r"#BACKGROUNDCOLOR#=(\d+);", prop)
+                            text_match = re.search(r"#FONTCOLOR#=(\d+);", prop)
+                            if background_match:
+                                color = int(background_match.group(1))
+                                legend_background_color = (
+                                    f"#{color & 255:02x}{color >> 8 & 255:02x}{color >> 16 & 255:02x}"
+                                )
+                            if text_match:
+                                color = int(text_match.group(1))
+                                legend_text_color = f"#{color & 255:02x}{color >> 8 & 255:02x}{color >> 16 & 255:02x}"
+                        elif name_match and color_match:
+                            if "LEGEND_LINESTYLE" in prop:
+                                legend_is_line = True
+                            color = int(
+                                (line_color_match if legend_is_line and line_color_match else color_match).group(1)
+                            )
+                            legend_entries.append(
+                                (
+                                    name_match.group(1),
+                                    f"#{color & 255:02x}{color >> 8 & 255:02x}{color >> 16 & 255:02x}",
+                                )
+                            )
+
+            if object_type == "Part":
+                classifier_guid = getattr(t_obj, "attr_pdata1", None)
+                if classifier_guid:
+                    classifier = (
+                        self.session.query(TObject.attr_name).filter(TObject.attr_ea_guid == classifier_guid).first()
+                    )
+                    classifier_name = classifier[0] if classifier else None
 
             # Load attributes (for Class / Part objects)
             attributes: List[NativeDiagramAttribute] = []
@@ -521,19 +675,110 @@ class NativeDiagramExtractor:
                             lower_bound=getattr(a, "attr_lowerbound", None),
                             upper_bound=getattr(a, "attr_upperbound", None),
                             position=getattr(a, "attr_pos", 0) or 0,
+                            visibility=getattr(a, "attr_scope", None) or None,
+                            stereotype=getattr(a, "attr_stereotype", None) or None,
+                            ea_guid=getattr(a, "attr_ea_guid", None) or None,
                             type_guid=type_guid,
                         )
                     )
+                if style.show_inherited_attrs:
+                    # AttInh is a diagram-object setting. Keep the inherited
+                    # fields and their owner so EA's grouped compartments can
+                    # be reproduced without changing the model's own fields.
+                    ancestor_id = object_id
+                    seen_ancestors = {object_id}
+                    depth = 0
+                    while True:
+                        parent = (
+                            self.session.query(TConnector.attr_end_object_id, TObject.attr_name)
+                            .join(TObject, TConnector.attr_end_object_id == TObject.attr_object_id)
+                            .filter(TConnector.attr_connector_type == "Generalization")
+                            .filter(TConnector.attr_start_object_id == ancestor_id)
+                            .order_by(TConnector.attr_connector_id)
+                            .first()
+                        )
+                        if parent is None or parent[0] in seen_ancestors:
+                            break
+                        ancestor_id, ancestor_name = parent
+                        seen_ancestors.add(ancestor_id)
+                        depth += 1
+                        inherited_rows = (
+                            self.session.query(TAttribute)
+                            .filter(TAttribute.attr_object_id == ancestor_id)
+                            .order_by(TAttribute.attr_pos)
+                            .all()
+                        )
+                        for a in inherited_rows:
+                            classifier_id = int(getattr(a, "attr_classifier", 0) or 0)
+                            type_guid = None
+                            if classifier_id:
+                                type_row = (
+                                    self.session.query(TObject.attr_ea_guid)
+                                    .filter(
+                                        TObject.attr_object_id == classifier_id,
+                                    )
+                                    .first()
+                                )
+                                type_guid = type_row[0] if type_row else None
+                            attributes.append(
+                                NativeDiagramAttribute(
+                                    name=getattr(a, "attr_name", "") or "",
+                                    type=(getattr(a, "attr_type", "") or "").strip(),
+                                    lower_bound=getattr(a, "attr_lowerbound", None),
+                                    upper_bound=getattr(a, "attr_upperbound", None),
+                                    position=getattr(a, "attr_pos", 0) or 0,
+                                    visibility=getattr(a, "attr_scope", None) or None,
+                                    stereotype=getattr(a, "attr_stereotype", None) or None,
+                                    inherited_from=ancestor_name,
+                                    inheritance_depth=depth,
+                                    ea_guid=getattr(a, "attr_ea_guid", None) or None,
+                                    type_guid=type_guid,
+                                )
+                            )
+                # EA's class compartment is alphabetic even when t_attribute
+                # Pos values are duplicated or stale.
+                attributes.sort(key=lambda a: (a.inheritance_depth, a.name.casefold(), a.name))
+
+            display_context = None
+            if object_type == "Class":
+                display_context = nested_parent_names.get(getattr(t_obj, "attr_parentid", 0))
+            if (
+                display_context is None
+                and show_foreign
+                and t_obj.attr_package_id != diagram_package_id
+                and object_type in ("Class", "Part")
+            ):
+                display_context = package_names.get(t_obj.attr_package_id)
+            foreign_package_path = (
+                package_paths.get(t_obj.attr_package_id)
+                if show_fqn
+                and show_foreign
+                and t_obj.attr_package_id != diagram_package_id
+                and object_type in ("Class", "Part")
+                else None
+            )
 
             nodes.append(
                 NativeDiagramNode(
                     object_id=object_id,
+                    parent_object_id=getattr(t_obj, "attr_parentid", 0) or 0,
                     name=getattr(t_obj, "attr_name", "") or "",
                     object_type=object_type,
+                    ntype=getattr(t_obj, "attr_ntype", 0) or 0,
                     stereotype=getattr(t_obj, "attr_stereotype", None),
                     is_abstract=(getattr(t_obj, "attr_abstract", "0") or "0") == "1",
+                    parent_name=parent_names.get(object_id),
+                    classifier_name=classifier_name,
+                    display_context=display_context,
+                    foreign_package_path=foreign_package_path,
                     ea_guid=getattr(t_obj, "attr_ea_guid", None) or None,
                     note_text=note_text,
+                    legend_title=legend_title,
+                    legend_entries=legend_entries,
+                    legend_is_line=legend_is_line,
+                    legend_background_color=legend_background_color,
+                    legend_text_color=legend_text_color,
+                    interaction_operands=interaction_operands,
                     note_connector_ref=note_connector_ref,
                     rect_left=getattr(t_do, "attr_rectleft", 0) or 0,
                     rect_top=getattr(t_do, "attr_recttop", 0) or 0,
@@ -565,6 +810,13 @@ class NativeDiagramExtractor:
                 getattr(t_dl, "attr_path", None),
             )
             style = parse_link_style(getattr(t_dl, "attr_style", None))
+            style_ex = getattr(t_cn, "attr_styleex", None) or ""
+            source_feature = re.search(r"(?:^|;)LFSP=(\{[^}]+\})([LR]);", style_ex)
+            target_feature = re.search(r"(?:^|;)LFEP=(\{[^}]+\})([LR]);", style_ex)
+            source_nav = re.search(r"(?:^|;)Navigable=([^;]+)", getattr(t_cn, "attr_sourcestyle", None) or "")
+            target_nav = re.search(r"(?:^|;)Navigable=([^;]+)", getattr(t_cn, "attr_deststyle", None) or "")
+            pdata1 = getattr(t_cn, "attr_pdata1", None) or ""
+            association_class_id = int(pdata1) if pdata1.isdecimal() else None
 
             connectors.append(
                 NativeDiagramConnector(
@@ -572,8 +824,23 @@ class NativeDiagramExtractor:
                     connector_type=getattr(t_cn, "attr_connector_type", "Association") or "Association",
                     name=getattr(t_cn, "attr_name", None) or None,
                     stereotype=getattr(t_cn, "attr_stereotype", None) or None,
+                    top_mid_label=getattr(t_cn, "attr_top_mid_label", None) or None,
+                    bottom_mid_label=getattr(t_cn, "attr_btm_mid_label", None) or None,
+                    transition_event=pdata1 if getattr(t_cn, "attr_connector_type", None) == "StateFlow" else None,
                     source_object_id=t_cn.attr_start_object_id,
                     target_object_id=t_cn.attr_end_object_id,
+                    direction=getattr(t_cn, "attr_direction", None) or None,
+                    source_navigability=source_nav.group(1) if source_nav else None,
+                    target_navigability=target_nav.group(1) if target_nav else None,
+                    head_style=getattr(t_cn, "attr_headstyle", 0) or 0,
+                    line_style=getattr(t_cn, "attr_linestyle", 0) or 0,
+                    source_is_aggregate=getattr(t_cn, "attr_sourceisaggregate", 0) or 0,
+                    target_is_aggregate=getattr(t_cn, "attr_destisaggregate", 0) or 0,
+                    source_feature_guid=source_feature.group(1) if source_feature else None,
+                    source_feature_side=source_feature.group(2) if source_feature else None,
+                    target_feature_guid=target_feature.group(1) if target_feature else None,
+                    target_feature_side=target_feature.group(2) if target_feature else None,
+                    association_class_object_id=association_class_id,
                     source_role=getattr(t_cn, "attr_sourcerole", None) or None,
                     target_role=getattr(t_cn, "attr_destrole", None) or None,
                     source_cardinality=getattr(t_cn, "attr_sourcecard", None) or None,

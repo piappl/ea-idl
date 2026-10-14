@@ -27,7 +27,7 @@ To convert to standard screen coordinates (Y = 0 at top, increasing down):
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, Field
 
@@ -46,10 +46,10 @@ class NativeObjectStyle(BaseModel):
     """HideIcon — suppress the stereotype icon."""
 
     background_color: int = -1
-    """BCol — ARGB integer, -1 = use default."""
+    """BCol — Windows COLORREF integer (0x00BBGGRR), -1 = default."""
 
     line_color: int = -1
-    """LCol — border/line colour, -1 = use default."""
+    """LCol — Windows COLORREF border/line colour, -1 = default."""
 
     line_width: int = -1
     """LWth — border line width in pixels, -1 = use default."""
@@ -158,7 +158,7 @@ class NativeLinkStyle(BaseModel):
     """SOID — matches ``NativeObjectStyle.duid`` of the source node."""
 
     color: int = -1
-    """Color — ARGB integer, -1 = use default."""
+    """Color — Windows COLORREF integer, -1 = default."""
 
     line_width: int = 0
     """LWidth — line width in pixels."""
@@ -173,6 +173,16 @@ class NativeDiagramAttribute(BaseModel):
     upper_bound: Optional[str] = None
     position: int = 0
     """Pos — display order within the compartment."""
+    visibility: Optional[str] = None
+    """EA Scope, used for visibility symbols and diagram attribute filters."""
+    stereotype: Optional[str] = None
+    """Attribute stereotype, rendered as a heading for its compartment group."""
+    inherited_from: Optional[str] = None
+    """Name of the ancestor that owns this field when AttInh=1."""
+    inheritance_depth: int = 0
+    """Distance from the displayed class to that ancestor; own fields use zero."""
+    ea_guid: Optional[str] = None
+    """EA GUID, used by feature-linked connector endpoints."""
 
     type_guid: Optional[str] = None
     """
@@ -191,12 +201,24 @@ class NativeDiagramNode(BaseModel):
     """
 
     object_id: int
+    parent_object_id: int = 0
+    """EA ParentID, used to position nested sequence lifeline heads."""
     name: str
     object_type: str
     """t_object.Object_Type — ``Class``, ``Note``, ``Part``, etc."""
+    ntype: int = 0
+    """EA NType distinguishes initial (100) and final (101) activity nodes."""
 
     stereotype: Optional[str] = None
     is_abstract: bool = False
+    parent_name: Optional[str] = None
+    """Immediate generalization parent displayed in EA's class header."""
+    classifier_name: Optional[str] = None
+    """Classifier shown after a Part role name in EA resource views."""
+    display_context: Optional[str] = None
+    """Optional export-only context label, such as the owning model layer."""
+    foreign_package_path: Optional[str] = None
+    """Full package path displayed below a foreign class when EA ShowFQN=1."""
 
     ea_guid: Optional[str] = None
     """
@@ -206,7 +228,15 @@ class NativeDiagramNode(BaseModel):
     """
 
     note_text: Optional[str] = None
-    """Populated for ``Note`` objects."""
+    """Note body for notes, or element documentation for classes."""
+    legend_title: Optional[str] = None
+    legend_entries: List[Tuple[str, str]] = Field(default_factory=list)
+    """EA Text legend content and its explicit CSS colours."""
+    legend_is_line: bool = False
+    legend_background_color: Optional[str] = None
+    legend_text_color: Optional[str] = None
+    interaction_operands: List[Tuple[str, int]] = Field(default_factory=list)
+    """Combined-fragment operand guards and heights, ordered from top to bottom."""
 
     note_connector_ref: Optional[int] = None
     """
@@ -233,9 +263,32 @@ class NativeDiagramConnector(BaseModel):
     connector_type: str
     name: Optional[str] = None
     stereotype: Optional[str] = None
+    top_mid_label: Optional[str] = None
+    bottom_mid_label: Optional[str] = None
+    """EA connector labels, including conveyed information on P2 flows."""
+    transition_event: Optional[str] = None
+    """StateFlow event label stored in t_connector.PDATA1."""
 
     source_object_id: int
     target_object_id: int
+    direction: Optional[str] = None
+    """EA Direction, including Unspecified and Source -> Destination."""
+    source_navigability: Optional[str] = None
+    target_navigability: Optional[str] = None
+    """Navigable end settings from t_connector SourceStyle/DestStyle."""
+    head_style: int = 0
+    line_style: int = 0
+    """Raw t_connector style codes; zero delegates to EA's connector defaults."""
+    source_is_aggregate: int = 0
+    target_is_aggregate: int = 0
+    """EA aggregate end: 0 = none, 1 = shared, 2 = composite."""
+    source_feature_guid: Optional[str] = None
+    target_feature_guid: Optional[str] = None
+    source_feature_side: Optional[str] = None
+    target_feature_side: Optional[str] = None
+    """LFSP/LFEP attribute attachment in the connector StyleEx."""
+    association_class_object_id: Optional[int] = None
+    """EA PDATA1 reference to an association class, when present."""
 
     source_role: Optional[str] = None
     target_role: Optional[str] = None
@@ -305,6 +358,12 @@ class NativeDiagram(BaseModel):
     notes: Optional[str] = None
     canvas_width: int
     canvas_height: int
+    show_foreign: bool = True
+    """EA ShowForeign: display package qualifiers on foreign class names."""
+    show_fqn: bool = False
+    """EA ShowFQN: place a foreign class's full package path below its box."""
+    hide_attributes: bool = False
+    """EA diagram PDATA HideAtts: suppress all class attribute compartments."""
 
     nodes: List[NativeDiagramNode] = Field(default_factory=list)
     connectors: List[NativeDiagramConnector] = Field(default_factory=list)
