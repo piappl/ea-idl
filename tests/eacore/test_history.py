@@ -30,7 +30,12 @@ def test_run_history_writes_report_and_all_checks_pass(tmp_path):
 
 
 @pytest.mark.skipif(len(HISTORY) < 2, reason="git history not available")
-def test_history_command(tmp_path):
+def test_history_command(tmp_path, monkeypatch):
+    """CLI wiring only, over the last 3 versions; the full history is covered above."""
+    import eacore.history
+
+    monkeypatch.setattr(eacore.history, "git_versions", lambda path: HISTORY[-3:])
     result = CliRunner().invoke(cli, ["history", str(NAFV4), "--out", str(tmp_path)])
     assert result.exit_code == 0, result.output
+    assert "3 versions, 2 diffs" in result.output
     assert (tmp_path / "summary.md").exists()
