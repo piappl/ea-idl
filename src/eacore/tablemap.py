@@ -313,7 +313,11 @@ EA_TABLEMAP = TableMap(
         TableSpec(
             "t_xrefsystem",
             GuidKey("attr_xrefid"),
-            rules=(GuidRefRule("attr_supplier", ALL_GUID_TABLES), GuidRefRule("attr_link", ALL_GUID_TABLES)),
+            # nafv4.qea's t_xrefsystem row holds plain values here ('ModelRoot', 'PView', '8'), not GUIDs.
+            rules=(
+                EmbeddedGuidRule("attr_supplier", GUID, ALL_GUID_TABLES),
+                EmbeddedGuidRule("attr_link", GUID, ALL_GUID_TABLES),
+            ),
         ),
         TableSpec(
             "t_taggedvalue",

@@ -78,3 +78,23 @@ def test_refrule_target_must_be_guid_keyed():
 
     with pytest.raises(ValueError):
         TableMap([TableSpec("t_a", GuidKey("attr_ea_guid"), rules=(RefRule("attr_x", "t_b"),))])
+
+
+def test_every_row_of_nafv4_has_no_unexplained_values():
+    import sqlite3
+    from pathlib import Path
+
+    from eacore.naming import column_key
+
+    path = Path(__file__).resolve().parents[1] / "data" / "nafv4.qea"
+    unexplained = []
+    with sqlite3.connect(path) as con:
+        con.row_factory = sqlite3.Row
+        for (table,) in con.execute("select name from sqlite_master where type='table'").fetchall():
+            if not EA_TABLEMAP.is_mapped(table) or table in EA_TABLEMAP.lookup_tables:
+                continue
+            for r in con.execute(f"select * from '{table}'"):
+                row = {column_key(k): r[k] for k in r.keys()}
+                _, problems = decode_row(EA_TABLEMAP.spec(table), row, {})
+                unexplained += [f"{table}.{p.column}={p.value!r}" for p in problems if p.kind == "unexplained"]
+    assert unexplained == []
