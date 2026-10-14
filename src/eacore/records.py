@@ -122,3 +122,29 @@ class RecordSet:
                         index.setdefault(guid_value, []).append(Ref(name, key))
             self._guid_index = index
         return self._guid_index.get(guid, [])
+
+    def owner_package(self, ref: Ref) -> Ref | None:
+        """Package that owns ``ref``, derived from parent references; None for repository-wide rows.
+
+        Ownership is never stored: it follows feature → element → package, connector → source
+        element, diagram object → diagram → package, t_xref → its Client record, and so on.
+        """
+        record = self.resolve(ref)
+        seen: set[tuple[str, Key]] = set()
+        while record is not None and (record.table, record.key) not in seen:
+            seen.add((record.table, record.key))
+            if record.table == "t_package":
+                return Ref("t_package", record.key)
+            spec = self.tablemap.spec(record.table) if self.tablemap else None
+            if spec is None or spec.owner is None:
+                return None
+            value = record.values.get(spec.owner)
+            if isinstance(value, Ref):
+                record = self.resolve(value)
+            elif spec.owner_is_guid and isinstance(value, str):
+                candidates = self.by_guid(value)
+                target = next((c for c in candidates if c.table == "t_package"), candidates[0] if candidates else None)
+                record = self.resolve(target) if target else None
+            else:
+                return None
+        return None
