@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="windows-1252"?>
+<MDG.Technology version="1.0"><Documentation id="MINI" name="MINI" version="1.0" notes="Tiny test technology"/>
+<UMLProfiles><UMLProfile profiletype="uml2"><Documentation id="P-1" name="MINI" version="1.0" notes="MINI"/>
+<Content><Stereotypes>
+<Stereotype name="Base" notes="Café base element" isAbstract="true" bgcolor="255" fontcolor="-1">
+<AppliesTo><Apply type="Class"/></AppliesTo>
+<TaggedValues><Tag name="owner" type="" description="Who owns it" values="" default=""/></TaggedValues>
+</Stereotype>
+<Stereotype name="Thing" notes="A thing" generalizes="Base" baseStereotypes="Base">
+<AppliesTo><Apply type="Class"><Property name="_defaultName" value="Thing"/></Apply></AppliesTo>
+<TaggedValues>
+<Tag name="kind" type="enumeration" description="" values="a,b" default="a"/>
+<Tag name="ref" type="ref" description="" values="" default=""/>
+</TaggedValues>
+</Stereotype>
+<Stereotype name="Link" notes="">
+<AppliesTo><Apply type="Dependency"/></AppliesTo>
+<metaconstraints>
+<metaconstraint umlRole="client" constraint="MINI::Thing"/>
+<metaconstraint umlRole="supplier" constraint="MINI::Thing"/>
+<metaconstraint umlRole="realizingMeassage" constraint="MINI::Thing"/>
+<metaconstraint umlRole="source" constraint="MINI::Thing; MINI::Base;;"/>
+</metaconstraints>
+<metarelationships><metarelationship metaclass="Dependency" constraint="MINI::Link"/></metarelationships>
+</Stereotype>
+</Stereotypes></Content></UMLProfile></UMLProfiles>
+<TaggedValueTypes><RefData version="1.0" exporter="EA.25"><DataSet name="Property Types" table="t_propertytypes" filter="Property='#Property#'">
+<DataRow><Column name="Property" value="ref"/><Column name="Notes" value="Type=RefGUID;  Values=Class;  Stereotypes=Thing;"/></DataRow>
+</DataSet></RefData></TaggedValueTypes>
+<DiagramProfile><UMLProfile profiletype="uml2"><Documentation id="P-2" name="MINI" version="1.0"/>
+<Content><Stereotypes><Stereotype name="D1" notes="">
+<AppliesTo><Apply type="Diagram_Custom"><Property name="alias" value="Diagram one"/><Property name="diagramID" value="D1"/><Property name="toolbox" value="MINI-D1"/></Apply></AppliesTo>
+</Stereotype></Stereotypes></Content></UMLProfile></DiagramProfile>
+<UIToolboxes><UMLProfile profiletype="uml2"><Documentation id="P-3" name="MINI-D1" version="1.0"/>
+<Content><Stereotypes><Stereotype name="Page" notes="">
+<AppliesTo><Apply type="ToolboxPage"/></AppliesTo>
+<TaggedValues><Tag name="MINI::Thing(UML::Class)" type="" description="" unit="" values="" default="Thing"/></TaggedValues>
+</Stereotype></Stereotypes></Content></UMLProfile></UIToolboxes>
+</MDG.Technology>
