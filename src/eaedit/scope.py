@@ -127,7 +127,7 @@ class Scope:
             return True
         if not owners:
             return False
-        if via_connector and self.policy != "package":
+        if via_connector and self.policy == "connected":
             return any(o in inside for o in owners)
         return all(o in inside for o in owners)
 

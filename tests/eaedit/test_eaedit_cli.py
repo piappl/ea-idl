@@ -55,6 +55,28 @@ def test_cli_scope_violation_is_one_line(nafv4_path, qea_copy, tmp_path):
     assert len(result.output.strip().splitlines()) == 1 and "outside the focus" in result.output
 
 
+def test_cli_wrong_value_type_is_one_line(nafv4_path, qea_copy, tmp_path):
+    model = qea_copy(nafv4_path)
+    attr = "Model::core::message::Message.header"
+    changes = _changes(tmp_path / "c.yaml", [_op("move_attribute", attr=attr, position="first")])
+    result = CliRunner().invoke(cli, ["preview", str(model), str(changes)])
+    assert result.exit_code == 1, result.output
+    lines = result.output.strip().splitlines()
+    assert len(lines) == 1 and lines[0].startswith("Error:") and "move_attribute" in lines[0]
+
+
+def test_cli_author_option(nafv4_path, qea_copy, tmp_path):
+    model = qea_copy(nafv4_path)
+    changes = _changes(tmp_path / "c.yaml", [_op("create_element", package="Model::core::message", name="Mine")])
+    result = CliRunner().invoke(cli, ["apply", str(model), str(changes), "--author", "reviewer"])
+    assert result.exit_code == 0, result.output
+    assert Session.open(model).get("Model::core::message::Mine")["author"] == "reviewer"
+    result = CliRunner().invoke(cli, ["apply", str(model), str(changes)])
+    assert result.exit_code == 0, result.output
+    authors = {Session.open(model).get(row["guid"])["author"] for row in Session.open(model).search("Mine")}
+    assert authors == {"reviewer", "tester"}  # without --author: the change file's
+
+
 def test_cli_catalogue_build_and_show(mini_mdg_path, tmp_path):
     runner = CliRunner()
     out = tmp_path / "mini.yaml"

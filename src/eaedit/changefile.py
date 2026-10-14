@@ -10,7 +10,7 @@ from typing import Iterable
 import yaml
 
 from eaedit.defaults import timestamp
-from eaedit.errors import EaeditError, InvalidOperationError
+from eaedit.errors import InvalidOperationError
 from eaedit.ops import OPERATIONS, load_all
 from eaedit.session import LoggedOp, OpResult, Session
 
@@ -65,13 +65,9 @@ def _call(op: LoggedOp) -> tuple[dict, list[str]]:
     fn = OPERATIONS.get(op.name)
     if fn is None:
         return args, queue  # run() reports the unknown name
-    if "guid" in inspect.signature(fn).parameters:
-        # The primary GUID is passed explicitly, so it is not minted again: drop it from the queue.
-        if queue and queue[0] == args.get("guid"):
-            queue.pop(0)
-    else:
-        # run() logs the first minted GUID as ``guid`` even when the operation takes none; it is queued instead.
-        args.pop("guid", None)
+    # The primary GUID is passed explicitly, so it is not minted again: drop it from the queue.
+    if queue and queue[0] == args.get("guid"):
+        queue.pop(0)
     try:
         inspect.signature(fn).bind(None, **args)
     except TypeError as exc:
@@ -79,13 +75,15 @@ def _call(op: LoggedOp) -> tuple[dict, list[str]]:
     return args, queue
 
 
-def replay(session: Session, source: str | Path | Iterable[LoggedOp]) -> list[OpResult]:
+def replay(session: Session, source: str | Path | Iterable[LoggedOp], author: str | None = None) -> list[OpResult]:
     """Run each logged operation on ``session`` with the clock fixed to its time and its GUIDs reproduced.
 
-    A change file's author stands in for the session's while it replays: rows record who made the change.
+    Rows record who made the change, so ``author``, else the change file's author, stands in for the session's
+    while it replays.
     """
     load_all()
-    author, ops = _read(source) if isinstance(source, (str, Path)) else (None, list(source))
+    file_author, ops = _read(source) if isinstance(source, (str, Path)) else (None, list(source))
+    author = author or file_author
     results = []
     for index, op in enumerate(ops, 1):
         clock, own_author = session.clock, session.author
@@ -95,7 +93,7 @@ def replay(session: Session, source: str | Path | Iterable[LoggedOp]) -> list[Op
             args, queue = _call(op)
             session._guid_queue = queue
             results.append(session.run(op.name, **args))
-        except EaeditError as exc:
+        except Exception as exc:  # any failure, so the CLI's one-line error names the operation
             exc.add_note(f"in operation {index} ({op.name}) of the change file")
             raise
         finally:

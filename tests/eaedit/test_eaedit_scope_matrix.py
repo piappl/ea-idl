@@ -29,7 +29,7 @@ ACTIONS = {
 
 POLICIES = ("package", "connected", "advisory", "off")
 
-# advisory warns exactly where connected refuses: a connector with one end inside is no violation for either.
+# advisory warns wherever package refuses; only connected allows a connector with one end outside.
 
 # fmt: off
 EXPECTED = {
@@ -37,12 +37,12 @@ EXPECTED = {
     "create inside":                      ("ok",    "ok",      "ok",     "ok"),
     "create outside":                     ("scope", "scope",   "warn",   "ok"),
     "connect inside":                     ("ok",    "ok",      "ok",     "ok"),
-    "connect crossing":                   ("scope", "ok",      "ok",     "ok"),
+    "connect crossing":                   ("scope", "ok",      "warn",   "ok"),
     "connect outside":                    ("scope", "scope",   "warn",   "ok"),
     "move out":                           ("scope", "scope",   "warn",   "ok"),
     "move in":                            ("scope", "scope",   "warn",   "ok"),
     "delete inside":                      ("ok",    "ok",      "ok",     "ok"),
-    "delete inside, crossing connector":  ("scope", "ok",      "ok",     "ok"),
+    "delete inside, crossing connector":  ("scope", "ok",      "warn",   "ok"),
     "delete inside, shown outside":       ("scope", "scope",   "warn",   "ok"),
     "delete outside":                     ("scope", "scope",   "warn",   "ok"),
 }

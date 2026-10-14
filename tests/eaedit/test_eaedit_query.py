@@ -86,3 +86,10 @@ def test_get_package_attribute_and_connectors(path):
 
     with pytest.raises(NotFoundError):
         session.get("Model::nowhere")
+
+
+def test_tree_of_a_deleted_focus_raises_not_found(path):
+    session = _open(path, focus=["Model::core::message"], policy="off")
+    session.delete_package(pkg="Model::core::message", recursive=True)
+    with pytest.raises(NotFoundError):
+        session.tree()

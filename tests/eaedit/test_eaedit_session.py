@@ -87,7 +87,7 @@ def test_undo_restores_exactly(path):
     session.run("_test_rename", target=IN_MESSAGE, name="Renamed")
     session.run("_test_rename", target=IN_MESSAGE, name="Again")
     session.run("_test_dangling", target=IN_MESSAGE)
-    assert session.log[-1].args["guid"] == NEW
+    assert "guid" not in session.log[-1].args  # the op takes no guid, so none is logged
     assert session.undo().name == "_test_dangling"
     assert session.working.get("t_object", IN_MESSAGE).values["attr_name"] == "Again"
     session.undo()
@@ -184,7 +184,14 @@ def test_new_guid_logs_every_minted_guid_and_uses_the_queue(path):
         session.run("_test_mint")
         [logged] = session.log
         assert len(logged.created) == 2 and len(set(logged.created)) == 2
-        assert logged.args["guid"] == logged.created[0]
+        assert "guid" not in logged.args  # no guid parameter: replay reproduces it from the queue
+
+        @operation("_test_mint_guid")
+        def mint_guid(session, guid=None):
+            return guid or [session.new_guid(), session.new_guid()][0]
+
+        session.run("_test_mint_guid")
+        assert session.log[-1].args["guid"] == session.log[-1].created[0]
 
         g1, g2 = "{11111111-0000-0000-0000-00000000000A}", "{11111111-0000-0000-0000-00000000000B}"
         session._guid_queue = [g1, g2, "{11111111-0000-0000-0000-00000000000C}"]
@@ -193,6 +200,7 @@ def test_new_guid_logs_every_minted_guid_and_uses_the_queue(path):
         assert session._guid_queue == []  # cleared after each run, leftovers included
     finally:
         OPERATIONS.pop("_test_mint", None)
+        OPERATIONS.pop("_test_mint_guid", None)
 
 
 def test_failed_dispatch_clears_the_guid_queue(path):

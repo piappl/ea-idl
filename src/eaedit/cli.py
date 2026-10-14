@@ -42,7 +42,8 @@ def _errors() -> Iterator[None]:
     except sa.exc.DatabaseError as exc:
         reason = str(exc.orig) if exc.orig is not None else str(exc).splitlines()[0]
         raise click.ClickException(f"cannot read database: {reason}") from None
-    except (yaml.YAMLError, ValueError, OSError) as exc:
+    # A wrongly typed argument in a change file fails inside the operation; still one line, not a traceback.
+    except (yaml.YAMLError, ValueError, TypeError, KeyError, OSError) as exc:
         raise click.ClickException(_line(exc)) from None
 
 
@@ -103,6 +104,7 @@ def _session_options(fn):
     fn = click.option(
         "--policy", type=click.Choice(POLICIES), default="connected", show_default=True, help="Scope policy."
     )(fn)
+    fn = click.option("--author", help="Record this author instead of the change file's.")(fn)
     fn = click.option("--focus", "focus", multiple=True, help="Package (qualified name or GUID) to keep edits in.")(fn)
     fn = click.option("-c", "--catalogue", "catalogues", multiple=True, type=EXISTING, help="YAML, MDG XML or .qea.")(
         fn
@@ -111,9 +113,9 @@ def _session_options(fn):
     return click.argument("model", type=EXISTING)(fn)
 
 
-def _replayed(model, changes, catalogues, focus, policy) -> Session:
+def _replayed(model, changes, catalogues, focus, policy, author) -> Session:
     session = Session.open(model, focus=focus, policy=policy, catalogues=catalogues)
-    replay(session, changes)
+    replay(session, changes, author=author)
     preview = session.preview()
     click.echo(preview.report)
     if preview.outside_focus:
@@ -127,18 +129,18 @@ def _replayed(model, changes, catalogues, focus, policy) -> Session:
 
 @cli.command()
 @_session_options
-def preview(model, changes, catalogues, focus, policy) -> None:
+def preview(model, changes, catalogues, focus, policy, author) -> None:
     """Replay CHANGES on a working copy of MODEL and print what would change; MODEL is not written."""
     with _errors():
-        _replayed(model, changes, catalogues, focus, policy)
+        _replayed(model, changes, catalogues, focus, policy, author)
 
 
 @cli.command()
 @_session_options
-def apply(model, changes, catalogues, focus, policy) -> None:
+def apply(model, changes, catalogues, focus, policy, author) -> None:
     """Replay CHANGES on MODEL and commit them; exit status 1 if the commit is refused."""
     with _errors():
-        session = _replayed(model, changes, catalogues, focus, policy)
+        session = _replayed(model, changes, catalogues, focus, policy, author)
         committed = session.commit()
     total = len(committed.inserts) + len(committed.updates) + len(committed.deletes)
     click.echo(f"committed {total} change(s) to {model}")

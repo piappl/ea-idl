@@ -6,7 +6,7 @@ from typing import Any
 
 from eacore.records import Key, Record, Ref, key_str
 from eaedit.defaults import FIELDS
-from eaedit.errors import EaeditError
+from eaedit.errors import EaeditError, NotFoundError
 from eaedit.ops.common import package_twin, stereotype_names, tag_table
 from eaedit.resolve import qualified_name
 from eaedit.scope import Scope
@@ -175,8 +175,11 @@ def tree(session, package: str | None = None) -> str:
             element(obj, depth)
 
     for root in _roots(session, package):
+        record = working.resolve(root)
+        if record is None:
+            raise NotFoundError(f"package {key_str(root.key)} is not in the model (deleted?)")
         lines.append(qualified_name(working, root))
-        package_(working.resolve(root), 1)
+        package_(record, 1)
     return "\n".join(lines)
 
 

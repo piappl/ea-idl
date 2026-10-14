@@ -32,6 +32,9 @@ def test_replay_reproduces_changeset(nafv4_path, qea_copy, mini_mdg_path, tmp_pa
     results = replay(second, changes_file)
 
     assert len(results) == len(first.log) == 6
+    # set_tag takes no guid: its tag row's GUID is logged in `created` only, and replay queues it
+    new_tag = first.log[-1]
+    assert new_tag.name == "set_tag" and "guid" not in new_tag.args and len(new_tag.created) == 1
     assert [r.guid for r in results][:2] == [first.log[0].args["guid"], first.log[1].args["guid"]]
     expected = to_json(first.changes())
     assert expected != to_json(Session.open(qea_copy(nafv4_path, "c.qea")).changes())
@@ -64,6 +67,23 @@ def test_replay_accepts_ops_and_fixes_the_clock(nafv4_path, qea_copy):
     assert created.values["attr_createddate"] == "2020-05-06 07:08:09"
     assert session.log[0].at == at
     assert session.clock is not None and session.clock() != at  # restored afterwards
+
+
+def test_replay_author_override(nafv4_path, qea_copy, tmp_path):
+    first = Session.open(qea_copy(nafv4_path, "a.qea"), author="writer")
+    first.create_element(package="Model::core::message", name="Authored")
+    changes_file = tmp_path / "changes.yaml"
+    save(first, changes_file)
+
+    def author_of(session, result):
+        return session.working.get("t_object", result.guid).values["attr_author"]
+
+    second = Session.open(qea_copy(nafv4_path, "b.qea"), author="reader")
+    [result] = replay(second, changes_file)
+    assert author_of(second, result) == "writer" and second.author == "reader"
+    third = Session.open(qea_copy(nafv4_path, "c.qea"), author="reader")
+    [result] = replay(third, changes_file, author="reviewer")
+    assert author_of(third, result) == "reviewer" and third.author == "reader"
 
 
 def test_replay_reports_the_failing_operation(nafv4_path, qea_copy, tmp_path):

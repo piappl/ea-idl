@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import functools
 import getpass
+import inspect
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -72,6 +74,12 @@ class _Running:
 
 def _clone(record: Record) -> Record:
     return Record(record.table, record.key, dict(record.values), record.rid)
+
+
+@functools.cache
+def _takes_guid(fn: Callable) -> bool:
+    """Whether an operation has a ``guid`` parameter, so its logged arguments can carry the GUID it minted."""
+    return "guid" in inspect.signature(fn).parameters
 
 
 def _issue_id(issue: Issue) -> tuple:
@@ -205,7 +213,7 @@ class Session:
             self._running = None
             self._guid_queue = []
         args = dict(kwargs)
-        if op.created and "guid" not in args:
+        if op.created and "guid" not in args and _takes_guid(fn):
             args["guid"] = op.created[0]
         self.log.append(LoggedOp(name, args, op.at, list(op.minted)))
         self._done.append(_Done(op.journal, op.warnings))
