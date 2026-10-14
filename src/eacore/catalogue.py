@@ -81,9 +81,21 @@ class Catalogue(_Model):
             return cls.model_validate(yaml.safe_load(f))
 
     def save_yaml(self, path: str | Path) -> None:
-        data = self.model_dump(exclude_defaults=True)
-        with open(path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
+        save_yaml_all([self], path)
+
+
+def load_yaml_all(path: str | Path) -> list[Catalogue]:
+    """Catalogues in a YAML file holding one catalogue or a list of them."""
+    with open(path, encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    return [Catalogue.model_validate(item) for item in (data if isinstance(data, list) else [data])]
+
+
+def save_yaml_all(catalogues: Iterable[Catalogue], path: str | Path) -> None:
+    """Write one catalogue as a mapping, several as a list (``load_yaml_all`` reads both)."""
+    data = [cat.model_dump(exclude_defaults=True) for cat in catalogues]
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(data[0] if len(data) == 1 else data, f, sort_keys=False, allow_unicode=True)
 
 
 class AmbiguousStereotype(LookupError):

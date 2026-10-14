@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Iterable
 
 from eacore.backends.sql import load_file
-from eacore.catalogue import Catalogue, CatalogueSet
+from eacore.catalogue import Catalogue, CatalogueSet, load_yaml_all
 from eacore.records import RecordSet
 
 from eaedit.catalogue.infer import infer
@@ -26,7 +26,7 @@ def load_catalogues(
         path = Path(source)
         suffix = path.suffix.lower()
         if suffix in (".yaml", ".yml"):
-            loaded.append(Catalogue.load_yaml(path))
+            loaded.extend(load_yaml_all(path))
         elif suffix == ".xml":
             loaded.extend(parse_mdg(path))
         elif suffix in (".qea", ".qeax"):

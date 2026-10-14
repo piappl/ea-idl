@@ -18,7 +18,7 @@ from eacore.report import render_text
 from eaedit import defaults, resolve
 from eaedit.catalogue import load_catalogues
 from eaedit.errors import CommitRefusedError, EditWarning, InvalidOperationError, NotFoundError, ScopeError
-from eaedit.ops import OPERATIONS, load_all
+from eaedit.ops import OPERATIONS, load_all, query
 from eaedit.scope import Scope
 
 #: ``(table, key, record before the operation's first touch, or None if it did not exist)``
@@ -259,6 +259,29 @@ class Session:
         undone = {id(w) for w in done.warnings}
         self.warnings = [w for w in self.warnings if id(w) not in undone]
         return self.log.pop()
+
+    # --- queries (read the working copy; not operations, so not logged) ---
+
+    def get(self, identifier: str) -> dict:
+        return query.get(self, identifier)
+
+    def list(self, package: str | None = None, recursive: bool = True) -> list[dict]:
+        return query.list_(self, package, recursive)
+
+    def tree(self, package: str | None = None) -> str:
+        return query.tree(self, package)
+
+    def search(self, text: str, stereotype: str | None = None, type: str | None = None) -> list[dict]:
+        return query.search(self, text, stereotype, type)
+
+    def find_connectors(
+        self,
+        source: str | None = None,
+        target: str | None = None,
+        type: str | None = None,
+        stereotype: str | None = None,
+    ) -> list[dict]:
+        return query.find_connectors(self, source, target, type, stereotype)
 
     # --- results ---
 
