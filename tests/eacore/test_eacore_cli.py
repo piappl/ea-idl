@@ -1,6 +1,8 @@
 import shutil
 import sqlite3
 
+import pytest
+
 from click.testing import CliRunner
 
 from eacore.cli import cli
@@ -27,3 +29,41 @@ def test_diff_requires_two_paths():
 def test_textconv(nafv4_path):
     result = CliRunner().invoke(cli, ["textconv", str(nafv4_path)])
     assert result.exit_code == 0 and "t_object" in result.output
+
+
+def _bad_files(tmp_path):
+    text = tmp_path / "notes.qea"
+    text.write_bytes(b"this is not a database\n" * 100)
+    other = tmp_path / "other.qea"
+    with sqlite3.connect(other) as con:
+        con.execute("create table t (x)")
+    return {"text": text, "sqlite": other, "missing": tmp_path / "missing.qea"}
+
+
+@pytest.mark.parametrize("kind", ["text", "sqlite", "missing"])
+@pytest.mark.parametrize("command", ["diff", "textconv", "check", "diff-b"])
+def test_bad_repository_gives_one_line_error(command, kind, tmp_path, nafv4_path):
+    bad = str(_bad_files(tmp_path)[kind])
+    args = {
+        "diff": ["diff", bad, str(nafv4_path)],
+        "diff-b": ["diff", str(nafv4_path), bad],
+        "textconv": ["textconv", bad],
+        "check": ["check", bad],
+    }[command]
+    result = CliRunner().invoke(cli, args)
+    assert result.exit_code not in (0, None), result.output
+    assert isinstance(result.exception, SystemExit), repr(result.exception)
+    assert "Traceback" not in result.output
+    assert bad in result.output.replace("\n", "")
+
+
+def test_diff_git_bad_revision_or_path_gives_one_line_error(tmp_path, nafv4_path):
+    for args in (
+        ["diff", "--git", "no-such-rev", "HEAD", str(nafv4_path)],
+        ["diff", "--git", "HEAD", "HEAD", str(nafv4_path.with_name("missing.qea"))],
+    ):
+        result = CliRunner().invoke(cli, args)
+        assert result.exit_code not in (0, None), result.output
+        assert isinstance(result.exception, SystemExit), repr(result.exception)
+        assert "Traceback" not in result.output
+        assert args[-1] in result.output.replace("\n", "")
