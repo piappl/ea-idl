@@ -56,14 +56,7 @@ def test_create_package_pair(nafv4_path, qea_copy):
     assert (twin["attr_object_type"], twin["attr_name"], twin["attr_author"]) == ("Package", "New", "tester")
     assert twin["attr_createddate"] == "2026-01-02 03:04:05"
     assert package["attr_version"] == twin["attr_version"] == "1.0"
-    assert twin["attr_tpos"] == 1 + max(
-        (
-            o.values["attr_tpos"] or 0
-            for o in rs.records("t_object")
-            if o.values["attr_package_id"] == model and o.key != guid
-        ),
-        default=0,
-    )
+    assert twin["attr_tpos"] is None  # EA leaves TPos NULL on every package and element row in nafv4.qea
     assert result.warnings == []
 
 
@@ -114,7 +107,7 @@ def test_create_package_in_empty_model(empty_path, qea_copy):
     rs = load_file(path)
     assert [i for i in check(rs) if i.severity == "error"] == []
     assert find(rs, "Model::First") == Ref("t_package", guid)
-    assert rs.get("t_object", guid).values["attr_tpos"] == 1
+    assert rs.get("t_object", guid).values["attr_tpos"] is None
 
 
 def test_apply_known_stereotype_adds_tags_with_values_notes(nafv4_path, qea_copy):

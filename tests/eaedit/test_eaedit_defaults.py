@@ -5,6 +5,7 @@ from datetime import datetime
 import pytest
 
 from eacore.backends.sql import load_file
+from eacore.records import Ref, TextRefs
 from eaedit import InvalidOperationError
 from eaedit.defaults import DEFAULTS, EA_KINDS, TYPE_COLUMNS, apply_fields, defaults_for, kind_for, new_guid, timestamp
 
@@ -41,6 +42,45 @@ def test_verified_defaults_match_ea_rows(nafv4):
                 continue
             common, _ = Counter(r.get(column) for r in rows).most_common(1)[0]
             assert value == common, f"{table}/{type_value} {column}: default {value!r}, EA mostly {common!r}"
+
+
+#: Columns an operation sets per row, so a constant among EA's rows is no default.
+SET_BY_OPERATION = {
+    "attr_object_type",
+    "attr_connector_type",
+    "attr_name",
+    "attr_createddate",
+    "attr_modifieddate",
+    "attr_author",
+    "attr_ea_guid",
+    "attr_xrefid",
+    "attr_tpos",
+    "attr_pos",
+    "attr_note",
+    "attr_notes",
+    "attr_description",
+    "attr_type",
+    "attr_client",
+    "attr_stereotype",
+    "attr_property",
+    "attr_value",
+    # Label text derived from the connector's stereotype ("«abstraction» «Implements»" on both EA Abstractions).
+    "attr_btm_mid_label",
+}
+
+
+def test_verified_defaults_complete(nafv4):
+    for (table, type_value), entry in DEFAULTS.items():
+        rows = _rows(nafv4, table, type_value)
+        if not entry.verified or len(rows) < 2:
+            continue
+        for column in rows[0]:
+            values = {r.get(column) for r in rows}
+            if column in SET_BY_OPERATION or column in PROJECT_SETTINGS or len(values) != 1 or None in values:
+                continue
+            if isinstance(next(iter(values)), (Ref, TextRefs)):
+                continue
+            assert column in entry.values, f"{table}/{type_value} {column}: EA always writes {values}, no default"
 
 
 def test_verified_kinds_seen_in_model(nafv4):

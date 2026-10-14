@@ -21,11 +21,6 @@ def _primary_guid(session, guid: str | None) -> str:
     return guid
 
 
-def _next_tpos(session, package: Ref) -> int:
-    siblings = [o for o in session.working.records("t_object") if o.values.get("attr_package_id") == package]
-    return max((o.values.get("attr_tpos") or 0 for o in siblings), default=0) + 1
-
-
 @operation("create_package")
 def create_package(
     session, parent: str, name: str, stereotype: str | None = None, notes: str | None = None, guid: str | None = None
@@ -53,7 +48,6 @@ def create_package(
             # Package notes are shown from either row, so both carry them.
             "attr_note": notes,
             "attr_author": session.author,
-            "attr_tpos": _next_tpos(session, parent_ref),
             **dates,
         },
         "Package",

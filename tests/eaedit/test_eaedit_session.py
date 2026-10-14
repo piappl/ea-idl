@@ -193,3 +193,11 @@ def test_new_guid_logs_every_minted_guid_and_uses_the_queue(path):
         assert session._guid_queue == []  # cleared after each run, leftovers included
     finally:
         OPERATIONS.pop("_test_mint", None)
+
+
+def test_failed_dispatch_clears_the_guid_queue(path):
+    session = _open(path)
+    session._guid_queue = ["{11111111-0000-0000-0000-00000000000D}"]
+    with pytest.raises(InvalidOperationError):
+        session.run("no_such_operation")
+    assert session._guid_queue == []

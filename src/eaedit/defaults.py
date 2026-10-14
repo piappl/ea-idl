@@ -179,7 +179,7 @@ DEFAULTS: dict[tuple[str, str], Defaults] = {
         {**_OBJECT, "attr_ntype": 0, "attr_parentid": 0, "attr_borderwidth": 1, "attr_pdata4": "0"}, True
     ),
     # Parts sit under their owning element (ParentID); their BorderWidth varies (1 or -1).
-    ("t_object", "Part"): Defaults({**_OBJECT, "attr_borderwidth": -1}, True),
+    ("t_object", "Part"): Defaults({**_OBJECT, "attr_ntype": 0, "attr_borderwidth": -1}, True),
     ("t_object", "Note"): Defaults(
         {**_OBJECT, "attr_ntype": 0, "attr_parentid": 0, "attr_borderwidth": -1, "attr_gentype": "<none>"}, True
     ),
@@ -219,7 +219,7 @@ DEFAULTS: dict[tuple[str, str], Defaults] = {
     ("t_xref", "Stereotypes"): Defaults(
         {"attr_visibility": "Public", "attr_partition": "0", "attr_supplier": "<none>"}, True
     ),
-    # Tag rows: the operation sets every column itself; nothing is assumed.
+    # Verified empty by design: EA-made tag rows have no constant columns beyond the owner ref, name and value.
     ("t_objectproperties", "*"): Defaults({}, True),
     ("t_connectortag", "*"): Defaults({}, True),
     # nafv4.qea has no attribute tags to prove the shape against.

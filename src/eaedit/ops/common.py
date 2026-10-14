@@ -108,7 +108,7 @@ def _applies(metaclasses: list[str], base: str) -> bool:
 
 
 def _values_note(values: list[str]) -> str | None:
-    # EA-made tags of enumeration type keep the choices like this (nafv4.qea DataModel 'kind').
+    # EA-made tags of enumeration type keep the choices like this (EA-made enumeration tags in nafv4.qea).
     return "Values: " + ",".join(values) + "\r\n" if values else None
 
 
