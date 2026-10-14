@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from eacore.catalogue import AmbiguousStereotype
-from eacore.embedded import parse_stereotypes
+from eacore.embedded import is_guid, parse_stereotypes
 from eacore.integrity import STEREO_XREF_TYPES
 from eacore.records import Record, Ref
 from eaedit.defaults import kind_for, new_record
@@ -20,7 +20,7 @@ _TAG_TABLES = {
 }
 
 
-def _twin(session, package: Record) -> Record:
+def package_twin(session, package: Record) -> Record:
     """The ``t_object`` row of a package; it carries the package's stereotype and tags."""
     for ref in session.working.by_guid(package.values.get("attr_ea_guid") or package.key):
         record = session.working.resolve(ref)
@@ -32,11 +32,28 @@ def _twin(session, package: Record) -> Record:
 def _owner(session, table: str, target: Record) -> Record:
     """Current working row holding stereotype and tags for ``target`` (a package's twin)."""
     if table == "t_package":
-        return _twin(session, session.working.get(table, target.key) or target)
+        return package_twin(session, session.working.get(table, target.key) or target)
     current = session.working.get(table, target.key)
     if current is None:
         raise NotFoundError(f"no record {table} {target.key}")
     return current
+
+
+def primary_guid(session, guid: str | None) -> str:
+    """The GUID for a new top-level record: ``guid`` if given (checked and logged), else a minted one."""
+    if guid is None:
+        return session.new_guid()
+    if not is_guid(guid):
+        raise InvalidOperationError(f"{guid!r} is not a GUID")
+    if session.working.by_guid(guid):
+        raise InvalidOperationError(f"GUID {guid} is already used")
+    session.created(guid)
+    return guid
+
+
+def resolve_target(session, identifier: str) -> Record:
+    """The record a stereotype or tag operation acts on: a package, element, attribute or connector."""
+    return session.working.resolve(session.find(identifier))
 
 
 def _guid(record: Record) -> str:
@@ -159,15 +176,19 @@ def tag_table(table: str) -> tuple[str, str]:
         raise InvalidOperationError(f"{table} rows have no tagged values") from None
 
 
-def _find_tag(session, tags: str, column: str, owner: Ref, name: str) -> Record | None:
+def find_tags(session, table: str, target: Record, name: str) -> list[Record]:
+    """Every tag row named ``name`` on ``target``, in the order EA lists them."""
+    owner = _owner(session, table, target)
+    tags, column = tag_table(owner.table)
+    owner_ref = Ref(owner.table, owner.key)
     found = [
         t
         for t in session.working.records(tags)
-        if t.values.get(column) == owner and t.values.get("attr_property") == name
+        if t.values.get(column) == owner_ref and t.values.get("attr_property") == name
     ]
     # With duplicates EA shows the row with the lowest PropertyID; new rows have none yet and come last.
     found.sort(key=lambda t: (t.rid is None, t.rid or 0))
-    return found[0] if found else None
+    return found
 
 
 def set_tag_value(
@@ -183,7 +204,7 @@ def set_tag_value(
     owner = _owner(session, table, target)
     tags, column = tag_table(owner.table)
     owner_ref = Ref(owner.table, owner.key)
-    existing = _find_tag(session, tags, column, owner_ref, name)
+    existing = next(iter(find_tags(session, table, target, name)), None)
     if existing is not None and only_if_missing:
         return existing
     if value is not None and len(value) > MEMO_LIMIT:
