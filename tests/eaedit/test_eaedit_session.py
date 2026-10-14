@@ -172,3 +172,24 @@ def test_open_validates_policy_and_focus(path):
     with pytest.raises(InvalidOperationError):
         _open(path, policy="sometimes")
     assert _open(path, focus=[DATA]).scope.focus == (Ref("t_package", DATA),)
+
+
+def test_new_guid_logs_every_minted_guid_and_uses_the_queue(path):
+    @operation("_test_mint")
+    def mint(session):
+        return [session.new_guid(), session.new_guid()][0]
+
+    try:
+        session = _open(path)
+        session.run("_test_mint")
+        [logged] = session.log
+        assert len(logged.created) == 2 and len(set(logged.created)) == 2
+        assert logged.args["guid"] == logged.created[0]
+
+        g1, g2 = "{11111111-0000-0000-0000-00000000000A}", "{11111111-0000-0000-0000-00000000000B}"
+        session._guid_queue = [g1, g2, "{11111111-0000-0000-0000-00000000000C}"]
+        assert session.run("_test_mint").guid == g1
+        assert session.log[-1].created == [g1, g2]
+        assert session._guid_queue == []  # cleared after each run, leftovers included
+    finally:
+        OPERATIONS.pop("_test_mint", None)

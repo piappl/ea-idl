@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import getpass
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -15,7 +15,7 @@ from eacore.diff import diff
 from eacore.integrity import Issue, check
 from eacore.records import Key, Record, RecordSet, Ref
 from eacore.report import render_text
-from eaedit import resolve
+from eaedit import defaults, resolve
 from eaedit.catalogue import load_catalogues
 from eaedit.errors import CommitRefusedError, EditWarning, InvalidOperationError, NotFoundError, ScopeError
 from eaedit.ops import OPERATIONS, load_all
@@ -38,6 +38,8 @@ class LoggedOp:
     name: str
     args: dict[str, Any]
     at: datetime
+    #: Every GUID the operation minted with ``Session.new_guid``, in order; replay queues them again.
+    created: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -65,6 +67,7 @@ class _Running:
     warnings: list[EditWarning]
     at: datetime
     created: list[str]
+    minted: list[str] = field(default_factory=list)
 
 
 def _clone(record: Record) -> Record:
@@ -99,6 +102,8 @@ class Session:
         self._done: list[_Done] = []
         self._running: _Running | None = None
         self._baseline_issues: set[tuple] | None = None
+        #: GUIDs ``new_guid`` hands out before minting fresh ones (replay seeds it per operation).
+        self._guid_queue: list[str] = []
 
     @classmethod
     def open(
@@ -167,6 +172,14 @@ class Session:
     def created(self, guid: str) -> None:
         self._current().created.append(guid)
 
+    def new_guid(self) -> str:
+        """The GUID for a new record: the next queued one, else a fresh one. Ops mint every GUID here."""
+        op = self._current()
+        guid = self._guid_queue.pop(0) if self._guid_queue else defaults.new_guid()
+        op.created.append(guid)
+        op.minted.append(guid)
+        return guid
+
     def columns(self, table: str) -> list[str]:
         return self.backend.columns(table)
 
@@ -188,10 +201,11 @@ class Session:
             raise
         finally:
             self._running = None
+            self._guid_queue = []
         args = dict(kwargs)
         if op.created and "guid" not in args:
             args["guid"] = op.created[0]
-        self.log.append(LoggedOp(name, args, op.at))
+        self.log.append(LoggedOp(name, args, op.at, list(op.minted)))
         self._done.append(_Done(op.journal, op.warnings))
         self.warnings.extend(op.warnings)
         return OpResult(guid, list(op.warnings))
