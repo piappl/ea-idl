@@ -96,7 +96,8 @@ def move_package(session, pkg: str, new_parent: str) -> str:
         raise InvalidOperationError(f"moving {pkg!r} under {new_parent!r} would make a cycle")
     twin = package_twin(session, package)
     now = timestamp(session.now())
-    session.put(Record("t_package", package.key, {**package.values, "attr_parent_id": parent}, package.rid))
+    values = {**package.values, "attr_parent_id": parent, "attr_modifieddate": now}
+    session.put(Record("t_package", package.key, values, package.rid))
     values = {**twin.values, "attr_package_id": parent, "attr_modifieddate": now}
     session.put(Record("t_object", twin.key, values, twin.rid))
     return package.key

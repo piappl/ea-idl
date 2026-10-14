@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Iterable
+import re
+from collections import deque
+from typing import Any, Iterable
 
 from eacore.catalogue import AmbiguousStereotype
-from eacore.records import Key, Record, Ref
-from eaedit.defaults import apply_fields, kind_for, new_record, timestamp
+from eacore.embedded import is_guid
+from eacore.records import Key, Record, Ref, TextRefs
+from eacore.tablemap import EmbeddedGuidRule, GuidRefRule
+from eaedit.defaults import apply_fields, kind_for, new_record, timestamp, unset_value
 from eaedit.errors import InvalidOperationError, NotFoundError
 from eaedit.ops import operation
 from eaedit.ops.common import (
@@ -15,6 +19,7 @@ from eaedit.ops.common import (
     primary_guid,
     resolve_target,
     stereotype_names,
+    stereotype_tags,
     write_stereotypes,
 )
 
@@ -117,9 +122,9 @@ def _descendants(session, keys: Iterable[Key]) -> list[Key]:
             children.setdefault(parent.key, []).append(obj.key)
     result: list[Key] = []
     seen: set[Key] = set()
-    todo = list(keys)
+    todo = deque(keys)
     while todo:
-        key = todo.pop(0)
+        key = todo.popleft()
         if key in seen:
             continue
         seen.add(key)
@@ -178,16 +183,89 @@ def cascade_delete(session, elements: Iterable[Key], diagrams: Iterable[Key] = (
     add(_where(session, "t_diagramlinks", ("attr_connectorid",), connectors))
     add(_where(session, "t_diagramlinks", ("attr_diagramid",), diagram_refs))
     guids = {r.values.get("attr_ea_guid") for r in rows.values()} - {None}
-    # Rows naming a deleted record by GUID: stereotype lists and properties (t_xref), package tags, documents.
-    add(_where(session, "t_xref", ("attr_client", "attr_supplier"), guids))
+    # Rows owned by a deleted record through its GUID: stereotype lists and properties (t_xref), tags, documents.
+    add(_where(session, "t_xref", ("attr_client",), guids))
     add(_where(session, "t_taggedvalue", ("attr_elementid",), guids))
     add(_where(session, "t_document", ("attr_elementid",), guids))
+    _clear_references(session, rows)
     for table, key in rows:
         session.drop(table, key)
 
 
 def cascade_delete_element(session, ref: Ref) -> None:
+    """Delete element ``ref`` with what EA deletes alongside it, clearing references to them from other rows."""
     cascade_delete(session, [ref.key])
+
+
+def _strip_text_refs(value: TextRefs, gone: set[Ref], unset: Any) -> TextRefs | Any:
+    """``value`` without its ``key=ID;`` entries naming ``gone`` rows; ``unset`` when no reference is left."""
+    marks = [f"\x00{i}\x00" for i in range(len(value.refs))]
+    text = value.template.format(*marks)
+    kept = []
+    for mark, ref in zip(marks, value.refs):
+        if ref in gone:
+            text = re.sub(r"[^;=\x00]*=" + re.escape(mark) + ";?", "", text)
+        else:
+            kept.append(mark)
+    if not kept:
+        return text if text.strip() else unset
+    text = text.replace("{", "{{").replace("}", "}}")
+    for index, mark in enumerate(kept):
+        text = text.replace(mark, f"{{{index}}}")
+    return TextRefs(text, tuple(ref for mark, ref in zip(marks, value.refs) if mark in kept))
+
+
+def _clear_references(session, rows: dict[tuple[str, Key], Record]) -> None:
+    """Reset references from surviving rows into ``rows`` to EA's "nothing" value, keeping names held as text.
+
+    Covers ID references (``Ref``/``TextRefs``), GUID columns and GUIDs embedded in text, per the table map.
+    """
+    gone = {Ref(table, key) for table, key in rows}
+    guids = {g.upper() for g in (r.values.get("attr_ea_guid") for r in rows.values()) if g}
+    tablemap = session.working.tablemap
+    for table in session.working.tables():
+        if not tablemap.is_mapped(table):
+            continue
+        rules = tablemap.spec(table).rules
+        for record in session.working.records(table):
+            if (table, record.key) in rows:
+                continue
+            values = record.values
+            changed: dict[str, Any] = {}
+            unverified = False
+
+            def unset(column: str) -> Any:
+                nonlocal unverified
+                value, verified = unset_value(table, column, values)
+                unverified = unverified or not verified
+                return value
+
+            for column, value in values.items():
+                if isinstance(value, Ref) and value in gone:
+                    changed[column] = unset(column)
+                elif isinstance(value, TextRefs) and gone.intersection(value.refs):
+                    changed[column] = _strip_text_refs(value, gone, unset(column))
+            for rule in rules:
+                value = values.get(rule.column)
+                if isinstance(rule, GuidRefRule):
+                    if rule.when is not None and not rule.when(values):
+                        continue
+                    if is_guid(value) and value.upper() in guids:
+                        changed[rule.column] = unset(rule.column)
+                elif isinstance(rule, EmbeddedGuidRule) and isinstance(value, str):
+                    current = changed.get(rule.column, value)
+                    text = re.sub(
+                        rule.pattern + ";?", lambda m: "" if m.group(1).upper() in guids else m.group(0), current
+                    )
+                    if text != current:
+                        changed[rule.column] = text or None
+            if not changed:
+                continue
+            session.put(Record(table, record.key, {**values, **changed}, record.rid))
+            columns = ", ".join(sorted(changed))
+            session.warn("reference-cleared", f"{table} {columns}: referenced a deleted record", _guid(record))
+            if unverified:
+                session.warn("unverified-default", f"{table} {columns}: EA's unset value is unverified", _guid(record))
 
 
 @operation("delete_element")
@@ -222,7 +300,11 @@ def remove_stereotype(session, target: str, name: str) -> str:
     write_stereotypes(session, record.table, record, [e for e in entries if e != removed])
     resolved = _resolved(session, removed[1] or removed[0])
     if resolved is not None:
-        kept = [t.name for t in resolved.tags if find_tags(session, record.table, record, t.name)]
+        # Tags a remaining stereotype also defines still belong to the element.
+        others = stereotype_tags(session, [e for e in entries if e != removed])
+        kept = [
+            t.name for t in resolved.tags if t.name not in others and find_tags(session, record.table, record, t.name)
+        ]
         if kept:
             session.warn(
                 "stereotype-removed-tags-kept",

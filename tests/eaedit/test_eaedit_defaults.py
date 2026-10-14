@@ -135,3 +135,13 @@ def test_apply_fields_rejects_unknown_and_stereotype():
         apply_fields("t_object", {}, {"colour": "red"})
     with pytest.raises(InvalidOperationError, match="add_stereotype"):
         apply_fields("t_object", {}, {"stereotype": "X"})
+
+
+def test_verified_unset_values_seen_in_model(nafv4):
+    from eaedit.defaults import UNSET
+
+    for (table, column, type_value), (value, verified) in UNSET.items():
+        if not verified:
+            continue
+        seen = [r[column] for r in _rows(nafv4, table, type_value)]
+        assert value in seen, f"{table}.{column} ({type_value}): EA-made rows never hold {value!r}"

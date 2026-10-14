@@ -143,6 +143,10 @@ def test_move_element_and_scope(nafv4_path, qea_copy):
     with pytest.raises(ScopeError):
         scoped.move_element(el=MESSAGE, package="Model::core::data")
     assert scoped.working.same_records(scoped.original)
+    outside = find(scoped.working, "Model::core::data::Measurement").key
+    with pytest.raises(ScopeError):
+        scoped.move_element(el=outside, package="Model::core::message")
+    assert scoped.working.same_records(scoped.original)
 
 
 def test_delete_element_cascades(nafv4_path, qea_copy):
@@ -241,12 +245,82 @@ def test_delete_package_with_diagram(nafv4_path, qea_copy):
     assert not [x for x in rs.records("t_xref") if x.values["attr_client"] == diagram]
 
 
-def test_delete_leaves_references_from_outside(nafv4_path, qea_copy):
-    """Rows outside the deleted set that point into it are not rewritten; the preview reports them."""
-    session = _open(qea_copy(nafv4_path))
-    session.delete_package(pkg="Model::core::common::types", recursive=True)
-    rules = {(i.rule, i.ref.table) for i in session.preview().new_issues}
-    assert ("dangling-reference", "t_attribute") in rules  # an attribute elsewhere typed by a deleted class
+def _cleared(warnings):
+    return sorted(w.target for w in warnings if w.code == "reference-cleared")
+
+
+def test_delete_package_clears_references_from_outside(nafv4_path, qea_copy):
+    path = qea_copy(nafv4_path)
+    baseline = _issues(load_file(nafv4_path))
+    session = _open(path)
+    measurement = find(session.working, "Model::core::data::Measurement.temperature_measurement")
+    node_id = find(session.working, "Model::core::recursion::Node::id")
+    result = session.delete_package(pkg="Model::core::common::types", recursive=True)
+    assert not [i for i in session.preview().new_issues if i.rule == "dangling-reference"]
+    attribute = session.working.resolve(measurement).values
+    # EA's unset Classifier on attributes is '0' (nafv4.qea); the type name stays as text.
+    assert (attribute["attr_classifier"], attribute["attr_type"]) == ("0", "TemperatureMeasurement")
+    assert session.working.resolve(node_id).values["attr_pdata1"] is None
+    cleared = _cleared(result.warnings)
+    assert measurement.key in cleared and node_id.key in cleared
+    assert len(cleared) == len(set(cleared))  # once per row
+    session.commit()
+    assert _errors(load_file(path), baseline) == []
+
+
+def test_delete_element_clears_attribute_type(nafv4_path, qea_copy):
+    path = qea_copy(nafv4_path)
+    baseline = _issues(load_file(nafv4_path))
+    session = _open(path)
+    header = find(session.working, "Model::core::message::Message.header")
+    result = session.delete_element(el="Model::core::message::MessageHeader")
+    values = session.working.resolve(header).values
+    assert (values["attr_classifier"], values["attr_type"]) == ("0", "MessageHeader")
+    [warning] = [w for w in result.warnings if w.target == header.key]
+    assert "t_attribute" in warning.message and "attr_classifier" in warning.message
+    session.commit()
+    assert _errors(load_file(path), baseline) == []
+
+
+def test_delete_element_resets_xref_supplier_and_part_type(nafv4_path, qea_copy):
+    path = qea_copy(nafv4_path)
+    baseline = _issues(load_file(nafv4_path))
+    session = _open(path)
+    node_id = find(session.working, "Model::core::recursion::Node::id")
+    [props] = [x for x in session.working.records("t_xref") if x.values["attr_client"] == node_id.key]
+    connector = props.values["attr_supplier"]  # Node -> Identifier association, deleted with Identifier
+    result = session.delete_element(el="Model::core::common::types::Identifier")
+    assert session.working.get("t_connector", connector) is None
+    kept = session.working.get("t_xref", props.key)
+    assert kept is not None and kept.values["attr_supplier"] == "<none>"
+    assert kept.values["attr_description"] == props.values["attr_description"]
+    assert session.working.resolve(node_id).values["attr_pdata1"] is None
+    assert {props.key, node_id.key} <= set(_cleared(result.warnings))
+    session.commit()
+    assert _errors(load_file(path), baseline) == []
+
+
+def test_delete_element_strips_note_link_to_deleted_connector(nafv4_path, qea_copy):
+    path = qea_copy(nafv4_path)
+    baseline = _issues(load_file(nafv4_path))
+    session = _open(path)
+    note = "{FE0B8C60-0CE2-449d-A789-1ABA2873AAFE}"  # Note in Model::p6 linked to a message in Model::p2
+    assert session.working.get("t_object", note).values["attr_pdata4"].refs
+    result = session.delete_element(el="Model::p2::ResourceArchitecture::Asset2")
+    assert session.working.get("t_object", note).values["attr_pdata4"] is None
+    assert _cleared(result.warnings) == [note]
+    session.commit()
+    assert _errors(load_file(path), baseline) == []
+
+
+def test_strip_text_refs_keeps_other_entries():
+    from eacore.records import TextRefs
+    from eaedit.ops.elements import _strip_text_refs
+
+    a, b, c = (Ref("t_connector", k) for k in "abc")
+    value = TextRefs("idref1={0};idref2={1};x={{y}};idref3={2};", (a, b, c))
+    assert _strip_text_refs(value, {b}, None) == TextRefs("idref1={0};x={{y}};idref3={1};", (a, c))
+    assert _strip_text_refs(TextRefs("idref1={0};", (a,)), {a}, None) is None
 
 
 def test_delete_empty_package(nafv4_path, qea_copy):
@@ -279,6 +353,29 @@ def test_update_and_move_package(nafv4_path, qea_copy):
     assert find(rs, "Model::core::New") == Ref("t_package", guid)
 
 
+def test_move_package_sets_modified_on_both_rows(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    p2 = find(session.working, "Model::p2").key
+    session.move_package(pkg=p2, new_parent="Model::core")
+    for table in ("t_package", "t_object"):
+        assert session.working.get(table, p2).values["attr_modifieddate"] == "2026-01-02 03:04:05"
+
+
+def test_remove_stereotype_ignores_tags_of_remaining_stereotypes(nafv4_path, qea_copy, mini_mdg_path):
+    other = Catalogue(
+        profile="Y",
+        source=Source(kind="yaml"),
+        stereotypes=[StereotypeDef(name="Other", applies_to=["Class"], tags=[TagDef(name="kind")])],
+    )
+    session = _open(qea_copy(nafv4_path), catalogues=[mini_mdg_path, other], infer=False)
+    guid = session.create_element(package="Model::core", name="E", stereotype="MINI::Thing").guid
+    session.add_stereotype(target=guid, name="Y::Other")
+    [warning] = session.remove_stereotype(target=guid, name="Thing").warnings
+    assert warning.code == "stereotype-removed-tags-kept"
+    assert "ref" in warning.message and "owner" in warning.message and "kind" not in warning.message
+    assert session.remove_stereotype(target=guid, name="Other").warnings  # 'kind' is now nobody's
+
+
 def test_move_package_cycle_error(nafv4_path, qea_copy):
     session = _open(qea_copy(nafv4_path))
     with pytest.raises(InvalidOperationError, match="cycle"):
@@ -302,8 +399,7 @@ def test_add_remove_stereotype_xref_consistent(nafv4_path, qea_copy, mini_mdg_pa
     assert stereotype_names(session, record()) == before + [("Thing", "MINI::Thing")]
     assert record().values["attr_stereotype"] == primary
 
-    result = session.remove_stereotype(target=MESSAGE, name=primary)
-    assert "stereotype-removed-tags-kept" in [w.code for w in result.warnings]
+    session.remove_stereotype(target=MESSAGE, name=primary)
     after = stereotype_names(session, record())
     assert after == before[1:] + [("Thing", "MINI::Thing")]
     assert record().values["attr_stereotype"] == after[0][0]

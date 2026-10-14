@@ -228,6 +228,36 @@ DEFAULTS: dict[tuple[str, str], Defaults] = {
 
 _MISSING = Defaults({}, False)
 
+#: Value EA stores in a reference column with nothing referenced, per ``(table, column, type)``; type ``"*"`` is any.
+#: ``verified`` means EA-made rows of that type in nafv4.qea hold this value; deletes reset dangling references to it.
+UNSET: dict[tuple[str, str, str], tuple[Any, bool]] = {
+    ("t_attribute", "attr_classifier", "*"): ("0", True),
+    # nafv4.qea has no operations; assumed to match attributes.
+    ("t_operation", "attr_classifier", "*"): ("0", False),
+    ("t_operationparams", "attr_classifier", "*"): ("0", False),
+    ("t_operation", "attr_behaviour", "*"): (None, False),
+    ("t_object", "attr_classifier", "*"): (0, True),
+    ("t_object", "attr_classifier_guid", "*"): (None, True),
+    ("t_object", "attr_diagram_id", "*"): (0, True),
+    ("t_object", "attr_parentid", "*"): (0, True),
+    ("t_object", "attr_pdata1", "Part"): (None, True),
+    ("t_object", "attr_pdata2", "Note"): (None, True),
+    ("t_object", "attr_pdata4", "Note"): (None, True),
+    ("t_object", "attr_pdata4", "Class"): ("0", True),
+    ("t_connector", "attr_diagramid", "*"): (0, True),
+    ("t_connector", "attr_pdata1", "Association"): (None, True),
+    ("t_diagram", "attr_parentid", "*"): (0, True),
+    # Stereotype and element CustomProperties rows use '<none>'; diagram CustomProperties rows leave it NULL.
+    ("t_xref", "attr_supplier", "*"): ("<none>", True),
+}
+
+
+def unset_value(table: str, column: str, values: dict[str, Any]) -> tuple[Any, bool]:
+    """``(value, verified)`` EA stores in ``column`` of a ``table`` row like ``values`` when it references nothing."""
+    type_value = values.get(TYPE_COLUMNS.get(table, ""), "*") if table in ("t_object", "t_connector") else "*"
+    found = UNSET.get((table, column, type_value)) or UNSET.get((table, column, "*"))
+    return found if found is not None else (None, False)
+
 
 def defaults_for(table: str, type_value: str) -> Defaults:
     return DEFAULTS.get((table, type_value)) or DEFAULTS.get((table, "*")) or _MISSING

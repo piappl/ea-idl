@@ -80,6 +80,19 @@ def stereotype_names(session, target: Record) -> list[tuple[str, str | None]]:
     return [(s.name, s.fqname) for s in parse_stereotypes(xref.values.get("attr_description"))]
 
 
+def stereotype_tags(session, entries: list[tuple[str, str | None]]) -> set[str]:
+    """Tag names the catalogue defines for these stereotypes (``stereotype_names`` entries); unresolved ones add none."""
+    names: set[str] = set()
+    for name, fqname in entries:
+        try:
+            resolved = session.catalogues.resolved(fqname or name)
+        except AmbiguousStereotype:
+            continue
+        if resolved is not None:
+            names.update(t.name for t in resolved.tags)
+    return names
+
+
 def _description(entries: list[tuple[str, str | None]]) -> str:
     parts = []
     for name, fqname in entries:
