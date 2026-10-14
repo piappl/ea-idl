@@ -137,6 +137,17 @@ def _wal_copy(nafv4_path, qea_copy):
     return path
 
 
+def test_wal_mode_first_apply_succeeds(nafv4_path, qea_copy):
+    """Opening a WAL file creates an empty -wal; that alone must not count as a change."""
+    path = _wal_copy(nafv4_path, qea_copy)
+    backend = SqlBackend.for_file(path)
+    rs = backend.load()
+    obj = _first_class(rs)
+    backend.apply(ChangeSet(updates=[Update("t_object", obj.key, {"attr_alias": (obj.values["attr_alias"], "x")})]))
+    backend.apply(ChangeSet(updates=[Update("t_object", obj.key, {"attr_alias": ("x", "y")})]))
+    assert SqlBackend.for_file(path).load().get("t_object", obj.key).values["attr_alias"] == "y"
+
+
 def test_wal_mode_external_commit_to_same_column_is_refused(nafv4_path, qea_copy):
     path = _wal_copy(nafv4_path, qea_copy)
     backend = SqlBackend.for_file(path)
