@@ -19,6 +19,7 @@ def _imported_modules(path: Path) -> set[str]:
 
 
 def test_eacore_does_not_import_upper_layers():
+    assert any(EACORE.rglob("*.py")), f"no eacore sources under {EACORE}"
     offenders = [
         f"{path.relative_to(EACORE)}: {name}"
         for path in EACORE.rglob("*.py")

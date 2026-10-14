@@ -39,3 +39,13 @@ def test_history_command(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert "3 versions, 2 diffs" in result.output
     assert (tmp_path / "summary.md").exists()
+
+
+def test_summary_counts_column_updates_not_commits():
+    from eacore.history import _summary_md
+
+    md = _summary_md(
+        {"file": "x.qea", "versions": [], "pairs": [], "column_changes": {"t_object.attr_name": 3}, "style_keys": {}}
+    )
+    assert "| column | updates |" in md
+    assert "| t_object.attr_name | 3 |" in md

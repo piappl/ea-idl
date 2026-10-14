@@ -17,6 +17,15 @@ except Exception:  # not a git checkout
     HISTORY = []
 
 
+BAD_LOAD_ISSUES = {"dangling", "unexplained", "missing_guid"}
+
+
+def _assert_meaningful_source(source):
+    """Guard against a vacuous pass: a real, cleanly loaded repository."""
+    assert len(source) > 1000
+    assert [i for i in source.issues if i.kind in BAD_LOAD_ISSUES] == []
+
+
 @pytest.fixture
 def version(tmp_path):
     def _version(index: int) -> Path:
@@ -28,6 +37,7 @@ def version(tmp_path):
 
 def test_roundtrip_current_file_with_new_ids(tmp_path):
     source, rebuilt = roundtrip(NAFV4, DATA / "empty.qea", tmp_path)
+    _assert_meaningful_source(source)
     assert rebuilt.same_records(source)
     with sqlite3.connect(tmp_path / "roundtrip.qea") as con:
         assert con.execute("select min(Object_ID) from t_object").fetchone()[0] > 100000
@@ -37,6 +47,7 @@ def test_roundtrip_current_file_with_new_ids(tmp_path):
 @pytest.mark.parametrize("index", range(len(HISTORY)))
 def test_roundtrip_every_version(index, version, tmp_path):
     source, rebuilt = roundtrip(version(index), DATA / "empty.qea", tmp_path / "rt")
+    _assert_meaningful_source(source)
     assert rebuilt.same_records(source), HISTORY[index]
 
 

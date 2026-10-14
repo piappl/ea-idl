@@ -123,7 +123,7 @@ def _summary_md(summary: dict) -> str:
     for p in summary["pairs"]:
         tables = ", ".join(f"{t} {dict(c)}" for t, c in p["tables"].items())
         lines.append(f"| {p['sha'][:8]} | {p['subject']} | {p['changes']} | {p['diff_apply']} | {tables} |")
-    lines += ["", "## Most changed columns", "", "| column | commits |", "|---|---|"]
+    lines += ["", "## Most changed columns", "", "| column | updates |", "|---|---|"]
     lines += [f"| {c} | {n} |" for c, n in list(summary["column_changes"].items())[:40]]
     lines += ["", "## Style keys seen", ""]
     lines += [f"- `{name}`: {', '.join(keys) or '-'}" for name, keys in summary["style_keys"].items()]
