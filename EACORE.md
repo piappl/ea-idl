@@ -1,7 +1,7 @@
 # eacore
 
 Lossless, GUID-keyed access to Enterprise Architect `.qea`/`.qeax` repositories, independent of EA.
-Foundation for editing models outside EA (see `docs/superpowers/specs/` locally for the design).
+Foundation for editing models outside EA.
 
 ## Commands
 

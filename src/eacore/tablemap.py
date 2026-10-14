@@ -1,6 +1,5 @@
 """Declarative map of EA tables: identity, references and ownership.
 
-Facts and citations: docs/superpowers/specs/2026-10-14-eacore-reference-map.md.
 Rule of thumb: EA's data is ground truth. When an EA-made file breaks a rule, the rule is wrong.
 """
 
