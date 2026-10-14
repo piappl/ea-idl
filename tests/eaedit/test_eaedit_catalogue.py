@@ -76,3 +76,41 @@ def test_load_catalogues_dispatch(tmp_path, mini_mdg_path, nafv4_path):
 def test_load_catalogues_infers_from_given_model():
     assert load_catalogues([], _model(), infer_from_model=True).lookup("P::S")
     assert load_catalogues([], _model()).fqnames() == []
+
+
+def test_infer_attribute_connector_tags_and_odd_xrefs():
+    rs = RecordSet()
+    attr, conn, cls = (f"{{B0000000-0000-0000-0000-00000000000{i}}}" for i in (1, 2, 3))
+    rs.add(Record("t_attribute", attr, {"attr_ea_guid": attr}))
+    rs.add(Record("t_connector", conn, {"attr_ea_guid": conn, "attr_connector_type": "Association"}))
+    rs.add(Record("t_object", cls, {"attr_ea_guid": cls, "attr_object_type": "Class"}))
+    rs.add(
+        Record(
+            "t_attributetag",
+            "ta",
+            {"attr_elementid": Ref("t_attribute", attr), "attr_property": "ak", "attr_value": "av"},
+        )
+    )
+    rs.add(
+        Record(
+            "t_connectortag",
+            "tc",
+            {"attr_elementid": Ref("t_connector", conn), "attr_property": "ck", "attr_value": None},
+        )
+    )
+
+    def xref(key, client, text):
+        rs.add(Record("t_xref", key, {"attr_name": "Stereotypes", "attr_client": client, "attr_description": text}))
+
+    xref("x1", attr, "@STEREO;Name=A;FQName=P::A;@ENDSTEREO;")
+    xref("x2", conn, "@STEREO;Name=C;FQName=P::C;@ENDSTEREO;")
+    xref("x3", cls, "@STEREO;Name=Bare;@ENDSTEREO;")
+    xref("x4", cls, "garbage")
+
+    cats = {c.profile: {s.name: s for s in c.stereotypes} for c in infer(rs)}
+    assert set(cats) == {"P", "(unknown)"}
+    assert cats["P"]["A"].applies_to == ["Attribute"]
+    assert [(t.name, t.default) for t in cats["P"]["A"].tags] == [("ak", "av")]
+    assert cats["P"]["C"].applies_to == ["Association"]
+    assert [(t.name, t.default) for t in cats["P"]["C"].tags] == [("ck", "")]
+    assert list(cats["(unknown)"]) == ["Bare"]
