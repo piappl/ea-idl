@@ -1,5 +1,6 @@
 """Command line interface: ``eacore``."""
 
+import json
 import tempfile
 from pathlib import Path
 
@@ -50,3 +51,37 @@ def diff_command(paths, revs, fmt, ignore_volatile) -> None:
 def textconv(path) -> None:
     """Print a stable text form of a repository (for git's diff.<driver>.textconv)."""
     click.echo(dump_text(load_file(path)), nl=False)
+
+
+@cli.command("check")
+@click.argument("path", type=click.Path(exists=True, dir_okay=False))
+@click.option("--format", "fmt", type=FORMAT, default="text", show_default=True)
+def check_command(path, fmt) -> None:
+    """Check repository integrity; exit status 1 if any error is found."""
+    from eacore.integrity import check
+    from eacore.records import key_str
+
+    issues = check(load_file(path))
+    if fmt == "json":
+        click.echo(
+            json.dumps(
+                [
+                    {
+                        "severity": i.severity,
+                        "rule": i.rule,
+                        "ref": key_str(i.ref) if i.ref else None,
+                        "message": i.message,
+                    }
+                    for i in issues
+                ],
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+    else:
+        for issue in issues:
+            click.echo(f"{issue.severity:7} {issue.rule:20} {issue.message}")
+        errors = sum(i.severity == "error" for i in issues)
+        click.echo(f"{errors} error(s), {len(issues) - errors} warning(s)")
+    if any(i.severity == "error" for i in issues):
+        raise SystemExit(1)
