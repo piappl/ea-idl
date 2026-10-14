@@ -1,8 +1,10 @@
+import sqlite3
 from datetime import datetime
 
 import pytest
 
 from eacore.backends.sql import load_file
+from eacore.catalogue import Catalogue, Constraint, Source, StereotypeDef
 from eacore.integrity import check
 from eacore.records import Ref
 from eaedit import InvalidOperationError, ScopeError, Session
@@ -123,8 +125,6 @@ def test_connector_end_warning(nafv4_path, qea_copy, mini_mdg_path):
 
 def test_connector_end_follows_generalization(nafv4_path, qea_copy, tmp_path, mini_mdg_path):
     # A stereotype specialising the required one satisfies the constraint.
-    from eacore.catalogue import Catalogue, Source, StereotypeDef
-
     yaml_path = tmp_path / "x.yaml"
     special = StereotypeDef(name="Special", applies_to=["Class"], generalizes=["MINI::Thing"])
     Catalogue(profile="X", source=Source(kind="yaml"), stereotypes=[special]).save_yaml(yaml_path)
@@ -190,5 +190,89 @@ def test_delete_connector_cascade(nafv4_path, qea_copy):
     assert not [t for t in session.working.records("t_connectortag") if t.values["attr_elementid"] == connector]
     assert not [x for x in session.working.records("t_xref") if x.values["attr_client"] == IMPLEMENTS]
     assert _links(session.working, IMPLEMENTS) == []
+    session.commit()
+    assert _errors(load_file(path), baseline) == []
+
+
+def _yaml(tmp_path, profile, *stereotypes):
+    path = tmp_path / f"{profile}.yaml"
+    Catalogue(profile=profile, source=Source(kind="yaml"), stereotypes=list(stereotypes)).save_yaml(path)
+    return path
+
+
+def test_connect_package_end(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    guid = session.connect(source="Model::core::message", target=MESSAGE, type="Dependency").guid
+    start = session.working.resolve(session.working.get("t_connector", guid).values["attr_start_object_id"])
+    assert start.values["attr_object_type"] == "Package" and start.values["attr_name"] == "message"
+
+
+def test_connect_stereotype_with_several_relationships_needs_type(nafv4_path, qea_copy, tmp_path):
+    both = StereotypeDef(name="Both", applies_to=["Dependency", "Association"])
+    session = _open(qea_copy(nafv4_path), catalogues=[_yaml(tmp_path, "P", both)], infer=False)
+    with pytest.raises(InvalidOperationError, match="pass type="):
+        session.connect(source=MESSAGE, target=MEASUREMENT, stereotype="P::Both")
+    guid = session.connect(source=MESSAGE, target=MEASUREMENT, stereotype="P::Both", type="Association").guid
+    assert session.working.get("t_connector", guid).values["attr_connector_type"] == "Association"
+
+
+def test_connect_direction_from_stereotype(nafv4_path, qea_copy, tmp_path):
+    flow = StereotypeDef(name="Flow", applies_to=["Dependency"], properties={"direction": "Unspecified"})
+    session = _open(qea_copy(nafv4_path), catalogues=[_yaml(tmp_path, "P", flow)], infer=False)
+    guid = session.connect(source=MESSAGE, target=MEASUREMENT, stereotype="P::Flow").guid
+    assert session.working.get("t_connector", guid).values["attr_direction"] == "Unspecified"
+    guid = session.connect(source=MESSAGE, target=MEASUREMENT, stereotype="P::Flow", direction="Bi-Directional").guid
+    assert session.working.get("t_connector", guid).values["attr_direction"] == "Bi-Directional"
+
+
+def test_connect_type_outside_stereotype_warns(nafv4_path, qea_copy, mini_mdg_path):
+    session = _open(qea_copy(nafv4_path), catalogues=[mini_mdg_path])
+    result = session.connect(source=MESSAGE, target=MEASUREMENT, stereotype="MINI::Link", type="Association")
+    assert session.working.get("t_connector", result.guid).values["attr_connector_type"] == "Association"
+    assert _codes(result, "wrong-base-type")
+
+
+def test_connector_end_bare_target_prefers_own_profile(nafv4_path, qea_copy, tmp_path):
+    # "Thing" is in profiles P and Q; P::Link's bare target means P::Thing, not an ambiguity.
+    p_thing = StereotypeDef(name="Thing", applies_to=["Class"])
+    link = StereotypeDef(
+        name="Link",
+        applies_to=["Dependency"],
+        constraints=[Constraint(role="client", target="Thing"), Constraint(role="supplier", target="Thing")],
+    )
+    paths = [_yaml(tmp_path, "P", p_thing, link), _yaml(tmp_path, "Q", StereotypeDef(name="Thing"))]
+    session = _open(qea_copy(nafv4_path), catalogues=paths, infer=False)
+    t1 = session.create_element(package="Model::core", name="T1", stereotype="P::Thing").guid
+    t2 = session.create_element(package="Model::core", name="T2", stereotype="P::Thing").guid
+    assert _codes(session.connect(source=t1, target=t2, stereotype="P::Link"), "connector-end") == []
+    q = session.create_element(package="Model::core", name="Q1", stereotype="Q::Thing").guid
+    assert len(_codes(session.connect(source=q, target=t2, stereotype="P::Link"), "connector-end")) == 1
+
+
+def test_reconnect_to_object_without_duid_drops_link(nafv4_path, qea_copy):
+    path = qea_copy(nafv4_path)
+    with sqlite3.connect(path) as db:
+        # MessageTypeEnum's object on diagram 'header' (id 9) without its DUID.
+        db.execute("UPDATE t_diagramobjects SET ObjectStyle='NSL=0;' WHERE Diagram_ID=9 AND Object_ID=39")
+    session = _open(path)
+    result = session.reconnect(conn=MESSAGE_HEADER_LINK, target=MESSAGE_TYPE)
+    assert _links(session.working, MESSAGE_HEADER_LINK) == []
+    assert _codes(result, "diagram-link-dropped")
+
+
+def test_delete_connector_removes_guid_owned_rows(nafv4_path, qea_copy):
+    path = qea_copy(nafv4_path)
+    baseline = _issues(load_file(nafv4_path))
+    tagged = "{0B5C1E2A-1111-4222-8333-944455556666}"
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO t_taggedvalue (PropertyID, ElementID, BaseClass, TagValue) VALUES (?, ?, 'ASSOCIATION_SOURCE', 'x')",
+            (tagged, IMPLEMENTS),
+        )
+    session = _open(path)
+    assert session.working.get("t_taggedvalue", tagged) is not None
+    result = session.delete_connector(conn=IMPLEMENTS)
+    assert session.working.get("t_taggedvalue", tagged) is None
+    assert not _codes(result, "reference-cleared")
     session.commit()
     assert _errors(load_file(path), baseline) == []

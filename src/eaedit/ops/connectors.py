@@ -58,6 +58,12 @@ def _lookup(session, name: str) -> str | None:
         return None
 
 
+def _qualify(session, name: str, profile: str) -> str | None:
+    """Catalogue name of ``name``; a bare name means ``profile`` first, as ``CatalogueSet.resolved`` reads it."""
+    found = _lookup(session, f"{profile}::{name}") if "::" not in name else None
+    return found or _lookup(session, name)
+
+
 def _stereotype_closure(session, element: Record) -> set[str]:
     """Names of the element's stereotypes and every stereotype they specialise (``generalizes``)."""
     names = [fqname or name for name, fqname in stereotype_names(session, element)]
@@ -72,9 +78,7 @@ def _stereotype_closure(session, element: Record) -> set[str]:
         found.add(fq)
         profile = fq.rpartition("::")[0]
         for parent in session.catalogues.stereotype(fq).generalizes:
-            # A bare parent means the same profile first, as CatalogueSet.resolved reads it.
-            ancestor = _lookup(session, f"{profile}::{parent}") if "::" not in parent else None
-            ancestor = ancestor or _lookup(session, parent)
+            ancestor = _qualify(session, parent, profile)
             if ancestor is not None:
                 todo.append(ancestor)
     return found
@@ -105,7 +109,7 @@ def check_ends(session, connector: Record) -> None:
             if side not in closures:
                 closures[side] = _stereotype_closure(session, ends[side])
             have = closures[side]
-            if any(t in have or _lookup(session, t) in have for t in targets):
+            if any(t in have or _qualify(session, t, profile) in have for t in targets):
                 continue
             element = ends[side].values.get("attr_name")
             stereotypes = ", ".join(n for n, _ in stereotype_names(session, ends[side])) or "no stereotype"
@@ -199,10 +203,14 @@ def reconnect(session, conn: str, source: str | None = None, target: str | None 
             # EA hides a link whose end element is not on the diagram; the row would only hold a stale DUID.
             session.drop("t_diagramlinks", link.key)
             continue
-        for style_key, obj in shown.items():
-            new = duid(obj.values.get("attr_objectstyle"))
-            if new:
-                style = re.sub(rf"(?<![A-Za-z]){style_key}=[^;]*", f"{style_key}={new}", style)
+        duids = {style_key: duid(obj.values.get("attr_objectstyle")) for style_key, obj in shown.items()}
+        if not all(duids.values()):
+            # Without a DUID the link cannot name its new end; drop it rather than keep the old end's DUID.
+            session.drop("t_diagramlinks", link.key)
+            session.warn("diagram-link-dropped", "the new end's diagram object has no DUID", _guid(record))
+            continue
+        for style_key, new in duids.items():
+            style = re.sub(rf"(?<![A-Za-z]){style_key}=[^;]*", f"{style_key}={new}", style)
         if style != (link.values.get("attr_style") or ""):
             session.put(Record("t_diagramlinks", link.key, {**link.values, "attr_style": style}, link.rid))
     check_ends(session, session.working.get("t_connector", record.key))
@@ -217,8 +225,10 @@ def delete_connector(session, conn: str) -> str:
     for table, column, value in (
         ("t_connectortag", "attr_elementid", ref),
         ("t_diagramlinks", "attr_connectorid", ref),
-        # Stereotype list and other rows owned through the connector's GUID.
+        # Rows owned through the connector's GUID, as cascade_delete removes them for elements.
         ("t_xref", "attr_client", guid),
+        ("t_taggedvalue", "attr_elementid", guid),
+        ("t_document", "attr_elementid", guid),
     ):
         for row in session.working.records(table):
             if row.values.get(column) == value:
