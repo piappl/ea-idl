@@ -80,12 +80,12 @@ def test_delete_cascade_owner_from_before(before):
     bare = ChangeSet(deletes=[Delete("t_attribute", attr.key)])
     assert scope.violations(bare, before, after) == []
     extra = {("t_attribute", attr.key): attr, ("t_object", elem.key): elem}
-    assert scope.violations(bare, load_file_empty(before, attr, elem), after, extra) == []
+    assert scope.violations(bare, _without(before, attr, elem), after, extra) == []
     outside = next(r for r in before.records("t_attribute") if _owner_pkg(before, r) == B)
     assert scope.violations(ChangeSet(deletes=[Delete("t_attribute", outside.key, outside)]), before, after)
 
 
-def load_file_empty(before, attr, elem):
+def _without(before, attr, elem):
     stripped = before.copy()
     stripped.remove("t_attribute", attr.key)
     stripped.remove("t_object", elem.key)
@@ -114,7 +114,7 @@ def test_new_subpackage_inside_focus_allowed(before):
     twin_src = next(r for r in before.records("t_object") if r.values["attr_object_type"] == "Package")
     twin = Record(
         "t_object",
-        "{22222222-0000-0000-0000-000000000002}",
+        guid,
         {
             **twin_src.values,
             "attr_ea_guid": guid,
@@ -123,6 +123,7 @@ def test_new_subpackage_inside_focus_allowed(before):
         },
     )
     after = before.copy()
+    # EA keys the twin by its GUID as well; t_package and t_object are separate tables, so no clash.
     after.add(pkg)
     after.add(twin)
     assert scope.violations(ChangeSet(inserts=[Insert(pkg), Insert(twin)]), before, after) == []
@@ -138,3 +139,107 @@ def test_new_subpackage_inside_focus_allowed(before):
 def test_unknown_policy():
     with pytest.raises(InvalidOperationError):
         Scope([], "bogus")
+
+
+CORE = "{753A4DFC-7876-4b00-BB5A-6274AD3817C3}"
+L7 = "{E39189FC-1B6D-4472-8701-39724501EBE3}"
+
+
+def _move_package(before, key, new_parent):
+    """(after, changes) for moving a package and its twin under ``new_parent``."""
+    after = before.copy()
+    old = before.get("t_package", key).values["attr_parent_id"]
+    new = Ref("t_package", new_parent)
+    after.get("t_package", key).values["attr_parent_id"] = new
+    updates = [Update("t_package", key, {"attr_parent_id": (old, new)})]
+    twin = next(r for r in after.records("t_object") if r.values["attr_pdata1"] == Ref("t_package", key))
+    old_pkg = twin.values["attr_package_id"]
+    twin.values["attr_package_id"] = new
+    updates.append(Update("t_object", twin.key, {"attr_package_id": (old_pkg, new)}))
+    return after, ChangeSet(updates=updates)
+
+
+def test_package_move_out_in_and_focus_root(before):
+    core = Scope([Ref("t_package", CORE)], "package")
+    out, changes = _move_package(before, A, L7)  # message: core -> L7
+    assert core.violations(changes, before, out)
+    inn, changes = _move_package(before, L7, CORE)  # L7: outside -> core
+    assert core.violations(changes, before, inn)
+    root = Scope([Ref("t_package", A)], "package")
+    under, changes = _move_package(before, A, B)  # the focus root itself
+    assert root.violations(changes, before, under)
+    # a move wholly inside the focus is fine
+    sub = Scope([Ref("t_package", CORE)], "package")
+    ok, changes = _move_package(before, A, B)
+    assert sub.violations(changes, before, ok) == []
+
+
+def _xrefs(rs, table):
+    for x in rs.records("t_xref"):
+        guid = x.values.get("attr_client")
+        if isinstance(guid, str) and any(r.table == table for r in rs.by_guid(guid)):
+            yield x
+
+
+def _xref_owned_by(rs, table, pkg):
+    return next(x for x in _xrefs(rs, table) if _owner_pkg(rs, x) == pkg)
+
+
+def test_guid_owned_rows(before):
+    scope = Scope([Ref("t_package", A)], "package")
+    for table in ("t_object", "t_connector", "t_attribute"):
+        by_owner = {}
+        for x in _xrefs(before, table):
+            owners, _ = scope.owners(x.table, x, before.resolve, before.by_guid)
+            by_owner.setdefault(frozenset(owners), x)
+        inside = by_owner.get(frozenset({A}))
+        outside = next((x for o, x in by_owner.items() if A not in o and o), None)
+        for rec, ok in ((inside, True), (outside, False)):
+            if rec is None:
+                continue
+            problems = scope.violations(ChangeSet(inserts=[Insert(rec)]), before, before)
+            assert (problems == []) is ok, (table, rec.key, problems)
+    pkg_xref = next(x for x in _xrefs(before, "t_package"))
+    assert (
+        Scope([Ref("t_package", _owner_pkg(before, pkg_xref))], "package").violations(
+            ChangeSet(inserts=[Insert(pkg_xref)]), before, before
+        )
+        == []
+    )
+
+
+def test_connector_children_connected_vs_package(before):
+    conn = _connector(before, A, B)
+    tag = Record(
+        "t_connectortag",
+        "{33333333-0000-0000-0000-000000000001}",
+        {"attr_elementid": Ref("t_connector", conn.key), "attr_property": "p", "attr_value": "v"},
+    )
+    xref = Record(
+        "t_xref",
+        "{33333333-0000-0000-0000-000000000002}",
+        {"attr_client": conn.key, "attr_ea_guid": "{33333333-0000-0000-0000-000000000002}"},
+    )
+    after = before.copy()
+    after.add(tag)
+    after.add(xref)
+    changes = ChangeSet(inserts=[Insert(tag), Insert(xref)])
+    assert Scope([Ref("t_package", A)], "connected").violations(changes, before, after) == []
+    assert len(Scope([Ref("t_package", A)], "package").violations(changes, before, after)) == 2
+
+
+def test_guid_owned_cascade_only_in_extra_before(before):
+    scope = Scope([Ref("t_package", A)], "package")
+    elem = next(
+        e
+        for e in before.records("t_object")
+        if e.values["attr_package_id"] == Ref("t_package", A)
+        and any(x.values["attr_client"] == e.key for x in before.records("t_xref"))
+    )
+    xref = next(x for x in before.records("t_xref") if x.values["attr_client"] == elem.key)
+    gone = before.copy()
+    gone.remove("t_xref", xref.key)
+    gone.remove("t_object", elem.key)
+    changes = ChangeSet(deletes=[Delete("t_xref", xref.key, xref)])
+    assert scope.violations(changes, gone, gone) != []  # owner unknown: fails closed
+    assert scope.violations(changes, gone, gone, {("t_object", elem.key): elem}) == []

@@ -16,6 +16,22 @@ Lookup = Callable[[Ref], Record | None]
 ByGuid = Callable[[str], list[Ref]]
 
 
+def _twin_package(record: Record) -> Key | None:
+    """Package key of a Package-type ``t_object`` twin, else None."""
+    if record.table == "t_object" and record.values.get("attr_object_type") == "Package":
+        twin = record.values.get("attr_pdata1")
+        if isinstance(twin, Ref) and twin.table == "t_package":
+            return twin.key
+    return None
+
+
+def _parent_key(record: Record) -> Key | None:
+    """Parent package of a package row or its twin (the destination of a move)."""
+    column = "attr_parent_id" if record.table == "t_package" else "attr_package_id"
+    value = record.values.get(column)
+    return value.key if isinstance(value, Ref) else None
+
+
 class Scope:
     def __init__(self, focus: Iterable[Ref], policy: str) -> None:
         if policy not in POLICIES:
@@ -53,6 +69,9 @@ class Scope:
             seen.add((record.table, record.key))
             if record.table == "t_package":
                 return record.key
+            twin = _twin_package(record)
+            if twin is not None:
+                return twin
             spec = EA_TABLEMAP.spec(record.table)
             if spec.owner is None:
                 return None
@@ -71,10 +90,9 @@ class Scope:
         """``(t_package keys owning the row, reached through a connector)``."""
         if table == "t_package":
             return {record.key}, False
-        if table == "t_object" and record.values.get("attr_object_type") == "Package":
-            twin = record.values.get("attr_pdata1")
-            if isinstance(twin, Ref) and twin.table == "t_package":
-                return {twin.key}, False
+        twin = _twin_package(record)
+        if twin is not None:
+            return {twin}, False
         seen: set[tuple[str, Key]] = set()
         current: Record | None = record
         while current is not None and (current.table, current.key) not in seen:
@@ -86,9 +104,10 @@ class Scope:
                 for column in ("attr_start_object_id", "attr_end_object_id"):
                     end = current.values.get(column)
                     key = self._package_of(lookup(end) if isinstance(end, Ref) else None, lookup, by_guid)
-                    if key is not None:
-                        ends.add(key)
-                return (ends, True) if ends else (set(), False)
+                    if key is None:
+                        return set(), False  # fail closed: an unresolvable end cannot be proven inside
+                    ends.add(key)
+                return ends, True
             spec = EA_TABLEMAP.spec(current.table)
             if spec.owner is None:
                 return set(), False
@@ -121,7 +140,8 @@ class Scope:
     ) -> list[str]:
         if self.policy == "off" or not self.focus:
             return []
-        inside = self.focus_packages(before, after)
+        inside_before = self.focus_packages(before)
+        inside_after = self.focus_packages(after)
 
         def from_before(ref: Ref) -> Record | None:
             return before.resolve(ref) or extra_before.get((ref.table, ref.key))
@@ -131,7 +151,11 @@ class Scope:
 
         def guids(*sets: RecordSet) -> ByGuid:
             def lookup(guid: str) -> list[Ref]:
-                return [ref for rs in sets for ref in rs.by_guid(guid)]
+                found = [ref for rs in sets for ref in rs.by_guid(guid)]
+                for (table, key), rec in extra_before.items():
+                    if guid in (rec.values.get("attr_ea_guid"), key):
+                        found.append(Ref(table, key))
+                return found
 
             return lookup
 
@@ -145,21 +169,40 @@ class Scope:
 
         problems: list[str] = []
 
-        def check(verb: str, table: str, key: Key, record: Record | None, lookup: Lookup, by_guid: ByGuid, side=""):
+        def check(
+            verb: str,
+            table: str,
+            key: Key,
+            record: Record | None,
+            lookup: Lookup,
+            by_guid: ByGuid,
+            inside: set,
+            side="",
+            moved=False,
+        ):
             owners, via = self.owners(table, record, lookup, by_guid) if record else (set(), False)
+            # A package's own key is always "inside" when it is in the focus, so a move is judged by its parent.
+            parent = (
+                _parent_key(record) if record and moved and (table == "t_package" or _twin_package(record)) else None
+            )
+            if parent is not None:
+                owners = owners | {parent}
             if not self._allowed(owners, via, inside):
                 problems.append(f"{verb} {table} {key_str(key)} {side}owned by {names(owners)} is outside the focus")
 
         for ins in changes.inserts:
             rec = after.get(ins.record.table, ins.record.key) or ins.record
-            check("insert", rec.table, rec.key, rec, from_after, guids(after, before))
+            check("insert", rec.table, rec.key, rec, from_after, guids(after, before), inside_after)
         for upd in changes.updates:
             old, new = before.get(upd.table, upd.key), after.get(upd.table, upd.key)
+            moved = bool({"attr_parent_id", "attr_package_id"} & set(upd.changes))
             if old is not None:
-                check("update", upd.table, upd.key, old, from_before, guids(before), "(before) ")
+                check("update", upd.table, upd.key, old, from_before, guids(before), inside_before, "(before) ", moved)
             if new is not None:
-                check("update", upd.table, upd.key, new, from_after, guids(after, before), "(after) ")
+                check(
+                    "update", upd.table, upd.key, new, from_after, guids(after, before), inside_after, "(after) ", moved
+                )
         for dele in changes.deletes:
             rec = dele.record or before.get(dele.table, dele.key) or extra_before.get((dele.table, dele.key))
-            check("delete", dele.table, dele.key, rec, from_after, guids(after, before))
+            check("delete", dele.table, dele.key, rec, from_after, guids(after, before), inside_before)
         return problems
