@@ -538,6 +538,19 @@ def spellcheck(config_obj, debug):
     click.echo(f"\nFound {len(issues)} spelling issue(s) across {unique_items} item(s)")
 
 
+@click.command()
+@click.option("--config", default="config.yaml", help="Configuration file.")
+@click.option("--debug", default=False, is_flag=True, help="Enable debug.")
+@click.option("--output", "-o", required=True, help="Output catalogue YAML file.")
+@setup_command
+def catalogue(config_obj, debug, output):
+    """Write the IDL stereotype catalogue (eacore catalogue format)."""
+    from eaidl.catalogue import idl_catalogue
+
+    idl_catalogue(config_obj).save_yaml(output)
+    click.echo(f"Wrote {output}")
+
+
 cli.add_command(run)
 cli.add_command(change)
 cli.add_command(diagram)
@@ -549,6 +562,7 @@ cli.add_command(import_notes)
 cli.add_command(export_model)
 cli.add_command(export_diagrams)
 cli.add_command(spellcheck)
+cli.add_command(catalogue)
 
 if __name__ == "__main__":
     cli()
