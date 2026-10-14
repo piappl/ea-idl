@@ -12,7 +12,10 @@ from eacore.changes import ChangeSet
 from eacore.naming import column_key
 from eacore.records import Key, LoadIssue, Record, RecordSet, key_str
 from eacore.tablemap import EA_TABLEMAP, ContentKey, GuidKey, Row, TableMap
-from eacore.translate import IdMaps, RidMaps, candidate_key, decode_row, encode_value
+from eacore.translate import IdMaps, RidMaps, UnresolvedReferenceError, candidate_key, decode_row, encode_value
+
+#: Placeholder for an old value that refers to a record unknown at load; equal to no database value.
+_STALE = object()
 
 
 class NotAnEaRepositoryError(ValueError):
@@ -75,7 +78,15 @@ class SqlBackend:
         return Path(self._sa_url.database)
 
     def _file_hash(self) -> str | None:
-        return hashlib.sha256(self.path.read_bytes()).hexdigest() if self.path else None
+        """Hash of the database file plus its ``-wal`` file, so commits still in the WAL count too."""
+        if not self.path:
+            return None
+        digest = hashlib.sha256(self.path.read_bytes())
+        wal = self.path.with_name(self.path.name + "-wal")
+        if wal.is_file():
+            digest.update(b"\0-wal\0")
+            digest.update(wal.read_bytes())
+        return digest.hexdigest()
 
     def _reflect(self) -> None:
         metadata = sa.MetaData()
@@ -174,8 +185,9 @@ class SqlBackend:
     def apply(self, changes: ChangeSet) -> None:
         """Write ``changes`` in one transaction, touching only affected rows and columns.
 
-        Refuses if another program holds a lock, or if the file changed since ``load()`` (checked
-        after the write lock is acquired, so no save can slip in between check and write).
+        Refuses if another program holds a lock, if the file (or its ``-wal``) changed since ``load()``,
+        or if any updated row no longer holds the update's old values or any deleted row is gone.
+        All checks run after the write lock is acquired, so no save can slip in between check and write.
         IDs for new rows are allocated before anything is written, so references between new
         rows resolve; EA's schema has no foreign keys, so statement order does not matter.
         """
@@ -201,6 +213,7 @@ class SqlBackend:
                 for delete in changes.deletes:
                     info = self._info(delete.table)
                     rid = self._rids[delete.table][delete.key]
+                    self._verify_row(conn, info, rid, {}, f"{delete.table} {key_str(delete.key)}")
                     conn.execute(sa.delete(info.table).where(self._rid_column(info) == rid))
                     ridmaps[delete.table].pop(delete.key, None)
                 for update in changes.updates:
@@ -211,6 +224,11 @@ class SqlBackend:
                         for column, (_old, new) in update.changes.items()
                     }
                     rid = self._rids[update.table][update.key]
+                    old = {
+                        self._column(info, column): self._encode_old(spec, column, old)
+                        for column, (old, _new) in update.changes.items()
+                    }
+                    self._verify_row(conn, info, rid, old, f"{update.table} {key_str(update.key)}")
                     conn.execute(sa.update(info.table).where(self._rid_column(info) == rid).values(values))
                 for insert in changes.inserts:
                     record = insert.record
@@ -231,6 +249,29 @@ class SqlBackend:
             raise
         self._rids = ridmaps
         self._hash = self._file_hash()
+
+    def _encode_old(self, spec, column: str, value):
+        """Encode an update's old value against the IDs seen at load; a stale reference cannot match."""
+        try:
+            return encode_value(spec, column, value, self._rids)
+        except UnresolvedReferenceError:
+            return _STALE
+
+    def _verify_row(self, conn, info: _TableInfo, rid: int, expected: dict[str, object], what: str) -> None:
+        """Raise ConcurrentModificationError unless row ``rid`` exists and holds ``expected`` (raw values)."""
+        columns = [info.table.c[name] for name in expected]
+        row = conn.execute(
+            sa.select(sa.literal(1), *columns).select_from(info.table).where(self._rid_column(info) == rid)
+        ).first()
+        if row is None:
+            raise ConcurrentModificationError(f"{self.path}: {what} no longer exists")
+        for (name, value), current in zip(expected.items(), row[1:]):
+            # SQLite column affinity may hand back "12" for a value written as 12, so compare text too.
+            same = current == value or (current is not None and value is not None and str(current) == str(value))
+            if not same:
+                raise ConcurrentModificationError(
+                    f"{self.path}: {what}.{name} is {current!r}, expected {value!r}; changed since it was loaded"
+                )
 
     def _unique_keys(self, rs: RecordSet, table: str, candidates: list[tuple[int, Key | None]]) -> list[Key]:
         """Make keys unique: missing GUIDs and duplicates get a suffix and are reported."""

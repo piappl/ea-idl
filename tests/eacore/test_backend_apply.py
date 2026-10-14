@@ -128,3 +128,87 @@ def test_hash_is_checked_under_the_write_lock(nafv4_path, qea_copy, monkeypatch)
     other = SqlBackend.for_file(path).load().get("t_object", obj.key)
     assert other.values["attr_name"] == "saved by EA"
     assert other.values["attr_alias"] == obj.values["attr_alias"]
+
+
+def _wal_copy(nafv4_path, qea_copy):
+    path = qea_copy(nafv4_path)
+    with sqlite3.connect(path) as con:
+        assert con.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
+    return path
+
+
+def test_wal_mode_external_commit_to_same_column_is_refused(nafv4_path, qea_copy):
+    path = _wal_copy(nafv4_path, qea_copy)
+    backend = SqlBackend.for_file(path)
+    rs = backend.load()
+    obj = _first_class(rs)
+    other = sqlite3.connect(path)  # stays open, so its commit stays in the -wal file
+    try:
+        other.execute("update t_object set Name = 'saved by EA' where Object_ID = ?", (obj.rid,))
+        other.commit()
+        with pytest.raises(ConcurrentModificationError):
+            backend.apply(
+                ChangeSet(updates=[Update("t_object", obj.key, {"attr_name": (obj.values["attr_name"], "mine")})])
+            )
+    finally:
+        other.close()
+    assert SqlBackend.for_file(path).load().get("t_object", obj.key).values["attr_name"] == "saved by EA"
+
+
+def test_wal_mode_external_commit_elsewhere_is_refused(nafv4_path, qea_copy):
+    """The whole-file guard covers the -wal file too, not only the main database file."""
+    path = _wal_copy(nafv4_path, qea_copy)
+    backend = SqlBackend.for_file(path)
+    rs = backend.load()
+    obj = _first_class(rs)
+    other = sqlite3.connect(path)
+    try:
+        other.execute("update t_object set Name = 'saved by EA' where Object_ID <> ?", (obj.rid,))
+        other.commit()
+        with pytest.raises(ConcurrentModificationError):
+            backend.apply(
+                ChangeSet(updates=[Update("t_object", obj.key, {"attr_alias": (obj.values["attr_alias"], "x")})])
+            )
+    finally:
+        other.close()
+    assert SqlBackend.for_file(path).load().get("t_object", obj.key).values["attr_alias"] == obj.values["attr_alias"]
+
+
+def test_stale_old_value_is_refused_and_nothing_written(nafv4_path, qea_copy):
+    path = qea_copy(nafv4_path)
+    backend = SqlBackend.for_file(path)
+    rs = backend.load()
+    obj = _first_class(rs)
+    before = path.read_bytes()
+    stale = ChangeSet(
+        updates=[
+            Update("t_object", obj.key, {"attr_alias": (obj.values["attr_alias"], "x")}),
+            Update("t_object", obj.key, {"attr_name": ("not the current name", "mine")}),
+        ]
+    )
+    with pytest.raises(ConcurrentModificationError):
+        backend.apply(stale)
+    assert path.read_bytes() == before
+
+
+def test_stale_old_ref_value_is_refused(nafv4_path, qea_copy):
+    path = qea_copy(nafv4_path)
+    backend = SqlBackend.for_file(path)
+    rs = backend.load()
+    obj = _first_class(rs)
+    other_pkg = next(p.key for p in rs.records("t_package") if Ref("t_package", p.key) != obj.values["attr_package_id"])
+    old = Ref("t_package", other_pkg)
+    with pytest.raises(ConcurrentModificationError):
+        backend.apply(ChangeSet(updates=[Update("t_object", obj.key, {"attr_package_id": (old, old)})]))
+
+
+def test_delete_of_vanished_row_is_refused(nafv4_path, qea_copy):
+    path = qea_copy(nafv4_path)
+    backend = SqlBackend.for_file(path)
+    rs = backend.load()
+    obj = _first_class(rs)
+    with sqlite3.connect(path) as con:
+        con.execute("delete from t_object where Object_ID = ?", (obj.rid,))
+    backend._hash = backend._file_hash()  # isolate the row check from the whole-file guard
+    with pytest.raises(ConcurrentModificationError):
+        backend.apply(ChangeSet(deletes=[Delete("t_object", obj.key)]))
