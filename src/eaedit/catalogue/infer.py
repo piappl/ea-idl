@@ -2,7 +2,7 @@
 
 from collections import Counter, defaultdict
 
-from eacore.catalogue import Catalogue, Source, StereotypeDef, TagDef
+from eacore.catalogue import UNKNOWN_PROFILE, Catalogue, Source, StereotypeDef, TagDef
 from eacore.embedded import StereoFormatError, parse_stereotypes
 from eacore.records import Ref, RecordSet
 
@@ -13,7 +13,6 @@ _TARGETS = {
     "t_connector": ("attr_connector_type", "t_connectortag", "attr_elementid"),
     "t_operation": ("Operation", None, None),
 }
-UNKNOWN_PROFILE = "(unknown)"
 
 
 def _target(rs: RecordSet, guid: str) -> Ref | None:

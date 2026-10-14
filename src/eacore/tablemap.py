@@ -288,6 +288,60 @@ EA_TABLEMAP = TableMap(
             rules=(RefRule("attr_object_id", "t_object"),),
             owner="attr_object_id",
         ),
+        # An element's details, keyed by the columns of EA's unique index on each table. t_objectrequires has none
+        # besides its surrogate ReqID, so a requirement is keyed by its element, name and type.
+        *(
+            TableSpec(
+                table,
+                NaturalKey(("attr_object_id", *columns)),
+                rules=(RefRule("attr_object_id", "t_object"),),
+                owner="attr_object_id",
+            )
+            for table, columns in (
+                ("t_objectrequires", ("attr_requirement", "attr_reqtype")),
+                ("t_objectscenarios", ("attr_scenario",)),
+                ("t_objectrisks", ("attr_risk",)),
+                ("t_objecttests", ("attr_test", "attr_testclass")),
+                ("t_objectproblems", ("attr_problem", "attr_problemtype")),
+                ("t_objectfiles", ("attr_filename",)),
+                ("t_objecteffort", ("attr_effort",)),
+                ("t_objectmetrics", ("attr_metric",)),
+                ("t_objectresource", ("attr_resource", "attr_role")),
+                ("t_objecttrx", ("attr_trx", "attr_trxtype")),
+                ("t_method", ("attr_name",)),
+            )
+        ),
+        TableSpec(
+            "t_attributeconstraints",
+            # ID is the constrained attribute; Object_ID its element.
+            NaturalKey(("attr_id", "attr_constraint")),
+            rules=(RefRule("attr_id", "t_attribute"), RefRule("attr_object_id", "t_object")),
+            owner="attr_id",
+        ),
+        TableSpec(
+            "t_operationpres",
+            NaturalKey(("attr_operationid", "attr_precondition")),
+            rules=(RefRule("attr_operationid", "t_operation"),),
+            owner="attr_operationid",
+        ),
+        TableSpec(
+            "t_operationposts",
+            NaturalKey(("attr_operationid", "attr_postcondition")),
+            rules=(RefRule("attr_operationid", "t_operation"),),
+            owner="attr_operationid",
+        ),
+        TableSpec(
+            "t_connectorconstraint",
+            NaturalKey(("attr_connectorid", "attr_constraint")),
+            rules=(RefRule("attr_connectorid", "t_connector"),),
+            owner="attr_connectorid",
+        ),
+        TableSpec(
+            "t_roleconstraint",
+            NaturalKey(("attr_connectorid", "attr_constraint", "attr_connectorend", "attr_constrainttype")),
+            rules=(RefRule("attr_connectorid", "t_connector"),),
+            owner="attr_connectorid",
+        ),
         TableSpec(
             "t_diagram",
             GuidKey("attr_ea_guid"),

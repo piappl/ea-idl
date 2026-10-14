@@ -7,6 +7,7 @@ from eacore.catalogue import (
     Constraint,
     Source,
     StereotypeDef,
+    UNKNOWN_PROFILE,
     TagDef,
 )
 
@@ -98,3 +99,17 @@ def test_resolved_cycle_terminates():
         ]
     )
     assert [t.name for t in cs.resolved("A").tags] == ["t", "u"]
+
+
+def test_lookup_bare_name_prefers_named_profile_over_unknown():
+    named = _cat("IDL", StereotypeDef(name="idlStruct"))
+    unknown = _cat(UNKNOWN_PROFILE, StereotypeDef(name="idlStruct"), StereotypeDef(name="collapse"), kind="inferred")
+    cs = CatalogueSet([named, unknown])
+    assert cs.lookup("idlStruct") == "IDL::idlStruct"
+    assert cs.lookup("collapse") == "(unknown)::collapse"
+    assert cs.lookup("(unknown)::idlStruct") == "(unknown)::idlStruct"
+    # Two named profiles stay ambiguous, with or without an unknown-profile entry.
+    cs = CatalogueSet([named, _cat("Q", StereotypeDef(name="idlStruct")), unknown])
+    with pytest.raises(AmbiguousStereotype) as exc:
+        cs.lookup("idlStruct")
+    assert exc.value.candidates == ["IDL::idlStruct", "Q::idlStruct"]

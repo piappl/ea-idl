@@ -10,6 +10,10 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 
+#: Profile of stereotypes a model uses without naming one (no ``FQName``); see ``CatalogueSet.lookup``.
+UNKNOWN_PROFILE = "(unknown)"
+
+
 class _Model(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -131,10 +135,16 @@ class CatalogueSet:
         return sorted(self._entries)
 
     def lookup(self, name: str) -> str | None:
-        """Fully qualified name for ``Profile::Name`` or a bare name; None if unknown."""
+        """Fully qualified name for ``Profile::Name`` or a bare name; None if unknown.
+
+        A bare name found in a named profile and in ``UNKNOWN_PROFILE`` means the named one: the unknown entry is
+        most likely the same stereotype, applied before its profile was known.
+        """
         if "::" in name:
             return name if name in self._entries else None
         found = sorted(fq for fq in self._entries if fq.rpartition("::")[2] == name)
+        named = [fq for fq in found if fq.rpartition("::")[0] != UNKNOWN_PROFILE]
+        found = named or found
         if len(found) > 1:
             raise AmbiguousStereotype(name, found)
         return found[0] if found else None
