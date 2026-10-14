@@ -98,3 +98,38 @@ def test_every_row_of_nafv4_has_no_unexplained_values():
                 _, problems = decode_row(EA_TABLEMAP.spec(table), row, {})
                 unexplained += [f"{table}.{p.column}={p.value!r}" for p in problems if p.kind == "unexplained"]
     assert unexplained == []
+
+
+@pytest.mark.parametrize("raw", ["²", "٣", "03", " 3", "+3"])
+def test_non_canonical_digits_in_text_column_stay_raw(raw):
+    values, problems = decode_row(T_OBJECT, _obj(attr_object_type="Package", attr_pdata1=raw), IDMAPS)
+    assert values["attr_pdata1"] == raw
+    assert [p.kind for p in problems if p.column == "attr_pdata1"] == ["unexplained"]
+
+
+@pytest.mark.parametrize("raw", ["²", "٣", "03"])
+def test_non_canonical_digits_in_int_column_stay_raw(raw):
+    values, problems = decode_row(T_OBJECT, _obj(attr_package_id=raw), IDMAPS)
+    assert values["attr_package_id"] == raw
+    assert [p.kind for p in problems if p.column == "attr_package_id"] == ["unexplained"]
+
+
+def test_canonical_text_id_in_int_column_still_decodes():
+    values, problems = decode_row(T_OBJECT, _obj(attr_package_id="3"), IDMAPS)
+    assert values["attr_package_id"] == Ref("t_package", PKG)
+    assert problems == []
+
+
+def test_load_file_with_superscript_digit_in_pdata4(nafv4_path, qea_copy):
+    import sqlite3
+
+    from eacore.backends.sql import load_file
+
+    path = qea_copy(nafv4_path)
+    with sqlite3.connect(path) as con:
+        con.execute(
+            "update t_object set PDATA4 = '²' where Object_ID = "
+            "(select min(Object_ID) from t_object where Object_Type = 'Class')"
+        )
+    rs = load_file(path)
+    assert [i.value for i in rs.issues if i.column == "attr_pdata4"] == ["²"]

@@ -37,6 +37,14 @@ class Problem:
     message: str
 
 
+def _is_canonical_id(text: str) -> bool:
+    """ASCII digits that ``str(int(text))`` reproduces exactly, so encoding gives back the same text.
+
+    Rejects other Unicode digits ('²', '٣'), leading zeros and whitespace: such values stay raw.
+    """
+    return re.fullmatch(r"[0-9]+", text) is not None and str(int(text)) == text
+
+
 def _ids(rule: RefRule, raw: Any) -> list[int] | None:
     """Integer IDs in ``raw`` according to ``rule``; None if the value does not fit the rule."""
     if rule.encoding == "int":
@@ -44,12 +52,9 @@ def _ids(rule: RefRule, raw: Any) -> list[int] | None:
             return None
         if isinstance(raw, int):
             return [raw]
-        if isinstance(raw, str) and raw.strip().isdigit():
-            return [int(raw)]
-        return None
+        return [int(raw)] if isinstance(raw, str) and _is_canonical_id(raw) else None
     if rule.encoding == "text":
-        text = str(raw).strip()
-        return [int(text)] if text.isdigit() else None
+        return [int(raw)] if isinstance(raw, str) and _is_canonical_id(raw) else None
     matches = list(re.finditer(rule.pattern, str(raw)))
     return [int(m.group(1)) for m in matches] or None
 
