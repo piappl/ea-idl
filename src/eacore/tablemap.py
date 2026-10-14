@@ -203,7 +203,11 @@ EA_TABLEMAP = TableMap(
                 RefRule(
                     "attr_pdata4", "t_connector", encoding="pattern", pattern=r"idref\d*=(\d+);", when=is_type("Note")
                 ),
-                RefRule("attr_pdata4", "t_connector", encoding="text", when=not_type("Note")),
+                # Association class: IEA reference map, "For elements: If > 0 this is the primary key of
+                # the connector for which this element is defined as association class". Association
+                # classes are Classes; nafv4.qea and its history have no non-Note PDATA4 > 0, so any
+                # other element type with a numeric PDATA4 is reported unexplained, not dangling.
+                RefRule("attr_pdata4", "t_connector", encoding="text", when=is_type("Class")),
                 GuidRefRule("attr_classifier_guid", ("t_connector", "t_operation")),
             ),
             owner="attr_package_id",

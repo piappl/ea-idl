@@ -81,3 +81,27 @@ def test_check_command_exit_codes(nafv4_path, qea_copy):
     result = runner.invoke(cli, ["check", str(broken)])
     assert result.exit_code == 1 and "dangling-reference" in result.output
     assert '"rule"' in runner.invoke(cli, ["check", "--format", "json", str(broken)]).output
+
+
+@pytest.mark.parametrize("object_type", ["Package", "Part", "InteractionFragment"])
+def test_numeric_pdata4_on_non_class_element_is_unexplained_not_dangling(object_type, tmp_path):
+    path = tmp_path / "copy.qea"
+    path.write_bytes(NAFV4.read_bytes())
+    with sqlite3.connect(path) as con:
+        con.execute(
+            "update t_object set PDATA4='999999' where Object_ID="
+            "(select min(Object_ID) from t_object where Object_Type=?)",
+            (object_type,),
+        )
+        assert con.total_changes == 1
+    issues = [i for i in check(load_file(path)) if "attr_pdata4" in i.message]
+    assert [(i.severity, i.rule) for i in issues] == [("warning", "unexplained-value")]
+
+
+def test_numeric_pdata4_on_class_is_still_a_connector_reference(tmp_path):
+    path = tmp_path / "copy.qea"
+    path.write_bytes(NAFV4.read_bytes())
+    with sqlite3.connect(path) as con:
+        con.execute(f"update t_object set PDATA4='999999' where Object_ID={FIRST_CLASS}")
+    issues = [i for i in check(load_file(path)) if "attr_pdata4" in i.message]
+    assert [(i.severity, i.rule) for i in issues] == [("error", "dangling-reference")]
