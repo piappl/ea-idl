@@ -1,3 +1,4 @@
+from eacore.naming import column_key
 from eaidl.config import Configuration
 from sqlalchemy.ext.automap import automap_base
 import sqlalchemy
@@ -26,7 +27,7 @@ def column_reflect(inspector, table, column_info):
     https://docs.sqlalchemy.org/en/20/orm/declarative_tables.html#mapper-automated-reflection-schemes
 
     """
-    column_info["key"] = "attr_%s" % column_info["name"].lower()
+    column_info["key"] = column_key(column_info["name"])
 
 
 class ModelChanger:

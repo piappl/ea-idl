@@ -29,6 +29,7 @@ enchant = ["pyenchant>=3.3.0"]
 eaidl = "eaidl.cli:cli"
 eaidl_change = "eaidl.cli:change"
 eaidl_cli = "eaidl.cli:cli"
+eacore = "eacore.cli:cli"
 
 [tool.ruff]
 line-length = 120

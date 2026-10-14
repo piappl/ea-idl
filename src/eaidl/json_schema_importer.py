@@ -15,6 +15,7 @@ import sqlalchemy
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
 
+from eacore.naming import column_key
 from eaidl.config import Configuration
 from eaidl.model import ModelAnnotation, ModelAttribute, ModelClass, ModelPackage
 
@@ -27,7 +28,7 @@ base = automap_base()
 @sqlalchemy.event.listens_for(base.metadata, "column_reflect")
 def column_reflect(inspector, table, column_info):
     """Convert column names to lowercase for cross-database compatibility."""
-    column_info["key"] = "attr_%s" % column_info["name"].lower()
+    column_info["key"] = column_key(column_info["name"])
 
 
 class JsonSchemaImporter:
