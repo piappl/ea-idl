@@ -107,3 +107,24 @@ def test_ref_to_unknown_record_is_rejected(nafv4_path, qea_copy):
     bad = Ref("t_package", "{00000000-0000-0000-0000-000000000000}")
     with pytest.raises(UnresolvedReferenceError):
         backend.apply(ChangeSet(updates=[Update("t_object", obj.key, {"attr_package_id": (None, bad)})]))
+
+
+def test_hash_is_checked_under_the_write_lock(nafv4_path, qea_copy, monkeypatch):
+    path = qea_copy(nafv4_path)
+    backend = SqlBackend.for_file(path)
+    rs = backend.load()
+    obj = _first_class(rs)
+    real_begin = backend._write_engine.begin
+
+    def begin_after_other_writer():
+        # Another program saves in the window just before we take the lock.
+        with sqlite3.connect(path) as con:
+            con.execute("update t_object set Name = 'saved by EA' where Object_ID = ?", (obj.rid,))
+        return real_begin()
+
+    monkeypatch.setattr(backend._write_engine, "begin", begin_after_other_writer, raising=False)
+    with pytest.raises(ConcurrentModificationError):
+        backend.apply(ChangeSet(updates=[Update("t_object", obj.key, {"attr_alias": (None, "x")})]))
+    other = SqlBackend.for_file(path).load().get("t_object", obj.key)
+    assert other.values["attr_name"] == "saved by EA"
+    assert other.values["attr_alias"] == obj.values["attr_alias"]

@@ -174,7 +174,8 @@ class SqlBackend:
     def apply(self, changes: ChangeSet) -> None:
         """Write ``changes`` in one transaction, touching only affected rows and columns.
 
-        Refuses if the file changed since ``load()`` or another program holds a lock.
+        Refuses if another program holds a lock, or if the file changed since ``load()`` (checked
+        after the write lock is acquired, so no save can slip in between check and write).
         IDs for new rows are allocated before anything is written, so references between new
         rows resolve; EA's schema has no foreign keys, so statement order does not matter.
         """
@@ -182,11 +183,12 @@ class SqlBackend:
             raise RuntimeError("call load() before apply()")
         if changes.is_empty():
             return
-        if self._file_hash() != self._hash:
-            raise ConcurrentModificationError(f"{self.path} changed since it was loaded")
         ridmaps: RidMaps = {table: dict(rids) for table, rids in self._rids.items()}
         try:
             with self._write_engine.begin() as conn:
+                # Checked under the write lock, so EA cannot save between the check and our writes.
+                if self._file_hash() != self._hash:
+                    raise ConcurrentModificationError(f"{self.path} changed since it was loaded")
                 sequences = self._read_sequences(conn)
                 next_ids: dict[str, int] = {}
                 for insert in changes.inserts:
