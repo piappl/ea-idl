@@ -117,6 +117,8 @@ def test_apply_known_stereotype_adds_tags_with_values_notes(nafv4_path, qea_copy
         TagDef(name="kind", type="enumeration", values=["A", "B"]),
         TagDef(name="URI"),
         TagDef(name="n", default="3"),
+        # A RefGUID tag's Values are the metaclasses it may point at, not choices: no note.
+        TagDef(name="ref", type="RefGUID", values=["Class"]),
     ]
     catalogue = Catalogue(
         profile="T",
@@ -135,7 +137,7 @@ def test_apply_known_stereotype_adds_tags_with_values_notes(nafv4_path, qea_copy
         if t.values["attr_object_id"] == Ref("t_object", guid)
     }
     # Enumeration choices go to Notes as on EA-made DataModel packages in nafv4.qea ('kind').
-    assert rows == {"kind": (None, "Values: A,B\r\n"), "URI": (None, None), "n": ("3", None)}
+    assert rows == {"kind": (None, "Values: A,B\r\n"), "URI": (None, None), "n": ("3", None), "ref": (None, None)}
     assert not [i for i in check(session.working) if i.rule.startswith("stereotype")]
 
 

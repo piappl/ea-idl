@@ -194,7 +194,7 @@ def test_new_guid_logs_every_minted_guid_and_uses_the_queue(path):
         assert session.log[-1].args["guid"] == session.log[-1].created[0]
 
         g1, g2 = "{11111111-0000-0000-0000-00000000000A}", "{11111111-0000-0000-0000-00000000000B}"
-        session._guid_queue = [g1, g2, "{11111111-0000-0000-0000-00000000000C}"]
+        session.queue_guids([g1, g2, "{11111111-0000-0000-0000-00000000000C}"])
         assert session.run("_test_mint").guid == g1
         assert session.log[-1].created == [g1, g2]
         assert session._guid_queue == []  # cleared after each run, leftovers included
@@ -205,7 +205,28 @@ def test_new_guid_logs_every_minted_guid_and_uses_the_queue(path):
 
 def test_failed_dispatch_clears_the_guid_queue(path):
     session = _open(path)
-    session._guid_queue = ["{11111111-0000-0000-0000-00000000000D}"]
+    session.queue_guids(["{11111111-0000-0000-0000-00000000000D}"])
     with pytest.raises(InvalidOperationError):
         session.run("no_such_operation")
     assert session._guid_queue == []
+
+
+def test_commit_clears_warnings(path):
+    session = _open(path, focus=[MESSAGE], policy="advisory")
+    session.run("_test_rename", target=IN_DATA, name="Outside")
+    assert session.warnings
+    session.commit()
+    assert session.warnings == [] and session.preview().warnings == []
+
+
+def test_operation_wrappers_accept_positional_arguments(path):
+    session = _open(path)
+    result = session._test_rename(IN_MESSAGE, "Positional")
+    assert result.guid == IN_MESSAGE
+    assert session.working.get("t_object", IN_MESSAGE).values["attr_name"] == "Positional"
+    # Logged by parameter name, so the change file replays as if called with keywords.
+    assert session.log[-1].args == {"target": IN_MESSAGE, "name": "Positional"}
+    session._test_rename(IN_MESSAGE, name="Mixed")
+    assert session.log[-1].args == {"target": IN_MESSAGE, "name": "Mixed"}
+    with pytest.raises(InvalidOperationError, match="_test_rename"):
+        session._test_rename(IN_MESSAGE, "a", "too many")

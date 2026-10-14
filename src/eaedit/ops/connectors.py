@@ -11,15 +11,12 @@ from eaedit.defaults import apply_fields, kind_for, new_record
 from eaedit.errors import InvalidOperationError
 from eaedit.ops import operation
 from eaedit.ops.common import apply_stereotype, package_twin, primary_guid, stereotype_names
-from eaedit.ops.elements import clear_references
+from eaedit.ops.elements import clear_references, connector_details
+from eaedit.resolve import guid_of
 
 #: Metaconstraint roles naming the stereotype required at each end; other roles are not checked.
 SOURCE_ROLES = frozenset({"client", "source", "informationSource"})
 TARGET_ROLES = frozenset({"supplier", "target", "informationTarget"})
-
-
-def _guid(record: Record) -> str:
-    return record.values.get("attr_ea_guid") or record.key
 
 
 def _connector(session, identifier: str) -> Record:
@@ -116,7 +113,7 @@ def check_ends(session, connector: Record) -> None:
             session.warn(
                 "connector-end",
                 f"{resolved.fqname} {role} must be {' or '.join(targets)}; {side} {element!r} has {stereotypes}",
-                _guid(connector),
+                guid_of(connector),
                 rule_source,
             )
 
@@ -167,7 +164,7 @@ def connect(
 def update_connector(session, conn: str, **fields) -> str:
     record = _connector(session, conn)
     session.put(Record("t_connector", record.key, apply_fields("t_connector", record.values, fields), record.rid))
-    return _guid(record)
+    return guid_of(record)
 
 
 def _shown(session, diagram: Ref, element: Key) -> Record | None:
@@ -202,28 +199,30 @@ def reconnect(session, conn: str, source: str | None = None, target: str | None 
         if any(obj is None for obj in shown.values()):
             # EA hides a link whose end element is not on the diagram; the row would only hold a stale DUID.
             session.drop("t_diagramlinks", link.key)
+            session.warn("diagram-link-dropped", "the new end is not on the diagram", guid_of(record))
             continue
         duids = {style_key: duid(obj.values.get("attr_objectstyle")) for style_key, obj in shown.items()}
         if not all(duids.values()):
             # Without a DUID the link cannot name its new end; drop it rather than keep the old end's DUID.
             session.drop("t_diagramlinks", link.key)
-            session.warn("diagram-link-dropped", "the new end's diagram object has no DUID", _guid(record))
+            session.warn("diagram-link-dropped", "the new end's diagram object has no DUID", guid_of(record))
             continue
         for style_key, new in duids.items():
             style = re.sub(rf"(?<![A-Za-z]){style_key}=[^;]*", f"{style_key}={new}", style)
         if style != (link.values.get("attr_style") or ""):
             session.put(Record("t_diagramlinks", link.key, {**link.values, "attr_style": style}, link.rid))
     check_ends(session, session.working.get("t_connector", record.key))
-    return _guid(record)
+    return guid_of(record)
 
 
 @operation("delete_connector")
 def delete_connector(session, conn: str) -> str:
     record = _connector(session, conn)
-    guid, ref = _guid(record), Ref("t_connector", record.key)
+    guid, ref = guid_of(record), Ref("t_connector", record.key)
     rows: dict[tuple[str, Key], Record] = {("t_connector", record.key): record}
+    for detail in connector_details(session, {ref}):
+        rows[(detail.table, detail.key)] = detail
     for table, column, value in (
-        ("t_connectortag", "attr_elementid", ref),
         ("t_diagramlinks", "attr_connectorid", ref),
         # Rows owned through the connector's GUID, as cascade_delete removes them for elements.
         ("t_xref", "attr_client", guid),

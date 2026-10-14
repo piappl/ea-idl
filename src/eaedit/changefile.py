@@ -91,12 +91,12 @@ def replay(session: Session, source: str | Path | Iterable[LoggedOp], author: st
         session.author = author or own_author
         try:
             args, queue = _call(op)
-            session._guid_queue = queue
+            session.queue_guids(queue)
             results.append(session.run(op.name, **args))
         except Exception as exc:  # any failure, so the CLI's one-line error names the operation
             exc.add_note(f"in operation {index} ({op.name}) of the change file")
             raise
         finally:
             session.clock, session.author = clock, own_author
-            session._guid_queue = []
+            session.queue_guids([])
     return results

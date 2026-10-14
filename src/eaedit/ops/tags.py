@@ -2,14 +2,10 @@
 
 from __future__ import annotations
 
-from eacore.records import Record
 from eaedit.errors import InvalidOperationError, NotFoundError
 from eaedit.ops import operation
 from eaedit.ops.common import find_tags, resolve_target, set_tag_value, stereotype_names, stereotype_tags
-
-
-def _guid(record: Record) -> str:
-    return record.values.get("attr_ea_guid") or record.key
+from eaedit.resolve import guid_of
 
 
 @operation("set_tag")
@@ -20,9 +16,9 @@ def set_tag(session, target: str, name: str, value: str | None, notes: str | Non
     # Only stereotypes that define tags make a name unknown.
     known = stereotype_tags(session, stereotype_names(session, record))
     if known and name not in known:
-        session.warn("unknown-tag", f"{name!r} is not a tag of the target's stereotypes", _guid(record))
+        session.warn("unknown-tag", f"{name!r} is not a tag of the target's stereotypes", guid_of(record))
     set_tag_value(session, record.table, record, name, value, notes)
-    return _guid(record)
+    return guid_of(record)
 
 
 @operation("delete_tag")
@@ -33,4 +29,4 @@ def delete_tag(session, target: str, name: str) -> str:
         raise NotFoundError(f"{target!r} has no tag {name!r}")
     for tag in found:
         session.drop(tag.table, tag.key)
-    return _guid(record)
+    return guid_of(record)

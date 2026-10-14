@@ -276,3 +276,10 @@ def test_delete_connector_removes_guid_owned_rows(nafv4_path, qea_copy):
     assert not _codes(result, "reference-cleared")
     session.commit()
     assert _errors(load_file(path), baseline) == []
+
+
+def test_reconnect_warns_when_a_link_is_dropped(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    result = session.reconnect(conn=HEADER_TIME, target=MEASUREMENT)  # Measurement is not on diagram 'header'
+    assert _links(session.working, HEADER_TIME) == []
+    assert _codes(result, "diagram-link-dropped")

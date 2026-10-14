@@ -18,10 +18,11 @@ from eaedit.ops.common import (
     find_tags,
     primary_guid,
     resolve_target,
-    stereotype_names,
+    stereotype_entries,
     stereotype_tags,
     write_stereotypes,
 )
+from eaedit.resolve import guid_of
 
 
 def _element(session, identifier: str) -> Record:
@@ -29,10 +30,6 @@ def _element(session, identifier: str) -> Record:
     if record.values.get("attr_object_type") == "Package":
         raise InvalidOperationError(f"{identifier!r} is a package: use the *_package operations")
     return record
-
-
-def _guid(record: Record) -> str:
-    return record.values.get("attr_ea_guid") or record.key
 
 
 def _base_type(session, stereotype: str | None) -> str:
@@ -94,8 +91,8 @@ def create_element(
         "attr_createddate": now,
         "attr_modifieddate": now,
     }
-    if parent_ref is not None:
-        values["attr_parentid"] = parent_ref
+    # Without an owner EA stores ParentID 0, as on every unnested EA-made element in nafv4.qea.
+    values["attr_parentid"] = parent_ref if parent_ref is not None else unset_value("t_object", "attr_parentid", {})[0]
     record = new_record(session, "t_object", values, kind.type_value)
     record.values.update(apply_fields("t_object", record.values, fields))
     session.put(record)
@@ -110,7 +107,7 @@ def update_element(session, el: str, **fields) -> str:
     values = apply_fields("t_object", record.values, fields)
     values["attr_modifieddate"] = timestamp(session.now())
     session.put(Record("t_object", record.key, values, record.rid))
-    return _guid(record)
+    return guid_of(record)
 
 
 def _descendants(session, keys: Iterable[Key]) -> list[Key]:
@@ -138,17 +135,72 @@ def move_element(session, el: str, package: str) -> str:
     record = _element(session, el)
     package_ref = session.find(package, kinds=("package",))
     now = timestamp(session.now())
-    for key in _descendants(session, [record.key]):
+    moved = _descendants(session, [record.key])
+    for key in moved:
         current = session.working.get("t_object", key)
         values = {**current.values, "attr_package_id": package_ref}
         if key == record.key:
             values["attr_modifieddate"] = now
+            parent = values.get("attr_parentid")
+            owner = session.working.resolve(parent) if isinstance(parent, Ref) else None
+            if owner is not None and owner.values.get("attr_package_id") != package_ref:
+                # Its owner stays behind, and EA nests an element only under an owner in the same package.
+                values["attr_parentid"] = unset_value("t_object", "attr_parentid", values)[0]
+                name = owner.values.get("attr_name")
+                session.warn("unnested", f"moved away from its owner {name!r}: no longer nested", guid_of(record))
         session.put(Record("t_object", key, values, current.rid))
-    return _guid(record)
+    # Diagrams owned by a moved element sit in its package, as diagrams of a package do.
+    owners = {Ref("t_object", key) for key in moved}
+    for diagram in _where(session, "t_diagram", ("attr_parentid",), owners):
+        if diagram.values.get("attr_package_id") != package_ref:
+            session.put(
+                Record("t_diagram", diagram.key, {**diagram.values, "attr_package_id": package_ref}, diagram.rid)
+            )
+    return guid_of(record)
 
 
 def _where(session, table: str, columns: tuple[str, ...], targets: set) -> list[Record]:
     return [r for r in session.working.records(table) if any(r.values.get(c) in targets for c in columns)]
+
+
+#: Rows of an element's own details (properties, requirements, scenarios, files, ...), owned through Object_ID.
+ELEMENT_DETAILS = (
+    "t_objectproperties",
+    "t_objectconstraint",
+    "t_objectrequires",
+    "t_objectscenarios",
+    "t_objectrisks",
+    "t_objecttests",
+    "t_objectproblems",
+    "t_objectfiles",
+    "t_objecteffort",
+    "t_objectmetrics",
+    "t_objectresource",
+    "t_objecttrx",
+    "t_method",
+)
+#: Rows owned by an operation besides its parameters: table -> column naming the operation.
+OPERATION_DETAILS = {
+    "t_operationtag": "attr_elementid",
+    "t_operationpres": "attr_operationid",
+    "t_operationposts": "attr_operationid",
+}
+
+
+def attribute_details(session, attributes: set[Ref]) -> list[Record]:
+    """Tags and constraints of ``attributes``."""
+    return _where(session, "t_attributetag", ("attr_elementid",), attributes) + _where(
+        session, "t_attributeconstraints", ("attr_id",), attributes
+    )
+
+
+def connector_details(session, connectors: set[Ref]) -> list[Record]:
+    """Tags and constraints (on the connector and its ends) of ``connectors``."""
+    return [
+        *_where(session, "t_connectortag", ("attr_elementid",), connectors),
+        *_where(session, "t_connectorconstraint", ("attr_connectorid",), connectors),
+        *_where(session, "t_roleconstraint", ("attr_connectorid",), connectors),
+    ]
 
 
 def cascade_delete(session, elements: Iterable[Key], diagrams: Iterable[Key] = ()) -> None:
@@ -166,14 +218,15 @@ def cascade_delete(session, elements: Iterable[Key], diagrams: Iterable[Key] = (
 
     add(session.working.get("t_object", k) for k in element_keys)
     attributes = add(_where(session, "t_attribute", ("attr_object_id",), element_refs))
-    add(_where(session, "t_attributetag", ("attr_elementid",), attributes))
+    add(attribute_details(session, attributes))
     operations = add(_where(session, "t_operation", ("attr_object_id",), element_refs))
     add(_where(session, "t_operationparams", ("attr_operationid",), operations))
-    add(_where(session, "t_operationtag", ("attr_elementid",), operations))
-    add(_where(session, "t_objectproperties", ("attr_object_id",), element_refs))
-    add(_where(session, "t_objectconstraint", ("attr_object_id",), element_refs))
+    for table, column in OPERATION_DETAILS.items():
+        add(_where(session, table, (column,), operations))
+    for table in ELEMENT_DETAILS:
+        add(_where(session, table, ("attr_object_id",), element_refs))
     connectors = add(_where(session, "t_connector", ("attr_start_object_id", "attr_end_object_id"), element_refs))
-    add(_where(session, "t_connectortag", ("attr_elementid",), connectors))
+    add(connector_details(session, connectors))
     # Diagrams owned by a deleted element (ParentID) go with it, like those of a deleted package.
     diagram_refs = {Ref("t_diagram", k) for k in diagrams}
     diagram_refs |= add(_where(session, "t_diagram", ("attr_parentid",), element_refs))
@@ -265,23 +318,25 @@ def clear_references(session, rows: dict[tuple[str, Key], Record]) -> None:
                 continue
             session.put(Record(table, record.key, {**values, **changed}, record.rid))
             columns = ", ".join(sorted(changed))
-            session.warn("reference-cleared", f"{table} {columns}: referenced a deleted record", _guid(record))
+            session.warn("reference-cleared", f"{table} {columns}: referenced a deleted record", guid_of(record))
             if unverified:
-                session.warn("unverified-default", f"{table} {columns}: EA's unset value is unverified", _guid(record))
+                session.warn(
+                    "unverified-default", f"{table} {columns}: EA's unset value is unverified", guid_of(record)
+                )
 
 
 @operation("delete_element")
 def delete_element(session, el: str) -> str:
     record = _element(session, el)
     cascade_delete_element(session, Ref("t_object", record.key))
-    return _guid(record)
+    return guid_of(record)
 
 
 @operation("add_stereotype")
 def add_stereotype(session, target: str, name: str) -> str:
     record = resolve_target(session, target)
     apply_stereotype(session, record.table, record, name)
-    return _guid(record)
+    return guid_of(record)
 
 
 def _resolved(session, name: str):
@@ -294,16 +349,17 @@ def _resolved(session, name: str):
 @operation("remove_stereotype")
 def remove_stereotype(session, target: str, name: str) -> str:
     record = resolve_target(session, target)
-    entries = stereotype_names(session, record)
-    matches = [e for e in entries if name in (e[0], e[1])]
+    entries = stereotype_entries(session, record)
+    matches = [e for e in entries if name in (e.name, e.fqname)]
     if not matches:
         raise NotFoundError(f"{target!r} has no stereotype {name!r}")
     removed = matches[0]
-    write_stereotypes(session, record.table, record, [e for e in entries if e != removed])
-    resolved = _resolved(session, removed[1] or removed[0])
+    remaining = [e for e in entries if e != removed]
+    write_stereotypes(session, record.table, record, remaining)
+    resolved = _resolved(session, removed.fqname or removed.name)
     if resolved is not None:
         # Tags a remaining stereotype also defines still belong to the element.
-        others = stereotype_tags(session, [e for e in entries if e != removed])
+        others = stereotype_tags(session, [(e.name, e.fqname) for e in remaining])
         kept = [
             t.name for t in resolved.tags if t.name not in others and find_tags(session, record.table, record, t.name)
         ]
@@ -311,6 +367,6 @@ def remove_stereotype(session, target: str, name: str) -> str:
             session.warn(
                 "stereotype-removed-tags-kept",
                 f"{resolved.fqname} removed; its tags {', '.join(kept)} remain",
-                _guid(record),
+                guid_of(record),
             )
-    return _guid(record)
+    return guid_of(record)

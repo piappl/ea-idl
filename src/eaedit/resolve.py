@@ -20,15 +20,25 @@ def _name(record: Record) -> str:
     return record.values.get("attr_name") or ""
 
 
-def _guid(record: Record) -> str | None:
+def guid_of(record: Record) -> str | None:
+    """The record's GUID: its ``ea_guid``, else its key when that is a GUID key; None for other keys."""
     value = record.values.get("attr_ea_guid")
     if value is None and isinstance(record.key, str):
         value = record.key
     return value
 
 
-def _is_package_twin(record: Record) -> bool:
-    return record.table == "t_object" and record.values.get("attr_object_type") == "Package"
+def twin_package(record: Record) -> Key | None:
+    """Key of the package whose ``t_object`` twin ``record`` is, else None."""
+    if record.table == "t_object" and record.values.get("attr_object_type") == "Package":
+        package = record.values.get("attr_pdata1")
+        if isinstance(package, Ref) and package.table == "t_package":
+            return package.key
+    return None
+
+
+def is_package_twin(record: Record) -> bool:
+    return twin_package(record) is not None
 
 
 def _package_name(rs: RecordSet, key: Key) -> str:
@@ -44,10 +54,9 @@ def _package_name(rs: RecordSet, key: Key) -> str:
 
 
 def _element_name(rs: RecordSet, record: Record) -> str:
-    if _is_package_twin(record):
-        twin = record.values.get("attr_pdata1")
-        if isinstance(twin, Ref):
-            return _package_name(rs, twin.key)
+    package_key = twin_package(record)
+    if package_key is not None:
+        return _package_name(rs, package_key)
     names = [_name(record)]
     seen = {record.key}
     parent = record.values.get("attr_parentid")
@@ -78,7 +87,7 @@ def qualified_name(rs: RecordSet, ref: Ref) -> str:
     if ref.table in ("t_connector", "t_diagram"):
         package = rs.owner_package(ref)
         prefix = _package_name(rs, package.key) if package else ""
-        return f"{prefix}::{_name(record) or _guid(record)}"
+        return f"{prefix}::{_name(record) or guid_of(record)}"
     raise InvalidOperationError(f"{ref.table} rows have no qualified name")
 
 
@@ -94,7 +103,7 @@ def find(
         for table in sorted(tables):
             for record in rs.records(table):
                 # The Package t_object twin shares its package's GUID and name; the t_package row wins.
-                if with_packages and _is_package_twin(record):
+                if with_packages and is_package_twin(record):
                     continue
                 found.append(record)
         return found
@@ -102,11 +111,11 @@ def find(
     text = identifier.strip()
     if text.startswith("{") and text.endswith("}"):
         wanted = text.upper()
-        matches = [Ref(r.table, r.key) for r in candidates() if (_guid(r) or "").upper() == wanted]
+        matches = [Ref(r.table, r.key) for r in candidates() if (guid_of(r) or "").upper() == wanted]
     else:
         matches = [Ref(r.table, r.key) for r in candidates() if qualified_name(rs, Ref(r.table, r.key)) == text]
     if not matches:
         raise NotFoundError(f"nothing matches {identifier!r}")
     if len(matches) > 1:
-        raise AmbiguousNameError(identifier, [_guid(rs.resolve(m)) or str(m.key) for m in matches])
+        raise AmbiguousNameError(identifier, [guid_of(rs.resolve(m)) or str(m.key) for m in matches])
     return matches[0]

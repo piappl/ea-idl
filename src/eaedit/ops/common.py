@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from eacore.catalogue import AmbiguousStereotype
-from eacore.embedded import is_guid, parse_stereotypes
+from eacore.catalogue import UNKNOWN_PROFILE, AmbiguousStereotype, TagDef
+from eacore.embedded import Stereotype, is_guid, parse_stereotypes
 from eacore.integrity import STEREO_XREF_TYPES
 from eacore.records import Record, Ref
 from eaedit.defaults import kind_for, new_record
 from eaedit.errors import InvalidOperationError, NotFoundError
+from eaedit.resolve import guid_of
 
 #: EA's tag value column holds 255 characters; longer text goes to Notes behind this marker (Inside EA).
 MEMO = "<memo>"
@@ -56,12 +57,8 @@ def resolve_target(session, identifier: str) -> Record:
     return session.working.resolve(session.find(identifier))
 
 
-def _guid(record: Record) -> str:
-    return record.values.get("attr_ea_guid") or record.key
-
-
 def _stereotype_xref(session, owner: Record) -> Record | None:
-    guid, xref_type = _guid(owner), STEREO_XREF_TYPES[owner.table]
+    guid, xref_type = guid_of(owner), STEREO_XREF_TYPES[owner.table]
     for xref in session.working.records("t_xref"):
         values = xref.values
         if values.get("attr_name") == "Stereotypes" and values.get("attr_client") == guid:
@@ -70,14 +67,19 @@ def _stereotype_xref(session, owner: Record) -> Record | None:
     return None
 
 
-def stereotype_names(session, target: Record) -> list[tuple[str, str | None]]:
-    """``(name, fqname)`` of every stereotype on ``target``, primary first."""
+def stereotype_entries(session, target: Record) -> list[Stereotype]:
+    """Every stereotype on ``target`` as its ``t_xref`` list holds it, primary first."""
     owner = _owner(session, target.table, target)
     xref = _stereotype_xref(session, owner)
     if xref is None:
         primary = owner.values.get("attr_stereotype")
-        return [(primary, None)] if primary else []
-    return [(s.name, s.fqname) for s in parse_stereotypes(xref.values.get("attr_description"))]
+        return [Stereotype(primary, None, None)] if primary else []
+    return parse_stereotypes(xref.values.get("attr_description"))
+
+
+def stereotype_names(session, target: Record) -> list[tuple[str, str | None]]:
+    """``(name, fqname)`` of every stereotype on ``target``, primary first."""
+    return [(s.name, s.fqname) for s in stereotype_entries(session, target)]
 
 
 def stereotype_tags(session, entries: list[tuple[str, str | None]]) -> set[str]:
@@ -93,18 +95,19 @@ def stereotype_tags(session, entries: list[tuple[str, str | None]]) -> set[str]:
     return names
 
 
-def _description(entries: list[tuple[str, str | None]]) -> str:
+def _description(entries: list[Stereotype]) -> str:
     parts = []
-    for name, fqname in entries:
-        fq = f"FQName={fqname};" if fqname else ""
-        parts.append(f"@STEREO;Name={name};{fq}@ENDSTEREO;")
+    for entry in entries:
+        # A stereotype of no known profile is named by its t_stereotypes row, as EA does.
+        qualifier = f"FQName={entry.fqname};" if entry.fqname else f"GUID={entry.guid};" if entry.guid else ""
+        parts.append(f"@STEREO;Name={entry.name};{qualifier}@ENDSTEREO;")
     return "".join(parts)
 
 
-def write_stereotypes(session, table: str, target: Record, entries: list[tuple[str, str | None]]) -> None:
+def write_stereotypes(session, table: str, target: Record, entries: list[Stereotype]) -> None:
     """Make ``entries`` the stereotype list: the Stereotype column and the ``t_xref`` row agree."""
     owner = _owner(session, table, target)
-    primary = entries[0][0] if entries else None
+    primary = entries[0].name if entries else None
     if owner.values.get("attr_stereotype") != primary:
         session.put(Record(owner.table, owner.key, {**owner.values, "attr_stereotype": primary}, owner.rid))
     xref = _stereotype_xref(session, owner)
@@ -118,7 +121,7 @@ def write_stereotypes(session, table: str, target: Record, entries: list[tuple[s
             "attr_name": "Stereotypes",
             "attr_type": STEREO_XREF_TYPES[owner.table],
             "attr_description": description,
-            "attr_client": _guid(owner),
+            "attr_client": guid_of(owner),
         }
         session.put(new_record(session, "t_xref", values, "Stereotypes"))
     elif xref.values.get("attr_description") != description:
@@ -137,28 +140,49 @@ def _applies(metaclasses: list[str], base: str) -> bool:
     return not metaclasses or any(m == base or kind_for(m)[0].type_value == base for m in metaclasses)
 
 
-def _values_note(values: list[str]) -> str | None:
-    # EA-made tags of enumeration type keep the choices like this (EA-made enumeration tags in nafv4.qea).
-    return "Values: " + ",".join(values) + "\r\n" if values else None
+def _values_note(tag: TagDef) -> str | None:
+    # EA-made tags of enumeration type keep the choices like this (EA-made enumeration tags in nafv4.qea); other
+    # types' values (a RefGUID tag's metaclasses) are no choices.
+    if tag.type != "enumeration" or not tag.values:
+        return None
+    return "Values: " + ",".join(tag.values) + "\r\n"
+
+
+def _stereotype_guid(session, name: str, base: str) -> str | None:
+    """GUID of the ``t_stereotypes`` row for ``name`` applying to ``base`` (EA writes ``class``, ``Class``)."""
+    for row in session.working.records("t_stereotypes"):
+        values = row.values
+        if values.get("attr_stereotype") == name and (values.get("attr_appliesto") or "").lower() == base.lower():
+            return values.get("attr_ea_guid")
+    return None
+
+
+def _entry(session, owner: Record, name: str, fqname: str | None) -> Stereotype:
+    """The list entry for stereotype ``name``: profile-less ones (no or the unknown profile) as EA writes them."""
+    if fqname is not None and fqname.rpartition("::")[0] != UNKNOWN_PROFILE:
+        return Stereotype(name, fqname, None)
+    return Stereotype(name, None, _stereotype_guid(session, name, _base_type(owner)))
 
 
 def apply_stereotype(session, table: str, target: Record, name: str) -> None:
     """Add stereotype ``name`` (bare or ``Profile::Name``) and the catalogue tags ``target`` lacks."""
+    owner = _owner(session, table, target)
     resolved = None
     try:
         fqname = session.catalogues.lookup(name)
+        if fqname is not None:
+            resolved = session.catalogues.resolved(fqname)
     except AmbiguousStereotype as exc:
+        # The name itself, or an ancestor it generalizes, names stereotypes in several profiles.
         session.warn("ambiguous-stereotype", str(exc), name)
-        entry = (name, None)
+        entry = _entry(session, owner, name.rpartition("::")[2], name if "::" in name else None)
     else:
         if fqname is None:
             session.warn("unknown-stereotype", f"{name!r} is in no catalogue", name)
             profile, _, bare = name.rpartition("::")
-            entry = (bare, name if profile else None)
+            entry = _entry(session, owner, bare, name if profile else None)
         else:
-            resolved = session.catalogues.resolved(fqname)
-            entry = (fqname.rpartition("::")[2], fqname)
-    owner = _owner(session, table, target)
+            entry = _entry(session, owner, fqname.rpartition("::")[2], fqname)
     if resolved is not None:
         source = resolved.source.file or resolved.source.kind
         if resolved.definition.abstract:
@@ -169,13 +193,13 @@ def apply_stereotype(session, table: str, target: Record, name: str) -> None:
             session.warn(
                 "wrong-base-type", f"{resolved.fqname} applies to {allowed}, not {base}", resolved.fqname, source
             )
-    entries = stereotype_names(session, target)
-    if entry[0] not in [n for n, _ in entries]:
+    entries = stereotype_entries(session, target)
+    if entry.name not in [e.name for e in entries]:
         write_stereotypes(session, table, target, entries + [entry])
     if resolved is not None:
         for tag in resolved.tags:
             set_tag_value(
-                session, table, target, tag.name, tag.default or None, _values_note(tag.values), only_if_missing=True
+                session, table, target, tag.name, tag.default or None, _values_note(tag), only_if_missing=True
             )
 
 

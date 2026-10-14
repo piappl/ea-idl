@@ -82,6 +82,24 @@ def _takes_guid(fn: Callable) -> bool:
     return "guid" in inspect.signature(fn).parameters
 
 
+def _keywords(name: str, args: tuple, kwargs: dict) -> dict:
+    """``kwargs`` with positional ``args`` bound to the operation's parameter names, as the log records them."""
+    if not args:
+        return kwargs
+    signature = inspect.signature(OPERATIONS[name])
+    try:
+        bound = signature.bind(None, *args, **kwargs)
+    except TypeError as exc:
+        raise InvalidOperationError(f"{name}: {exc}") from None
+    result: dict = {}
+    for parameter, value in list(bound.arguments.items())[1:]:  # the first parameter is the session
+        if signature.parameters[parameter].kind is inspect.Parameter.VAR_KEYWORD:
+            result.update(value)
+        else:
+            result[parameter] = value
+    return result
+
+
 def _issue_id(issue: Issue) -> tuple:
     return (issue.severity, issue.rule, issue.ref, issue.message)
 
@@ -188,6 +206,10 @@ class Session:
         op.minted.append(guid)
         return guid
 
+    def queue_guids(self, guids: Iterable[str]) -> None:
+        """GUIDs for the next operation's ``new_guid`` calls, in order (replay reproduces an operation's GUIDs)."""
+        self._guid_queue = list(guids)
+
     def columns(self, table: str) -> list[str]:
         return self.backend.columns(table)
 
@@ -223,7 +245,7 @@ class Session:
     def __getattr__(self, name: str):
         # Only reached for missing attributes; touches no instance state, so copy/pickle probes are safe.
         if name in OPERATIONS:
-            return lambda **kwargs: self.run(name, **kwargs)
+            return lambda *args, **kwargs: self.run(name, **_keywords(name, args, kwargs))
         raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
 
     def _check_scope(self, op: _Running) -> None:
@@ -343,4 +365,5 @@ class Session:
         self._baseline_issues = None
         self._done.clear()
         self.log.clear()
+        self.warnings.clear()
         return changes

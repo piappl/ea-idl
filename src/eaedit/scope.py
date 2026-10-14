@@ -8,21 +8,12 @@ from eacore.changes import ChangeSet
 from eacore.records import Key, Record, RecordSet, Ref, key_str
 from eacore.tablemap import EA_TABLEMAP
 from eaedit.errors import InvalidOperationError
-from eaedit.resolve import qualified_name
+from eaedit.resolve import qualified_name, twin_package
 
 POLICIES = ("package", "connected", "advisory", "off")
 
 Lookup = Callable[[Ref], Record | None]
 ByGuid = Callable[[str], list[Ref]]
-
-
-def _twin_package(record: Record) -> Key | None:
-    """Package key of a Package-type ``t_object`` twin, else None."""
-    if record.table == "t_object" and record.values.get("attr_object_type") == "Package":
-        twin = record.values.get("attr_pdata1")
-        if isinstance(twin, Ref) and twin.table == "t_package":
-            return twin.key
-    return None
 
 
 def _parent_key(record: Record) -> Key | None:
@@ -39,24 +30,30 @@ class Scope:
         self.focus = tuple(focus)
         self.policy = policy
 
+    def _reach(self, packages: Iterable[Record]) -> set:
+        """Keys of the focus subtrees among ``packages`` (``t_package`` rows of one state of the model)."""
+        children: dict[Key, list[Key]] = {}
+        keys: set = set()
+        for pkg in packages:
+            keys.add(pkg.key)
+            parent = pkg.values.get("attr_parent_id")
+            if isinstance(parent, Ref):
+                children.setdefault(parent.key, []).append(pkg.key)
+        todo = [ref.key for ref in self.focus if ref.key in keys]
+        reached: set = set()
+        while todo:
+            key = todo.pop()
+            if key in reached:
+                continue
+            reached.add(key)
+            todo.extend(children.get(key, []))
+        return reached
+
     def focus_packages(self, *sets: RecordSet) -> set:
         """``t_package`` keys in the focus subtrees of any of the sets."""
         result: set = set()
         for rs in sets:
-            children: dict[Key, list[Key]] = {}
-            for pkg in rs.records("t_package"):
-                parent = pkg.values.get("attr_parent_id")
-                if isinstance(parent, Ref):
-                    children.setdefault(parent.key, []).append(pkg.key)
-            todo = [ref.key for ref in self.focus if rs.get("t_package", ref.key) is not None]
-            reached: set = set()
-            while todo:
-                key = todo.pop()
-                if key in reached:
-                    continue
-                reached.add(key)
-                todo.extend(children.get(key, []))
-            result |= reached
+            result |= self._reach(rs.records("t_package"))
         return result
 
     def contains(self, package_key, *sets: RecordSet) -> bool:
@@ -69,7 +66,7 @@ class Scope:
             seen.add((record.table, record.key))
             if record.table == "t_package":
                 return record.key
-            twin = _twin_package(record)
+            twin = twin_package(record)
             if twin is not None:
                 return twin
             spec = EA_TABLEMAP.spec(record.table)
@@ -90,7 +87,7 @@ class Scope:
         """``(t_package keys owning the row, reached through a connector)``."""
         if table == "t_package":
             return {record.key}, False
-        twin = _twin_package(record)
+        twin = twin_package(record)
         if twin is not None:
             return {twin}, False
         seen: set[tuple[str, Key]] = set()
@@ -142,6 +139,12 @@ class Scope:
             return []
         inside_before = self.focus_packages(before)
         inside_after = self.focus_packages(after)
+        # Deletes are judged where the rows stood just before the change: ``before`` (the session's start) lacks the
+        # packages created since, ``after`` those the change deleted; the change's pre-images over ``after`` have both.
+        current = {pkg.key: pkg for pkg in after.records("t_package")}
+        current.update({key: rec for (table, key), rec in extra_before.items() if table == "t_package"})
+        inside_deleted = inside_before | self._reach(current.values())
+        roots = {ref.key for ref in self.focus}
 
         def from_before(ref: Ref) -> Record | None:
             return before.resolve(ref) or extra_before.get((ref.table, ref.key))
@@ -181,12 +184,13 @@ class Scope:
             moved=False,
         ):
             owners, via = self.owners(table, record, lookup, by_guid) if record else (set(), False)
-            # A package's own key is always "inside" when it is in the focus, so a move is judged by its parent.
-            parent = (
-                _parent_key(record) if record and moved and (table == "t_package" or _twin_package(record)) else None
-            )
-            if parent is not None:
-                owners = owners | {parent}
+            package = None if record is None else record.key if table == "t_package" else twin_package(record)
+            # A package's own key is always "inside" when it is in the focus, so a move is judged by its parent too;
+            # so is any change to a focus root's own rows (renaming or deleting it changes its parent's contents).
+            if package is not None and (moved or (verb != "insert" and package in roots)):
+                parent = _parent_key(record)
+                if parent is not None:
+                    owners = owners | {parent}
             if not self._allowed(owners, via, inside):
                 problems.append(f"{verb} {table} {key_str(key)} {side}owned by {names(owners)} is outside the focus")
 
@@ -204,5 +208,5 @@ class Scope:
                 )
         for dele in changes.deletes:
             rec = dele.record or before.get(dele.table, dele.key) or extra_before.get((dele.table, dele.key))
-            check("delete", dele.table, dele.key, rec, from_after, guids(after, before), inside_before)
+            check("delete", dele.table, dele.key, rec, from_after, guids(after, before), inside_deleted)
         return problems

@@ -7,14 +7,11 @@ from eaedit.defaults import apply_fields, new_record, unset_value
 from eaedit.errors import InvalidOperationError, NotFoundError
 from eaedit.ops import operation
 from eaedit.ops.common import apply_stereotype, primary_guid
-from eaedit.ops.elements import clear_references
+from eaedit.ops.elements import attribute_details, clear_references
+from eaedit.resolve import guid_of
 
 #: Element types EA lets you classify; any other t_object type is accepted with a warning.
 _CLASSIFIABLE = ("Part", "Object", "Port")
-
-
-def _guid(record: Record) -> str:
-    return record.values.get("attr_ea_guid") or record.key
 
 
 def _attribute(session, identifier: str) -> Record:
@@ -91,7 +88,7 @@ def update_attribute(session, attr: str, **fields) -> str:
     typing = _typing(session, fields.pop("type")) if "type" in fields else {}
     values = {**apply_fields("t_attribute", record.values, fields), **typing}
     session.put(Record("t_attribute", record.key, values, record.rid))
-    return _guid(record)
+    return guid_of(record)
 
 
 @operation("move_attribute")
@@ -106,18 +103,17 @@ def move_attribute(session, attr: str, position: int) -> str:
         if member.values.get("attr_pos") != index:
             current = session.working.get("t_attribute", member.key)
             session.put(Record("t_attribute", member.key, {**current.values, "attr_pos": index}, current.rid))
-    return _guid(record)
+    return guid_of(record)
 
 
 @operation("delete_attribute")
 def delete_attribute(session, attr: str) -> str:
     record = _attribute(session, attr)
-    guid = _guid(record)
+    guid = guid_of(record)
     ref = Ref("t_attribute", record.key)
     rows = {("t_attribute", record.key): record}
-    for tag in session.working.records("t_attributetag"):
-        if tag.values.get("attr_elementid") == ref:
-            rows[(tag.table, tag.key)] = tag
+    for detail in attribute_details(session, {ref}):
+        rows[(detail.table, detail.key)] = detail
     for xref in session.working.records("t_xref"):
         if (xref.values.get("attr_client") or "").upper() == guid.upper():
             rows[(xref.table, xref.key)] = xref
@@ -137,12 +133,12 @@ def set_classifier(session, target: str, classifier: str | None) -> str:
             # Clearing detaches the element but keeps the type name, as EA keeps it as text.
             typing["attr_type"] = current
         session.put(Record("t_attribute", record.key, {**record.values, **typing}, record.rid))
-        return _guid(record)
+        return guid_of(record)
     kind = record.values.get("attr_object_type")
     if kind == "Package":
         raise InvalidOperationError(f"{target!r} is a package: it has no classifier")
     if kind not in _CLASSIFIABLE:
-        session.warn("unverified-kind", f"classifier of a {kind} element is unverified", _guid(record))
+        session.warn("unverified-kind", f"classifier of a {kind} element is unverified", guid_of(record))
     if classifier is None:
         value = unset_value("t_object", "attr_classifier", record.values)[0]
     else:
@@ -151,4 +147,4 @@ def set_classifier(session, target: str, classifier: str | None) -> str:
             raise NotFoundError(f"nothing matches {classifier!r}")
         value = Ref("t_object", element.key)
     session.put(Record("t_object", record.key, {**record.values, "attr_classifier": value}, record.rid))
-    return _guid(record)
+    return guid_of(record)

@@ -8,20 +8,12 @@ from eacore.records import Key, Record, Ref, key_str
 from eaedit.defaults import FIELDS
 from eaedit.errors import EaeditError, NotFoundError
 from eaedit.ops.common import package_twin, stereotype_names, tag_table
-from eaedit.resolve import qualified_name
+from eaedit.resolve import guid_of, is_package_twin, qualified_name
 from eaedit.scope import Scope
 
 KIND = {"t_package": "package", "t_object": "element", "t_attribute": "attribute", "t_connector": "connector"}
 #: Column holding each kind's own type (an attribute's type is its FIELDS "type").
 TYPE_COLUMN = {"t_object": "attr_object_type", "t_connector": "attr_connector_type", "t_attribute": "attr_type"}
-
-
-def _guid(record: Record) -> str:
-    return record.values.get("attr_ea_guid") or record.key
-
-
-def _is_twin(record: Record) -> bool:
-    return record.values.get("attr_object_type") == "Package" and isinstance(record.values.get("attr_pdata1"), Ref)
 
 
 def _plain(session, value: Any) -> Any:
@@ -36,7 +28,7 @@ def _plain(session, value: Any) -> Any:
 
 def _subject(session, record: Record) -> Record:
     """The row the caller means: a package's ``t_object`` twin reads as the package."""
-    if record.table == "t_object" and _is_twin(record):
+    if record.table == "t_object" and is_package_twin(record):
         package = session.working.resolve(record.values["attr_pdata1"])
         if package is not None:
             return package
@@ -49,7 +41,7 @@ def _summary(session, record: Record) -> dict:
     column = TYPE_COLUMN.get(record.table)
     return {
         "kind": KIND[record.table],
-        "guid": _guid(record),
+        "guid": guid_of(record),
         "name": record.values.get("attr_name"),
         "qualified_name": qualified_name(session.working, Ref(record.table, record.key)),
         "type": record.values.get(column) if column else "Package",
@@ -129,7 +121,7 @@ def list_(session, package: str | None = None, recursive: bool = True) -> list[d
     rows = [_summary(session, session.working.get("t_package", key)) for key in packages - starts]
     for obj in session.working.records("t_object"):
         package_ref = obj.values.get("attr_package_id")
-        if not _is_twin(obj) and isinstance(package_ref, Ref) and package_ref.key in holders:
+        if not is_package_twin(obj) and isinstance(package_ref, Ref) and package_ref.key in holders:
             rows.append(_summary(session, obj))
     return _sorted(rows)
 
@@ -143,7 +135,7 @@ def tree(session, package: str | None = None) -> str:
     in_package: dict[Key, list[Record]] = {}
     in_element: dict[Key, list[Record]] = {}
     for obj in working.records("t_object"):
-        if _is_twin(obj):
+        if is_package_twin(obj):
             continue
         parent, package_ref = obj.values.get("attr_parentid"), obj.values.get("attr_package_id")
         if isinstance(parent, Ref):

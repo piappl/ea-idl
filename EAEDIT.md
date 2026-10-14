@@ -45,9 +45,14 @@ happens when an operation touches something outside the focus. With no focus not
 | `advisory` | Allowed, with a `scope` warning for everything `package` would refuse, including crossing connectors. |
 | `off` | Allowed silently. |
 
-Deleting an element or package cascades like EA does. Rows that point at a deleted row are reset to EA's "unset"
+Deleting an element or package cascades like EA does, including the element's details (requirements, scenarios,
+files, constraints, ...) and those of its attributes, operations and connectors. Rows that point at a deleted row are reset to EA's "unset"
 value and reported as `reference-cleared`. Clearing a reference in a row outside the focus counts as touching
 that package, so under `package` and `connected` it raises `ScopeError`.
+
+A focus root itself belongs to its parent package's contents: under `package` and `connected`, renaming, moving,
+deleting or otherwise changing the focus package's own rows raises `ScopeError` (`advisory` warns). Focus its
+parent to change it. Its sub-packages and contents are inside the focus as usual.
 
 A refused operation is rolled back completely. `commit()` re-checks scope over the whole change.
 
@@ -78,6 +83,10 @@ Notes:
   `TPos` is left NULL, as EA does.
 - `create_element` takes the base type from the stereotype's catalogue entry; pass `type=` if it applies to several.
 - `update_*` take column-style fields (`s.update_element(el=..., alias="x")`).
+- Session methods also take positional arguments in the operation's parameter order (`s.delete_element("X")`,
+  `s.create_element("Model::Demo", "Engine")`); the log records them by name.
+- `move_element` moves nested elements with their owner. Moving a nested element on its own unnests it (ParentID
+  reset, `unnested` warning), since its owner stays in the old package. Diagrams owned by moved elements move too.
 - Adding a stereotype also adds the tags it defines (own and inherited) that the target lacks, with catalogue defaults.
   Removing a stereotype keeps its tags (`stereotype-removed-tags-kept`).
 - `connect` with a stereotype checks both ends against the profile's connector rules and warns, never refuses.
@@ -93,6 +102,11 @@ connector end constraints. Sources, most authoritative first:
 
 For each stereotype the highest-precedence source wins; within a level, the order given. Bare names resolve if
 unambiguous, otherwise write `Profile::Name`.
+
+Stereotypes a model uses without a profile (no `FQName` in EA's stereotype list) are inferred under the profile
+`(unknown)`. A bare name found both there and in a named profile means the named one. Applying an `(unknown)`
+stereotype writes it as EA does: by name, plus `GUID=` of its `t_stereotypes` row when one applies to the target's
+base type. The `(unknown)` profile name is never written to the model.
 
 ```yaml
 profile: Example
@@ -120,7 +134,7 @@ ResourceMessage realization.
 ## Warnings
 
 Operations succeed with warnings when the catalogue or defaults are doubtful; errors are for things that cannot
-be done. Warnings appear in `OpResult.warnings`, `session.warnings` and the CLI output.
+be done. Warnings appear in `OpResult.warnings`, `session.warnings` (until `commit()`) and the CLI output.
 
 | Code | Meaning |
 |------|---------|
@@ -131,7 +145,8 @@ be done. Warnings appear in `OpResult.warnings`, `session.warnings` and the CLI 
 | `unknown-tag` | `set_tag` named a tag none of the target's stereotypes defines. |
 | `stereotype-removed-tags-kept` | A stereotype was removed; its tag rows stay. |
 | `connector-end` | An end does not satisfy the stereotype's connector constraint. |
-| `diagram-link-dropped` | `reconnect` dropped a diagram link because the new end has no diagram object identifier. |
+| `diagram-link-dropped` | `reconnect` dropped a diagram link: the new end is not on that diagram or has no diagram object identifier. |
+| `unnested` | `move_element` moved a nested element away from its owner; it is no longer nested. |
 | `reference-cleared` | A delete reset a reference in a surviving row. |
 | `unverified-kind` | The type's storage was not checked against EA-made data. |
 | `unverified-default` | Defaults for a new row are a best guess, not checked against EA-made data. |
@@ -149,7 +164,7 @@ replay(Session.open("other.qea"), "changes.yaml")
 
 The file is YAML (`eaedit: 1`, `author`, then `ops` with `op`, `at`, `args`, `created`). Each operation stores the
 timestamp it ran at and the GUIDs it created, so replaying onto the same starting model gives identical rows. Replay
-records the change file's author unless you pass `--author`. A replay failure names the operation number. See
+records the change file's author unless you pass `author=` (`--author` on the command line). A replay failure names the operation number. See
 [docs/examples/eaedit-example.yaml](./docs/examples/eaedit-example.yaml).
 
 ## Safety

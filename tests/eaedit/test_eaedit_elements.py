@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import datetime
 
 import pytest
@@ -425,3 +426,198 @@ def test_undo_create_element(nafv4_path, qea_copy, mini_mdg_path):
     assert not session.working.same_records(session.original)
     session.undo()
     assert session.working.same_records(session.original)
+
+
+def _stereo_description(rs, guid):
+    [xref] = [
+        x for x in rs.records("t_xref") if x.values["attr_name"] == "Stereotypes" and x.values["attr_client"] == guid
+    ]
+    return xref.values["attr_description"]
+
+
+INTERFACE = "{8693AE90-C279-4519-AC3B-E77DD1076F13}"  # t_stereotypes 'interface' applying to 'class'
+
+
+def test_unknown_profile_stereotypes_are_written_as_ea_does(nafv4_path, qea_copy):
+    path = qea_copy(nafv4_path)
+    baseline = _issues(load_file(nafv4_path))
+    session = _open(path)  # infer=True: the model's FQName-less stereotypes land in the "(unknown)" profile
+    # EA names a stereotype without a profile by its t_stereotypes row's GUID ...
+    interface = session.create_element(package="Model::core", name="I", stereotype="interface")
+    assert interface.warnings == []
+    assert (
+        _stereo_description(session.working, interface.guid) == f"@STEREO;Name=interface;GUID={INTERFACE};@ENDSTEREO;"
+    )
+    # ... and by its name alone when there is no such row (EA's own 'collapse' entries in nafv4.qea).
+    collapse = session.create_element(package="Model::core", name="C", stereotype="(unknown)::collapse").guid
+    assert _stereo_description(session.working, collapse) == "@STEREO;Name=collapse;@ENDSTEREO;"
+    # A list rewritten for another stereotype keeps the GUID entries it had.
+    session.add_stereotype(target=interface.guid, name="collapse")
+    assert _stereo_description(session.working, interface.guid) == (
+        f"@STEREO;Name=interface;GUID={INTERFACE};@ENDSTEREO;@STEREO;Name=collapse;@ENDSTEREO;"
+    )
+    session.commit()
+    rs = load_file(path)
+    assert _errors(rs, baseline) == []
+    assert "(unknown)" not in "".join(x.values["attr_description"] or "" for x in rs.records("t_xref"))
+
+
+def test_bare_name_prefers_named_profile_over_inferred_unknown(nafv4_path, qea_copy):
+    idl = Catalogue(profile="IDL", source=Source(kind="eaidl"), stereotypes=[StereotypeDef(name="idlStruct")])
+    session = _open(qea_copy(nafv4_path), catalogues=[idl])
+    result = session.create_element(package="Model::core", name="S", stereotype="idlStruct")
+    assert result.warnings == []
+    assert (
+        _stereo_description(session.working, result.guid) == "@STEREO;Name=idlStruct;FQName=IDL::idlStruct;@ENDSTEREO;"
+    )
+
+
+def test_apply_stereotype_with_ambiguous_ancestor_warns(nafv4_path, qea_copy):
+    child = StereotypeDef(name="S", applies_to=["Class"], generalizes=["B"], tags=[TagDef(name="own")])
+    catalogues = [
+        Catalogue(profile="P", source=Source(kind="yaml"), stereotypes=[child]),
+        Catalogue(profile="Q", source=Source(kind="yaml"), stereotypes=[StereotypeDef(name="B")]),
+        Catalogue(profile="R", source=Source(kind="yaml"), stereotypes=[StereotypeDef(name="B")]),
+    ]
+    session = _open(qea_copy(nafv4_path), catalogues=catalogues, infer=False)
+    result = session.create_element(package="Model::core", name="X", stereotype="P::S", type="Class")
+    assert [w.code for w in result.warnings] == ["ambiguous-stereotype"]
+    assert stereotype_names(session, session.working.get("t_object", result.guid)) == [("S", "P::S")]
+    assert _tags(session.working, result.guid) == {}
+
+
+ASSET1 = "Model::p2::ResourceArchitecture::Asset1"  # a Part nested under ResourceArchitecture (ParentID)
+
+
+def test_move_nested_element_unnests_it(nafv4_path, qea_copy):
+    path = qea_copy(nafv4_path)
+    baseline = _issues(load_file(nafv4_path))
+    session = _open(path)
+    guid = find(session.working, ASSET1).key
+    result = session.move_element(el=ASSET1, package="Model::core")
+    assert [w.code for w in result.warnings] == ["unnested"]
+    values = session.working.get("t_object", guid).values
+    assert (values["attr_package_id"], values["attr_parentid"]) == (find(session.working, "Model::core"), 0)
+    # Moved to the package its owner is in, a nested element stays nested.
+    asset2 = "Model::p2::ResourceArchitecture::Asset2"
+    nested = session.working.get("t_object", find(session.working, asset2).key).values["attr_parentid"]
+    assert session.move_element(el=asset2, package="Model::p2").warnings == []
+    assert session.working.get("t_object", find(session.working, asset2).key).values["attr_parentid"] == nested
+    session.commit()
+    rs = load_file(path)
+    assert _errors(rs, baseline) == []
+    assert find(rs, "Model::core::Asset1") == Ref("t_object", guid)
+
+
+def test_move_element_moves_diagrams_it_owns(nafv4_path, qea_copy):
+    path = qea_copy(nafv4_path)
+    with sqlite3.connect(path) as db:
+        owner, package = db.execute(
+            "select Object_ID, Package_ID from t_object where Name='ResourceArchitecture'"
+        ).fetchone()
+        columns = [r[1] for r in db.execute("pragma table_info(t_diagram)") if r[1] != "Diagram_ID"]
+        row = dict(zip(columns, db.execute(f"select {', '.join(columns)} from t_diagram limit 1").fetchone()))
+        row.update(ParentID=owner, Package_ID=package, Name="Owned", ea_guid="{22222222-0000-0000-0000-000000000001}")
+        db.execute(f"insert into t_diagram ({', '.join(row)}) values ({', '.join('?' * len(row))})", list(row.values()))
+    baseline = _issues(load_file(path))
+    session = _open(path)
+    result = session.move_element(el="Model::p2::ResourceArchitecture", package="Model::core")
+    assert "unnested" not in [w.code for w in result.warnings]  # its nested parts move with it
+    diagram = session.working.get("t_diagram", "{22222222-0000-0000-0000-000000000001}").values
+    assert diagram["attr_package_id"] == find(session.working, "Model::core")
+    session.commit()
+    assert _errors(load_file(path), baseline) == []
+
+
+def test_create_element_without_parent_writes_no_parent_value(nafv4_path, qea_copy):
+    path = qea_copy(nafv4_path)
+    session = _open(path)
+    part = session.create_element(package="Model::core", name="P", type="Part").guid
+    session.commit()
+    assert load_file(path).get("t_object", part).values["attr_parentid"] == 0
+
+
+def _insert_details(path):
+    with sqlite3.connect(path) as db:
+        oid = db.execute("select Object_ID from t_object where ea_guid = ?", (MESSAGE,)).fetchone()[0]
+        attribute_id, attribute_guid = db.execute(
+            "select ID, ea_guid from t_attribute where Object_ID = ? order by Pos limit 1", (oid,)
+        ).fetchone()
+        connector_id, connector_guid = db.execute(
+            "select Connector_ID, ea_guid from t_connector where Start_Object_ID = ? limit 1", (oid,)
+        ).fetchone()
+        db.execute(
+            "insert into t_objectrequires (Object_ID, Requirement, ReqType) values (?, 'R1', 'Functional')", (oid,)
+        )
+        db.execute(
+            "insert into t_objectscenarios (Object_ID, Scenario, ea_guid) values (?, 'S1', ?)",
+            (oid, "{22222222-0000-0000-0000-000000000002}"),
+        )
+        db.execute("insert into t_objectfiles (Object_ID, FileName) values (?, 'f.txt')", (oid,))
+        db.execute("insert into t_method (Object_ID, Name) values (?, 'm')", (oid,))
+        db.execute(
+            "insert into t_attributeconstraints (Object_ID, \"Constraint\", AttName, ID) values (?, 'c', 'a', ?)",
+            (oid, attribute_id),
+        )
+        db.execute("insert into t_connectorconstraint (ConnectorID, \"Constraint\") values (?, 'cc')", (connector_id,))
+        db.execute(
+            'insert into t_roleconstraint (ConnectorID, "Constraint", ConnectorEnd, ConstraintType) '
+            "values (?, 'rc', 'Source', 'Pre')",
+            (connector_id,),
+        )
+    return attribute_guid, connector_guid
+
+
+#: Detail tables of elements, attributes and connectors that a delete must not leave orphaned.
+DETAIL_TABLES = (
+    "t_objectrequires",
+    "t_objectscenarios",
+    "t_objectfiles",
+    "t_method",
+    "t_attributeconstraints",
+    "t_connectorconstraint",
+    "t_roleconstraint",
+)
+
+
+def _counts(path):
+    with sqlite3.connect(path) as db:
+        return {t: db.execute(f"select count(*) from {t}").fetchone()[0] for t in DETAIL_TABLES}
+
+
+def test_delete_element_removes_detail_rows(nafv4_path, qea_copy):
+    path = qea_copy(nafv4_path)
+    _insert_details(path)
+    rs = load_file(path)
+    assert [i for i in rs.issues if i.table in DETAIL_TABLES] == []
+    assert len(list(rs.records("t_objectrequires"))) == 1
+    baseline = _issues(rs)
+    session = _open(path)
+    session.delete_element(el=MESSAGE)
+    session.commit()
+    assert _counts(path) == dict.fromkeys(DETAIL_TABLES, 0)
+    assert _errors(load_file(path), baseline) == []
+
+
+def test_delete_attribute_and_connector_remove_their_constraints(nafv4_path, qea_copy):
+    path = qea_copy(nafv4_path)
+    attribute, connector = _insert_details(path)
+    baseline = _issues(load_file(path))
+    session = _open(path)
+    session.delete_attribute(attr=attribute)
+    session.delete_connector(conn=connector)
+    session.commit()
+    counts = _counts(path)
+    assert (counts["t_attributeconstraints"], counts["t_connectorconstraint"], counts["t_roleconstraint"]) == (0, 0, 0)
+    assert counts["t_objectrequires"] == 1
+    assert _errors(load_file(path), baseline) == []
+
+
+def test_real_operations_take_positional_arguments(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    guid = session.create_element("Model::core", "Pos").guid
+    session.update_element(guid, alias="A")  # **fields are flattened into the logged arguments
+    assert session.log[-1].args == {"el": guid, "alias": "A"}
+    session.delete_element(guid)
+    assert session.log[-1].args == {"el": guid}
+    assert session.working.get("t_object", guid) is None
