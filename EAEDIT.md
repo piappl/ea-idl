@@ -56,6 +56,12 @@ parent to change it. Its sub-packages and contents are inside the focus as usual
 
 A refused operation is rolled back completely. `commit()` re-checks scope over the whole change.
 
+**Timestamps.** EA stores CreatedDate and ModifiedDate as local time with no zone, in the timezone of the Windows
+machine running EA. eaedit writes the local time of the machine it runs on, so in a container on UTC its dates
+would be hours off from EA's. Pass `Session.open(..., timezone="Europe/Warsaw")`, or set `TZ=Europe/Warsaw` in the
+environment, to write the same local time as EA. Replaying a change file reuses the timestamps recorded in the file
+and ignores the clock.
+
 ## Identifiers
 
 Anywhere an operation takes an element, package, attribute or connector, give either:

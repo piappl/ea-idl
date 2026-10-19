@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Iterable
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from eacore.backends.sql import SqlBackend
 from eacore.catalogue import Catalogue, CatalogueSet
@@ -104,6 +105,19 @@ def _issue_id(issue: Issue) -> tuple:
     return (issue.severity, issue.rule, issue.ref, issue.message)
 
 
+def _local_clock(timezone: str | None) -> Callable[[], datetime]:
+    """Wall-clock time as EA stores it: naive local time, in ``timezone`` (IANA name) or the system's (``TZ``)."""
+    if timezone is None:
+        return datetime.now
+    try:
+        zone = ZoneInfo(timezone)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise InvalidOperationError(
+            f"unknown timezone {timezone!r} (expected an IANA name like Europe/Warsaw)"
+        ) from None
+    return lambda: datetime.now(zone).replace(tzinfo=None)
+
+
 class Session:
     def __init__(
         self,
@@ -141,8 +155,13 @@ class Session:
         infer: bool = True,
         author: str | None = None,
         clock: Callable[[], datetime] | None = None,
+        timezone: str | None = None,
     ) -> Session:
         load_all()
+        if clock is not None and timezone is not None:
+            raise InvalidOperationError("pass either clock or timezone, not both")
+        if clock is None:
+            clock = _local_clock(timezone)
         path = Path(path)
         backend = SqlBackend.for_file(path)
         original = backend.load()
@@ -155,7 +174,7 @@ class Session:
             load_catalogues(catalogues, original, infer_from_model=infer),
             scope,
             author or getpass.getuser(),
-            clock or datetime.now,
+            clock,
         )
 
     # --- primitives for ops (only way ops change state) ---

@@ -230,3 +230,23 @@ def test_operation_wrappers_accept_positional_arguments(path):
     assert session.log[-1].args == {"target": IN_MESSAGE, "name": "Mixed"}
     with pytest.raises(InvalidOperationError, match="_test_rename"):
         session._test_rename(IN_MESSAGE, "a", "too many")
+
+
+def test_timezone_writes_that_zones_local_time(path):
+    # EA stores naive local time of the machine running it; a UTC container must still match a Warsaw EA.
+    from zoneinfo import ZoneInfo
+
+    session = Session.open(path, timezone="Europe/Warsaw")
+    expected = datetime.now(ZoneInfo("Europe/Warsaw")).replace(tzinfo=None)
+    written = datetime.strptime(
+        session.working.get("t_package", session.create_package("Model", "Clocked").guid).values["attr_createddate"],
+        "%Y-%m-%d %H:%M:%S",
+    )
+    assert abs((written - expected).total_seconds()) < 60
+
+
+def test_timezone_rejects_unknown_and_clock_combination(path):
+    with pytest.raises(InvalidOperationError, match="unknown timezone"):
+        Session.open(path, timezone="Mars/Olympus")
+    with pytest.raises(InvalidOperationError, match="either clock or timezone"):
+        Session.open(path, timezone="Europe/Warsaw", clock=lambda: FIXED)
