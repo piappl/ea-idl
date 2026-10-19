@@ -20,11 +20,11 @@ def create_package(
     guid = primary_guid(session, guid)
     now = timestamp(session.now())
     dates = {"attr_createddate": now, "attr_modifieddate": now}
-    package = new_record(
-        session,
-        "t_package",
-        {"attr_ea_guid": guid, "attr_name": name, "attr_parent_id": parent_ref, "attr_notes": notes, **dates},
-    )
+    values = {"attr_ea_guid": guid, "attr_name": name, "attr_parent_id": parent_ref, "attr_notes": notes, **dates}
+    if not isinstance(session.working.resolve(parent_ref).values.get("attr_parent_id"), Ref):
+        # A package right under the root is a view; EA's Add View writes these flags (also on nafv4.qea's views).
+        values["attr_packageflags"] = "isModel=1;VICON=3;"
+    package = new_record(session, "t_package", values)
     twin = new_record(
         session,
         "t_object",
@@ -96,7 +96,8 @@ def move_package(session, pkg: str, new_parent: str) -> str:
         raise InvalidOperationError(f"moving {pkg!r} under {new_parent!r} would make a cycle")
     twin = package_twin(session, package)
     now = timestamp(session.now())
-    values = {**package.values, "attr_parent_id": parent, "attr_modifieddate": now}
+    # EA leaves the t_package row's ModifiedDate alone on a move; only the twin's changes.
+    values = {**package.values, "attr_parent_id": parent}
     session.put(Record("t_package", package.key, values, package.rid))
     values = {**twin.values, "attr_package_id": parent, "attr_modifieddate": now}
     session.put(Record("t_object", twin.key, values, twin.rid))

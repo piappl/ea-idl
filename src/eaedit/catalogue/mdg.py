@@ -83,7 +83,7 @@ def _tag(el: ET.Element, types: dict[str, dict[str, str]]) -> TagDef:
         tag.type = fields.get("Type", "")
         tag.values = _split(fields.get("Values", ""), ",")
         tag.stereotypes = _split(fields.get("Stereotypes", ""), ",")
-    elif tag.type == "enumeration":
+    elif tag.type in ("enumeration", "boolean"):
         tag.values = _split(el.get("values", ""), ",")
     return tag
 

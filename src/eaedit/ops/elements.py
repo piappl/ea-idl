@@ -22,7 +22,7 @@ from eaedit.ops.common import (
     stereotype_tags,
     write_stereotypes,
 )
-from eaedit.resolve import guid_of
+from eaedit.resolve import guid_of, twin_package
 
 
 def _element(session, identifier: str) -> Record:
@@ -336,7 +336,22 @@ def delete_element(session, el: str) -> str:
 def add_stereotype(session, target: str, name: str) -> str:
     record = resolve_target(session, target)
     apply_stereotype(session, record.table, record, name)
+    _touch(session, record)
     return guid_of(record)
+
+
+def _touch(session, record: Record) -> None:
+    """Set ModifiedDate on an element, or on both rows of a package, as EA does when it applies a stereotype."""
+    rows = [(record.table, record.key)]
+    if record.table == "t_package":
+        rows.append(("t_object", record.key))
+    elif (package := twin_package(record)) is not None:
+        rows.append(("t_package", package))
+    now = timestamp(session.now())
+    for table, key in rows:
+        current = session.working.get(table, key)
+        if current is not None and "attr_modifieddate" in current.values:
+            session.put(Record(table, key, {**current.values, "attr_modifieddate": now}, current.rid))
 
 
 def _resolved(session, name: str):

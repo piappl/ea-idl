@@ -72,3 +72,5 @@ def test_real_naf_mdg(naf_mdg_path):
     assert len(cat.diagrams) > 40
     resolved = CatalogueSet([cat]).resolved("ActualEnterprisePhase")
     assert {"startDate", "endDate"} <= {t.name for t in resolved.tags}
+    to_be = next(t for t in CatalogueSet([cat]).resolved("ArchitecturalDescription").tags if t.name == "toBe")
+    assert (to_be.type, to_be.values) == ("boolean", ["true", "false"])

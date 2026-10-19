@@ -110,11 +110,32 @@ def test_create_package_in_empty_model(empty_path, qea_copy):
     assert rs.get("t_object", guid).values["attr_tpos"] is None
 
 
+def test_part_a_matches_ea(empty_path, qea_copy):
+    # What EA 16.1 wrote for the same actions on empty.qea: view flags, move and stereotype dates.
+    path = qea_copy(empty_path)
+    times = iter(datetime(2026, 1, 2, 3, 4, s) for s in range(10))
+    session = Session.open(path, policy="off", clock=lambda: next(times), author="tester")
+    alpha = session.create_package("Model", "Alpha").guid  # :00
+    beta = session.create_package("Model::Alpha", "Beta").guid  # :01
+    gamma = session.create_package("Model::Alpha", "Gamma").guid  # :02
+    session.move_package("Model::Alpha::Gamma", "Model::Alpha::Beta")  # :03
+    session.add_stereotype("Model::Alpha::Beta", "Thing")  # :04
+    session.commit()
+    rs = load_file(path)
+    assert rs.get("t_package", alpha).values["attr_packageflags"] == "isModel=1;VICON=3;"
+    assert rs.get("t_package", beta).values["attr_packageflags"] is None
+    assert rs.get("t_package", gamma).values["attr_modifieddate"] == "2026-01-02 03:04:02"
+    assert rs.get("t_object", gamma).values["attr_modifieddate"] == "2026-01-02 03:04:03"
+    assert rs.get("t_package", beta).values["attr_modifieddate"] == "2026-01-02 03:04:04"
+    assert rs.get("t_object", beta).values["attr_modifieddate"] == "2026-01-02 03:04:04"
+
+
 def test_apply_known_stereotype_adds_tags_with_values_notes(nafv4_path, qea_copy):
     from eacore.catalogue import Catalogue, Source, StereotypeDef, TagDef
 
     tags = [
         TagDef(name="kind", type="enumeration", values=["A", "B"]),
+        TagDef(name="toBe", type="boolean", values=["true", "false"]),
         TagDef(name="URI"),
         TagDef(name="n", default="3"),
         # A RefGUID tag's Values are the metaclasses it may point at, not choices: no note.
@@ -137,7 +158,13 @@ def test_apply_known_stereotype_adds_tags_with_values_notes(nafv4_path, qea_copy
         if t.values["attr_object_id"] == Ref("t_object", guid)
     }
     # Enumeration choices go to Notes as on EA-made DataModel packages in nafv4.qea ('kind').
-    assert rows == {"kind": (None, "Values: A,B\r\n"), "URI": (None, None), "n": ("3", None), "ref": (None, None)}
+    assert rows == {
+        "kind": (None, "Values: A,B\r\n"),
+        "toBe": (None, "Values: true,false\r\n"),
+        "URI": (None, None),
+        "n": ("3", None),
+        "ref": (None, None),
+    }
     assert not [i for i in check(session.working) if i.rule.startswith("stereotype")]
 
 

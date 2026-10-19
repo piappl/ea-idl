@@ -141,9 +141,10 @@ def _applies(metaclasses: list[str], base: str) -> bool:
 
 
 def _values_note(tag: TagDef) -> str | None:
-    # EA-made tags of enumeration type keep the choices like this (EA-made enumeration tags in nafv4.qea); other
-    # types' values (a RefGUID tag's metaclasses) are no choices.
-    if tag.type != "enumeration" or not tag.values:
+    # EA-made enumeration and boolean tags keep the choices like this ('kind', 'isEncapsulated' in nafv4.qea; an
+    # EA-applied NAF ArchitecturalDescription's 'toBe'); other types' values (a RefGUID tag's metaclasses) are no
+    # choices.
+    if tag.type not in ("enumeration", "boolean") or not tag.values:
         return None
     return "Values: " + ",".join(tag.values) + "\r\n"
 

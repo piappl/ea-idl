@@ -354,12 +354,14 @@ def test_update_and_move_package(nafv4_path, qea_copy):
     assert find(rs, "Model::core::New") == Ref("t_package", guid)
 
 
-def test_move_package_sets_modified_on_both_rows(nafv4_path, qea_copy):
+def test_move_package_sets_modified_on_twin_only(nafv4_path, qea_copy):
+    # EA 16.1 changes only the t_object twin's ModifiedDate when a package is dragged to another parent.
     session = _open(qea_copy(nafv4_path))
     p2 = find(session.working, "Model::p2").key
+    before = session.working.get("t_package", p2).values["attr_modifieddate"]
     session.move_package(pkg=p2, new_parent="Model::core")
-    for table in ("t_package", "t_object"):
-        assert session.working.get(table, p2).values["attr_modifieddate"] == "2026-01-02 03:04:05"
+    assert session.working.get("t_object", p2).values["attr_modifieddate"] == "2026-01-02 03:04:05"
+    assert session.working.get("t_package", p2).values["attr_modifieddate"] == before
 
 
 def test_remove_stereotype_ignores_tags_of_remaining_stereotypes(nafv4_path, qea_copy, mini_mdg_path):
