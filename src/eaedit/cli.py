@@ -115,8 +115,8 @@ def _session_options(fn):
     return click.argument("model", type=EXISTING)(fn)
 
 
-def _report(session: Session, out: str | None = None) -> None:
-    preview = session.preview()
+def _report(session: Session, out: str | None = None, render: bool | None = None) -> None:
+    preview = session.preview(render=render)
     click.echo(preview.report)
     if preview.outside_focus:
         click.echo(f"outside the focus: {', '.join(preview.outside_focus)}")
@@ -140,10 +140,10 @@ def _report(session: Session, out: str | None = None) -> None:
             click.echo(f"diagram: {folder / f'{name}.svg'}")
 
 
-def _replayed(model, changes, catalogues, focus, policy, author, out=None) -> Session:
+def _replayed(model, changes, catalogues, focus, policy, author, out=None, render=None) -> Session:
     session = Session.open(model, focus=focus, policy=policy, catalogues=catalogues)
     replay(session, changes, author=author)
-    _report(session, out)
+    _report(session, out, render)
     return session
 
 
@@ -161,7 +161,7 @@ def preview(model, changes, catalogues, focus, policy, author, out) -> None:
 def apply(model, changes, catalogues, focus, policy, author) -> None:
     """Replay CHANGES on MODEL and commit them; exit status 1 if the commit is refused."""
     with _errors():
-        session = _replayed(model, changes, catalogues, focus, policy, author)
+        session = _replayed(model, changes, catalogues, focus, policy, author, render=False)
         committed = session.commit()
     total = len(committed.inserts) + len(committed.updates) + len(committed.deletes)
     click.echo(f"committed {total} change(s) to {model}")

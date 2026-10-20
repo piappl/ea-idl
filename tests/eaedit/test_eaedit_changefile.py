@@ -138,6 +138,8 @@ def test_example_diagram_change_file_applies(empty_path, qea_copy):
     session = Session.open(model, policy="package", focus=["Model"])
     replay(session, EXAMPLES / "eaedit-diagram.yaml")
 
+    # A Class diagram has no hand-made sample in nafv4.qea, so this one warning is expected.
+    assert [w.code for w in session.warnings] == ["unverified-default"]
     assert [i for i in session.preview().new_issues if i.severity == "error"] == []
     session.commit()
     reopened = Session.open(model)
@@ -146,11 +148,12 @@ def test_example_diagram_change_file_applies(empty_path, qea_copy):
     assert len(list(reopened.working.records("t_diagramobjects"))) == 3  # two classes and the note
 
 
-def test_replay_diagram_ops_identical(empty_path, qea_copy, tmp_path):
+def test_replay_diagram_ops_identical(empty_path, qea_copy):
     first = qea_copy(empty_path, "one.qea")
     second = qea_copy(empty_path, "two.qea")
     for model in (first, second):
-        replay(s := Session.open(model, policy="package", focus=["Model"]), EXAMPLES / "eaedit-diagram.yaml")
+        s = Session.open(model, policy="package", focus=["Model"])
+        replay(s, EXAMPLES / "eaedit-diagram.yaml")
         s.commit()
     assert _diagram_rows(first) == _diagram_rows(second)
     assert any("DUID=" in str(rows) for rows in _diagram_rows(first)[1])

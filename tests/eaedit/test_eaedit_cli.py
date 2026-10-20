@@ -164,3 +164,15 @@ def test_cli_diagram_export_import(nafv4_path, qea_copy, tmp_path):
     result = runner.invoke(cli, ["diagram", "import", str(model), str(svg), "--policy", "off", "--apply"])
     assert result.exit_code == 0, result.output
     assert Session.open(model).working.get("t_diagram", L7).values["attr_name"] == "Renamed"
+
+
+def test_preview_renders_after_removals_only(nafv4_path, qea_copy):
+    session = Session.open(qea_copy(nafv4_path), policy="off")
+    session.remove_from_diagram(L7, "Model::core::message::Message")
+    assert list(session.preview().diagrams) == [L7]
+
+
+def test_preview_does_not_render_deleted_diagram(nafv4_path, qea_copy):
+    session = Session.open(qea_copy(nafv4_path), policy="off")
+    session.delete_diagram(L7)
+    assert session.preview().diagrams == {}

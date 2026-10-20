@@ -8,7 +8,7 @@ import inspect
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import TYPE_CHECKING, Any, Callable, Iterable
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from eacore.backends.sql import SqlBackend
@@ -23,6 +23,9 @@ from eaedit.catalogue import load_catalogues
 from eaedit.errors import CommitRefusedError, EditWarning, InvalidOperationError, NotFoundError, ScopeError
 from eaedit.ops import OPERATIONS, load_all, query
 from eaedit.scope import Scope
+
+if TYPE_CHECKING:
+    from eaedit.diagrams.render import RenderedDiagram
 
 #: ``(table, key, record before the operation's first touch, or None if it did not exist)``
 JournalEntry = tuple[str, Key, Record | None]
@@ -54,7 +57,7 @@ class Preview:
     touched: dict[str, int]
     outside_focus: list[str]
     #: Rendered SVG per diagram (by GUID) the session created or changed, as it will look after commit.
-    diagrams: dict[str, Any] = field(default_factory=dict)
+    diagrams: dict[str, RenderedDiagram] = field(default_factory=dict)
 
 
 @dataclass
@@ -358,18 +361,29 @@ class Session:
     _DIAGRAM_COLUMNS = {"t_diagramobjects": "attr_diagram_id", "t_diagramlinks": "attr_diagramid"}
 
     def changed_diagrams(self, changes: ChangeSet | None = None) -> list[str]:
-        """GUIDs of the diagrams that exist in the working copy and whose rows, links or messages changed."""
+        """GUIDs of the diagrams that exist in the working copy and changed: their own row, objects, links or
+        messages (removals included), or an element or note they show."""
         changes = changes or self.changes()
         found: dict[str, None] = {}
-        for change in [*changes.inserts, *changes.updates]:
+        shown: dict[Key, list[Ref]] = {}
+        for row in self.working.records("t_diagramobjects"):
+            ref = row.values.get("attr_diagram_id")
+            if isinstance(ref, Ref):
+                shown.setdefault(row.values.get("attr_object_id").key, []).append(ref)
+        for change in [*changes.inserts, *changes.updates, *changes.deletes]:
             if isinstance(change, Insert):
-                table, key = change.record.table, change.record.key
+                table, key, rs = change.record.table, change.record.key, self.working
+            elif isinstance(change, Delete):
+                table, key, rs = change.table, change.key, self.original
             else:
-                table, key = change.table, change.key
+                table, key, rs = change.table, change.key, self.working
             if table == "t_diagram":
                 found[key] = None
+            elif table == "t_object":
+                for ref in shown.get(key, []):
+                    found[ref.key] = None
             elif table in self._DIAGRAM_COLUMNS or table == "t_connector":
-                row = self.working.get(table, key)
+                row = rs.get(table, key)
                 ref = row.values.get(self._DIAGRAM_COLUMNS.get(table, "attr_diagramid")) if row else None
                 if isinstance(ref, Ref) and ref.table == "t_diagram":
                     found[ref.key] = None

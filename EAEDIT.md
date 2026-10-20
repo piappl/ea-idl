@@ -166,8 +166,8 @@ byte for byte.
 | Sequence messages | `show_message(diagram, connector, order=None, offset=None)`, `set_message_order(diagram, connectors)` |
 | Layout | `layout(diagram, spec)`; `plan_layout(session, diagram, spec)` computes the same positions without staging |
 
-- `type` is a UML type (`Class`, `Sequence`, ...) or an MDG view by name; only the P2, P6, L7 and P7 views and
-  UML class diagrams are written from hand-made rows, others warn `unverified-default`.
+- `type` is a UML type (`Class`, `Sequence`, ...) or an MDG view by name; only the P2, P6, L7 and P7 views are written
+  from hand-made rows; every other view and the UML types (`Class`, ...) warn `unverified-default`.
 - Elements go on a diagram wherever you place them; `place` without `rect` finds a free spot. A Part is kept inside its
   owner's rectangle (`moved-inside-owner`). When both ends of a connector are on the diagram its link row is written,
   as the GUI does. A note on a connector is stored as EA does (the note refers to the connector); a note on an
@@ -264,7 +264,7 @@ Rules:
 
 | Limitation | How it will be lifted |
 |---|---|
-| Views other than P2, P6, L7 and UML class diagrams work but warn `unverified-default`. | Hand-made samples of each view turn their defaults into verified ones. |
+| Views other than P2, P6, L7 and P7, and UML diagram types such as `Class`, work but warn `unverified-default`. | Hand-made samples of each view turn their defaults into verified ones. |
 | eaedit cannot create bend points or set a connector's route style or label positions. Existing routes, bend points and label positions are kept. | Operations (and SVG rules) for waypoints, route style, label offsets. |
 | Objects eaedit has no operation for (interaction fragments, boundaries, swimlanes, hyperlinks, text, images, ...) are carried through unchanged; the SVG marks them `readonly`. | One operation set (and SVG rule) per object kind, as needed. |
 | Per-object appearance (colours, fonts, line widths), feature visibility and diagram-wide settings (`StyleEx`, `PDATA` switches) are written with EA's defaults and otherwise preserved, not editable. | Appearance and visibility operations mapping to those style keys. |
