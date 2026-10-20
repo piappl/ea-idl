@@ -1,3 +1,4 @@
+import re
 import sqlite3
 from datetime import datetime
 
@@ -201,6 +202,21 @@ def test_new_guid_logs_every_minted_guid_and_uses_the_queue(path):
     finally:
         OPERATIONS.pop("_test_mint", None)
         OPERATIONS.pop("_test_mint_guid", None)
+
+
+def test_new_duid_shape_and_replay(path):
+    @operation("_test_duid")
+    def mint(session):
+        return session.new_duid()
+
+    try:
+        session = _open(path)
+        assert re.fullmatch(r"[0-9A-F]{8}", session.run("_test_duid").guid)
+        session.queue_guids(["{12345678-AAAA-BBBB-CCCC-DDDDEEEEFFFF}"])
+        assert session.run("_test_duid").guid == "12345678"
+        assert session.log[-1].created == ["{12345678-AAAA-BBBB-CCCC-DDDDEEEEFFFF}"]
+    finally:
+        OPERATIONS.pop("_test_duid", None)
 
 
 def test_failed_dispatch_clears_the_guid_queue(path):

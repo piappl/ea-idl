@@ -225,6 +225,10 @@ class Session:
         op.minted.append(guid)
         return guid
 
+    def new_duid(self) -> str:
+        """A diagram object id: characters 1-8 of a minted GUID, so replay reproduces it. Caller retries on a clash."""
+        return self.new_guid().strip("{}").replace("-", "")[:8].upper()
+
     def queue_guids(self, guids: Iterable[str]) -> None:
         """GUIDs for the next operation's ``new_guid`` calls, in order (replay reproduces an operation's GUIDs)."""
         self._guid_queue = list(guids)

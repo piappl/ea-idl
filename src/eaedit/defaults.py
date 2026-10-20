@@ -13,6 +13,7 @@ from typing import Any
 
 from eacore.records import Record
 from eacore.tablemap import GuidKey
+from eacore.translate import candidate_key
 from eaedit.errors import InvalidOperationError
 
 
@@ -91,7 +92,12 @@ def kind_for(metaclass: str) -> tuple[Kind, bool]:
 
 
 #: Column naming a row's kind, per table; the key of DEFAULTS entries for those tables.
-TYPE_COLUMNS = {"t_object": "attr_object_type", "t_connector": "attr_connector_type", "t_xref": "attr_name"}
+TYPE_COLUMNS = {
+    "t_object": "attr_object_type",
+    "t_connector": "attr_connector_type",
+    "t_xref": "attr_name",
+    "t_diagram": "attr_diagram_type",
+}
 
 
 @dataclass(frozen=True)
@@ -168,6 +174,47 @@ _NAVIGABLE_STYLE = {
     "attr_deststyle": "Union=0;Derived=0;AllowDuplicates=0;Owned=0;Navigable=Navigable;",
 }
 
+# Constant columns of hand-made diagrams. The page size is the value most hand-made Custom rows have (cx 776, cy 1126;
+# the later P2 and p6 rows hold 791 x 1134). MDGDgm is set by the operation; SaveTag is omitted (EA fills it on save).
+_DIAGRAM_PDATA = (
+    "HideRel=0;ShowTags=0;ShowReqs=0;ShowCons=0;OpParams=1;ShowSN=0;ScalePI=0;PPgs.cx=0;PPgs.cy=0;PSize=9;ShowIcons=1;"
+    "SuppCN=0;HideProps=0;HideParents=0;UseAlias=0;HideAtts=0;HideOps=0;HideStereo=0;HideEStereo=0;ShowRec=1;ShowRes=0;"
+    "ShowShape=1;FormName=;"
+)
+_DIAGRAM_STYLEEX = (
+    "ExcludeRTF=0;DocAll=0;HideQuals=0;AttPkg=1;ShowTests=0;ShowMaint=0;SuppressFOC=1;MatrixActive=0;SwimlanesActive=1;"
+    "KanbanActive=0;MatrixLineWidth=1;MatrixLineClr=0;MatrixLocked=0;TConnectorNotation=UML 2.1;"
+    "TExplicitNavigability=0;AdvancedElementProps=1;AdvancedFeatureProps=1;AdvancedConnectorProps=1;"
+    "m_bElementClassifier=1;SPT=1;STBLDgm=;ShowNotes=0;VisibleAttributeDetail=0;ShowOpRetType=1;SuppressBrackets=0;"
+    "SuppConnectorLabels=0;PrintPageHeadFoot=0;ShowAsList=0;SuppressedCompartments=;Theme=:119;"
+)
+# The hand-made sequence diagram (p6) adds its own margins and does not suppress folded operations (SuppressFOC=0).
+_SEQUENCE_STYLEEX = _DIAGRAM_STYLEEX.replace(
+    "SuppressFOC=1;", "SuppressFOC=0;INT_ARGS=;INT_RET=;INT_ATT=;SeqTopMargin=50;"
+)
+_DIAGRAM = {
+    "attr_parentid": 0,
+    "attr_version": "1.0",
+    "attr_showdetails": 0,
+    "attr_attpub": 1,
+    "attr_attpri": 1,
+    "attr_attpro": 1,
+    "attr_orientation": "P",
+    "attr_cx": 776,
+    "attr_cy": 1126,
+    "attr_scale": 100,
+    "attr_showforeign": 1,
+    "attr_showborder": 1,
+    "attr_showpackagecontents": 1,
+    "attr_pdata": _DIAGRAM_PDATA,
+    "attr_locked": 0,
+    "attr_swimlanes": (
+        "locked=false;orientation=0;width=0;inbar=false;names=false;color=-1;bold=false;fcol=0;tcol=-1;ofCol=-1;"
+        "ufCol=-1;hl=1;ufh=0;hh=0;cls=0;bw=0;hli=0;bro=0;"
+    ),
+    "attr_styleex": _DIAGRAM_STYLEEX,
+}
+
 DEFAULTS: dict[tuple[str, str], Defaults] = {
     # Sub-packages; the root "Model" row differs (Version NULL, Batch* 0) but is never created.
     ("t_package", "*"): Defaults(
@@ -216,6 +263,15 @@ DEFAULTS: dict[tuple[str, str], Defaults] = {
         },
         True,
     ),
+    ("t_diagram", "Custom"): Defaults(_DIAGRAM, True),
+    ("t_diagram", "Sequence"): Defaults(
+        {**_DIAGRAM, "attr_cx": 791, "attr_cy": 1134, "attr_styleex": _SEQUENCE_STYLEEX}, True
+    ),
+    # nafv4.qea has no hand-made UML (Class ...) diagram.
+    ("t_diagram", "*"): Defaults(_DIAGRAM, False),
+    # ObjectStyle (with its DUID) is built by the diagram operations.
+    ("t_diagramobjects", "*"): Defaults({}, True),
+    ("t_diagramlinks", "*"): Defaults({"attr_hidden": 0}, True),
     ("t_xref", "Stereotypes"): Defaults(
         {"attr_visibility": "Public", "attr_partition": "0", "attr_supplier": "<none>"}, True
     ),
@@ -273,24 +329,64 @@ def timestamp(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def new_record(session, table: str, values: dict[str, Any], kind_type: str = "*") -> Record:
-    """A complete row for ``table``: NULL everywhere, then EA's defaults, then ``values``. Not yet put.
+#: ObjectStyle text after ``DUID=...;`` per object kind, as on the hand-made diagrams in nafv4.qea.
+OBJECT_STYLES: dict[str, str] = {
+    "Class": "HideIcon=0;",
+    "Part": "HideIcon=0;",
+    "Note": "",
+    "InteractionFragment": "",
+    # A Part or object shown on a sequence diagram (the hand-made p6 lifelines).
+    "Lifeline": "NSL=0;BCol=-1;BFol=-1;LCol=-1;LWth=-1;fontsz=0;bold=0;black=0;italic=0;ul=0;charset=0;pitch=0;HideIcon=0;",
+    "*": "HideIcon=0;",
+}
 
-    The key column (``ea_guid``, or the table's GUID key such as ``XrefID``) is minted when not given.
-    """
+
+def link_style(source_duid: str, target_duid: str) -> str:
+    """``t_diagramlinks.Style`` of a fresh link, as on the hand-made L7 rows."""
+    return f"Mode=3;EOID={target_duid};SOID={source_duid};Color=-1;LWidth=0;"
+
+
+def link_geometry(edge: int) -> str:
+    """``t_diagramlinks.Geometry`` of a fresh link, as on the hand-made L7 rows."""
+    return f"SX=0;SY=0;EX=0;EY=0;EDGE={edge};$LLB=;LLT=;LMT=;LMB=;LRT=;LRB=;IRHS=;ILHS=;"
+
+
+def _layered(session, table: str, values: dict[str, Any], kind_type: str):
+    """``(columns, spec, row)``: NULL everywhere, then EA's defaults, then ``values``; warns on unverified defaults."""
     columns = session.columns(table)
     unknown = sorted(set(values) - set(columns))
     if unknown:
         raise ValueError(f"{table} has no column(s) {', '.join(unknown)}")
     spec = session.working.tablemap.spec(table)
-    if not isinstance(spec.key, GuidKey):
-        raise ValueError(f"new_record supports GUID-keyed tables only, not {table}")
     found = defaults_for(table, kind_type)
     if found is _MISSING or (found.values and not found.verified):
         session.warn("unverified-default", f"no EA-verified defaults for {table} {kind_type}")
     row = dict.fromkeys(columns)
     row.update(found.values)
     row.update(values)
+    return spec, row
+
+
+def new_row(session, table: str, values: dict[str, Any], kind_type: str = "*") -> Record:
+    """A complete row for a table not keyed by GUID (diagram objects and links), layered like ``new_record``.
+
+    The key comes from ``values`` (a DUID in ObjectStyle, or the natural key columns). Not yet put.
+    """
+    spec, row = _layered(session, table, values, kind_type)
+    key = candidate_key(spec, row)
+    if key is None:
+        raise ValueError(f"{table} row has no key")
+    return Record(table, key, row)
+
+
+def new_record(session, table: str, values: dict[str, Any], kind_type: str = "*") -> Record:
+    """A complete row for ``table``: NULL everywhere, then EA's defaults, then ``values``. Not yet put.
+
+    The key column (``ea_guid``, or the table's GUID key such as ``XrefID``) is minted when not given.
+    """
+    if not isinstance(session.working.tablemap.spec(table).key, GuidKey):
+        raise ValueError(f"new_record supports GUID-keyed tables only, not {table}")
+    spec, row = _layered(session, table, values, kind_type)
     if not row.get(spec.key.column):
         row[spec.key.column] = session.new_guid()
     return Record(table, row[spec.key.column], row)

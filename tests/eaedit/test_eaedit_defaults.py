@@ -31,6 +31,14 @@ def _rows(rs, table, type_value):
     return rows
 
 
+#: Style columns holding per-diagram parts (MDGDgm is set by the operation; EA regenerates SaveTag on every save).
+STYLE_COLUMNS = {"attr_styleex"}
+
+
+def _plain_style(text):
+    return re.sub(r"(MDGDgm|SaveTag)=[^;]*;", "", text)
+
+
 def test_verified_defaults_match_ea_rows(nafv4):
     for (table, type_value), entry in DEFAULTS.items():
         if not entry.verified:
@@ -40,7 +48,8 @@ def test_verified_defaults_match_ea_rows(nafv4):
         for column, value in entry.values.items():
             if column in PROJECT_SETTINGS:
                 continue
-            common, _ = Counter(r.get(column) for r in rows).most_common(1)[0]
+            seen = (_plain_style(r.get(column)) if column in STYLE_COLUMNS else r.get(column) for r in rows)
+            common, _ = Counter(seen).most_common(1)[0]
             assert value == common, f"{table}/{type_value} {column}: default {value!r}, EA mostly {common!r}"
 
 
@@ -60,6 +69,7 @@ SET_BY_OPERATION = {
     "attr_notes",
     "attr_description",
     "attr_type",
+    "attr_diagram_type",
     "attr_client",
     "attr_stereotype",
     "attr_property",
@@ -81,6 +91,60 @@ def test_verified_defaults_complete(nafv4):
             if isinstance(next(iter(values)), (Ref, TextRefs)):
                 continue
             assert column in entry.values, f"{table}/{type_value} {column}: EA always writes {values}, no default"
+
+
+def test_diagram_defaults_match_the_hand_made_rows(nafv4):
+    # Column by column against the hand-made rows (the Custom page size is the majority value, cx 776 x cy 1126).
+    for type_value in ("Custom", "Sequence"):
+        rows = _rows(nafv4, "t_diagram", type_value)
+        entry = defaults_for("t_diagram", type_value)
+        assert entry.verified and entry.values["attr_styleex"].count("MDGDgm") == 0
+        for column, value in entry.values.items():
+            seen = {_plain_style(r[column]) if column in STYLE_COLUMNS else r[column] for r in rows}
+            assert value in seen, f"t_diagram/{type_value} {column}: {value!r} not in EA rows {seen}"
+    assert defaults_for("t_diagram", "Custom").values["attr_cx"] == 776
+    assert (
+        defaults_for("t_diagram", "Class") is DEFAULTS[("t_diagram", "*")] and not DEFAULTS[("t_diagram", "*")].verified
+    )
+
+
+def test_diagram_object_and_link_defaults_and_styles():
+    from eaedit.defaults import OBJECT_STYLES, link_geometry, link_style
+
+    assert defaults_for("t_diagramobjects", "*").verified and defaults_for("t_diagramobjects", "*").values == {}
+    assert defaults_for("t_diagramlinks", "*").values == {"attr_hidden": 0}
+    assert OBJECT_STYLES["Note"] == "" and OBJECT_STYLES["Part"] == OBJECT_STYLES["*"] == "HideIcon=0;"
+    assert OBJECT_STYLES["Lifeline"].startswith("NSL=0;BCol=-1;") and OBJECT_STYLES["Lifeline"].endswith("HideIcon=0;")
+    assert link_style("AAAA1111", "BBBB2222") == "Mode=3;EOID=BBBB2222;SOID=AAAA1111;Color=-1;LWidth=0;"
+    assert link_geometry(2) == "SX=0;SY=0;EX=0;EY=0;EDGE=2;$LLB=;LLT=;LMT=;LMB=;LRT=;LRB=;IRHS=;ILHS=;"
+
+
+def test_new_row_keys_diagram_object_and_link(nafv4_path, qea_copy):
+    from eaedit import Session
+    from eaedit.defaults import new_row
+    from eaedit.ops import OPERATIONS
+
+    session = Session.open(qea_copy(nafv4_path))
+    diagram = Ref("t_diagram", "{11111111-0000-0000-0000-000000000001}")
+    element = Ref("t_object", "{22222222-0000-0000-0000-000000000002}")
+    made = {}
+
+    def op(s):
+        made["obj"] = new_row(
+            s,
+            "t_diagramobjects",
+            {"attr_diagram_id": diagram, "attr_object_id": element, "attr_objectstyle": "DUID=0A1B2C3D;HideIcon=0;"},
+        )
+        made["link"] = new_row(s, "t_diagramlinks", {"attr_diagramid": diagram, "attr_connectorid": 7})
+
+    OPERATIONS["_test_new_row"] = op
+    try:
+        session.run("_test_new_row")
+    finally:
+        OPERATIONS.pop("_test_new_row")
+    assert made["obj"].key == (diagram, "0A1B2C3D")
+    assert made["obj"].values["attr_objectstyle"] == "DUID=0A1B2C3D;HideIcon=0;"
+    assert made["link"].values["attr_hidden"] == 0 and made["link"].values["attr_geometry"] is None
 
 
 def test_verified_kinds_seen_in_model(nafv4):
