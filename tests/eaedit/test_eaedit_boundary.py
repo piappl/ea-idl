@@ -1,9 +1,19 @@
-"""eaedit and eaidl are sibling layers over eacore and must not import each other."""
+"""eaedit and eaidl are sibling layers over eacore and must not import each other.
+
+One exception: eaedit renders its diagrams with eaidl's native diagram renderer, from one module only.
+"""
 
 import ast
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[2] / "src"
+
+#: The only eaedit -> eaidl imports: the extractor and SVG renderer behind eaedit's diagram previews.
+ALLOWED = {
+    ("eaedit/diagrams/render.py", "eaidl.config"),
+    ("eaedit/diagrams/render.py", "eaidl.native_diagram_extractor"),
+    ("eaedit/diagrams/render.py", "eaidl.native_diagram_svg"),
+}
 
 
 def _imported_modules(path: Path) -> set[str]:
@@ -25,6 +35,6 @@ def test_eaedit_and_eaidl_do_not_import_each_other():
             f"{path.relative_to(SRC)}: {name}"
             for path in sources
             for name in _imported_modules(path)
-            if name.split(".")[0] == forbidden
+            if name.split(".")[0] == forbidden and (path.relative_to(SRC).as_posix(), name) not in ALLOWED
         ]
     assert offenders == []

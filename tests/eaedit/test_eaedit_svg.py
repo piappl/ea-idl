@@ -1,0 +1,276 @@
+import hashlib
+import xml.etree.ElementTree as ET
+from datetime import datetime
+
+import pytest
+
+from eacore.records import Ref
+from eaedit import InvalidOperationError, Session
+from eaedit.diagrams.render import render_working
+from eaedit.diagrams.svg import export_svg, import_svg
+
+FIXED = datetime(2026, 1, 2, 3, 4, 5)
+L7 = "{0BA44FD3-F22C-4f9a-AC35-3BDB736B3C80}"
+P6 = "{EB2441A2-EE65-42fe-A5FD-350317D3216F}"
+UNKNOWN = "{00000000-1111-2222-3333-444444444444}"
+
+
+def _open(path):
+    return Session.open(path, policy="off", clock=lambda: FIXED, author="tester")
+
+
+def _groups(root):
+    return [e for e in root.iter() if e.get("data-ea-kind") or e.get("data-ea-guid")]
+
+
+def _parse(svg):
+    return ET.fromstring(svg.encode("utf-8"))
+
+
+def _remove(root, element):
+    for parent in root.iter():
+        if element in list(parent):
+            parent.remove(element)
+            return
+    raise AssertionError("element not found")
+
+
+def _text(root):
+    return ET.tostring(root, encoding="unicode")
+
+
+def _link_ends(session, diagram):
+    """``(connector GUID, start GUID, end GUID)`` of each link row on ``diagram`` whose connector is not a NoteLink."""
+    this = Ref("t_diagram", session.find(diagram, kinds=("diagram",)).key)
+    found = []
+    for link in session.working.records("t_diagramlinks"):
+        if link.values["attr_diagramid"] != this:
+            continue
+        connector = session.working.resolve(link.values["attr_connectorid"])
+        start = session.working.resolve(connector.values["attr_start_object_id"])
+        end = session.working.resolve(connector.values["attr_end_object_id"])
+        found.append((connector.values["attr_connector_type"], connector.key, start.key, end.key))
+    return found
+
+
+def test_round_trip_every_nafv4_diagram(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    diagrams = [r.key for r in session.working.records("t_diagram")]
+    assert len(diagrams) == 11
+    for diagram in diagrams:
+        svg = export_svg(session, diagram)
+        root = _parse(svg)
+        assert root.get("data-ea-diagram") == diagram
+        import_svg(session, svg)
+        assert session.changes().is_empty(), diagram
+
+
+def test_export_markup(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    root = _parse(export_svg(session, P6))
+    assert root.get("data-ea-name") == "p6"
+    # The MDG view, as create_diagram takes it.
+    assert root.get("data-ea-type") == "NAFv4-Core Physical Resource Specification Viewpoints::P6 - Resource Sequence"
+    kinds = sorted(g.get("data-ea-kind") or "" for g in _groups(root))
+    # Two lifelines, one interaction fragment (read-only), two notes, three messages, one NoteLink and
+    # note 77's attachment to a message.
+    assert kinds == [
+        "element",
+        "element",
+        "message",
+        "message",
+        "message",
+        "note",
+        "note",
+        "notelink",
+        "notelink",
+        "readonly",
+    ]
+    for group in _groups(root):
+        if group.get("data-ea-kind") in ("element", "note", "readonly"):
+            assert len(group.get("data-ea-rect").split(",")) == 4 and group.get("data-ea-duid")
+
+
+def test_import_moves_and_removes(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    root = _parse(export_svg(session, L7))
+    objects = [g for g in _groups(root) if g.get("data-ea-kind") == "element"]
+    moved, removed = objects[0], objects[1]
+    left, top, right, bottom = (int(v) for v in moved.get("data-ea-rect").split(","))
+    moved.set("data-ea-rect", f"{left + 40},{top + 10},{right + 40},{bottom + 10}")
+    gone = removed.get("data-ea-guid")
+    links = [c for _, c, s, e in _link_ends(session, L7) if gone in (s, e)]
+    assert links
+    _remove(root, removed)
+    for group in _groups(root):
+        if group.get("data-ea-guid") in links:
+            _remove(root, group)
+    import_svg(session, _text(root))
+    changes = session.changes()
+    assert not changes.inserts
+    rect = ["attr_rectbottom", "attr_rectleft", "attr_rectright", "attr_recttop"]
+    assert [(u.table, sorted(u.changes)) for u in changes.updates] == [("t_diagramobjects", rect)]
+    assert changes.updates[0].key[1] == moved.get("data-ea-duid")
+    assert [d.key[1] for d in changes.deletes if d.table == "t_diagramobjects"] == [removed.get("data-ea-duid")]
+    assert sorted(d.key[1].key for d in changes.deletes if d.table == "t_diagramlinks") == sorted(links)
+    assert {d.table for d in changes.deletes} == {"t_diagramobjects", "t_diagramlinks"}
+
+
+def test_import_new_diagram_from_scratch(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    package = session.working.resolve(session.find(L7, kinds=("diagram",))).values["attr_package_id"].key
+    kind, connector, start, end = next(t for t in _link_ends(session, L7) if t[0] != "NoteLink")
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" data-ea-name="V" data-ea-type="Class">'
+        f'<g data-ea-guid="{start}" data-ea-rect="30,30,150,100" data-ea-kind="element"/>'
+        f'<g data-ea-guid="{end}" data-ea-rect="300,30,420,100" data-ea-kind="element"/>'
+        "</svg>"
+    )
+    import_svg(session, svg, owner=package)
+    created = [r for r in session.working.records("t_diagram") if r.values["attr_name"] == "V"]
+    assert len(created) == 1
+    this = Ref("t_diagram", created[0].key)
+    assert len([o for o in session.working.records("t_diagramobjects") if o.values["attr_diagram_id"] == this]) == 2
+    links = [r for r in session.working.records("t_diagramlinks") if r.values["attr_diagramid"] == this]
+    assert [r.values["attr_connectorid"] for r in links] == [Ref("t_connector", connector)]
+    # The new diagram exports and re-imports without changes.
+    before = len(session.log)
+    import_svg(session, export_svg(session, created[0].key))
+    assert len(session.log) == before
+
+
+def test_import_refuses_unknown_guid(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    root = _parse(export_svg(session, L7))
+    # A valid move first, so a refusal that staged anything would show.
+    first = next(g for g in _groups(root) if g.get("data-ea-kind") == "element")
+    left, top, right, bottom = (int(v) for v in first.get("data-ea-rect").split(","))
+    first.set("data-ea-rect", f"{left + 5},{top},{right + 5},{bottom}")
+    ET.SubElement(root, "g", {"data-ea-guid": UNKNOWN, "data-ea-kind": "element", "data-ea-rect": "0,0,10,10"})
+    with pytest.raises(InvalidOperationError, match=UNKNOWN.strip("{}")):
+        import_svg(session, _text(root))
+    assert session.changes().is_empty() and not session.log
+
+
+@pytest.mark.parametrize("missing", ["data-ea-rect", "data-ea-guid"])
+def test_import_refuses_shape_without(nafv4_path, qea_copy, missing):
+    session = _open(qea_copy(nafv4_path))
+    root = _parse(export_svg(session, L7))
+    group = next(g for g in _groups(root) if g.get("data-ea-kind") == "element")
+    guid = group.get("data-ea-guid")
+    del group.attrib[missing]
+    # The message names the group by its GUID, or says which attribute it lacks.
+    with pytest.raises(InvalidOperationError, match=guid.strip("{}") if missing == "data-ea-rect" else missing):
+        import_svg(session, _text(root))
+    assert session.changes().is_empty()
+
+
+def test_import_refuses_connector_without_ends(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    root = _parse(export_svg(session, L7))
+    _, connector, start, _ = next(t for t in _link_ends(session, L7) if t[0] != "NoteLink")
+    _remove(root, next(g for g in _groups(root) if g.get("data-ea-guid") == start))
+    with pytest.raises(InvalidOperationError, match=connector.strip("{}")):
+        import_svg(session, _text(root))
+    assert session.changes().is_empty()
+
+
+def test_import_refuses_part_outside_owner(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    p2 = next(r.key for r in session.working.records("t_diagram") if r.values["attr_name"] == "p2")
+    root = _parse(export_svg(session, p2))
+    part = next(
+        g
+        for g in _groups(root)
+        if session.working.resolve(session.find(g.get("data-ea-guid"), kinds=("element",))).values["attr_object_type"]
+        == "Part"
+    )
+    part.set("data-ea-rect", "5000,5000,5070,5054")
+    with pytest.raises(InvalidOperationError, match=part.get("data-ea-guid").strip("{}")):
+        import_svg(session, _text(root))
+    assert session.changes().is_empty()
+
+
+def test_readonly_objects_kept(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    root = _parse(export_svg(session, P6))
+    fragment = next(g for g in _groups(root) if g.get("data-ea-kind") == "readonly")
+    _remove(root, fragment)
+    results = import_svg(session, _text(root))
+    assert session.changes().is_empty()
+    assert any(w.code == "readonly-kept" for r in results for w in r.warnings)
+
+
+def test_note_text_round_trip_non_ascii(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    text = 'Zażółć gęślą jaźń\r\nline two & <three> "quoted"\ttab'
+    root = _parse(export_svg(session, L7))
+    note = next(g for g in _groups(root) if g.get("data-ea-kind") == "note")
+    target = next(g for g in _groups(root) if g.get("data-ea-kind") == "element").get("data-ea-guid")
+    note.set("data-ea-text", text)
+    ET.SubElement(
+        root, "g", {"data-ea-kind": "note", "data-ea-id": "n1", "data-ea-rect": "400,400,515,455", "data-ea-text": text}
+    )
+    ET.SubElement(root, "g", {"data-ea-kind": "notelink", "data-ea-from": target, "data-ea-to": "n1"})
+    import_svg(session, _text(root))
+    notes = [r for r in session.working.records("t_object") if r.values.get("attr_note") == text]
+    assert len(notes) == 2
+    new = next(n for n in notes if n.values["attr_name"] is None and n.key not in _text(root))
+    links = [
+        r
+        for r in session.working.records("t_connector")
+        if r.values["attr_connector_type"] == "NoteLink"
+        and r.values["attr_start_object_id"] == Ref("t_object", target)
+        and r.values["attr_end_object_id"] == Ref("t_object", new.key)
+    ]
+    assert len(links) == 1
+    # Exported again, the text survives the SVG attribute exactly, and re-importing changes nothing.
+    svg = export_svg(session, L7)
+    texts = [g.get("data-ea-text") for g in _groups(_parse(svg)) if g.get("data-ea-kind") == "note"]
+    assert texts.count(text) == 2
+    before = len(session.log)
+    import_svg(session, svg)
+    assert len(session.log) == before
+
+
+def test_render_working_shows_staged_changes(nafv4_path, qea_copy):
+    path = qea_copy(nafv4_path)
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    session = _open(path)
+    element = next(
+        r.key
+        for r in session.working.records("t_object")
+        if r.values["attr_object_type"] == "Class" and r.key not in export_svg(session, L7)
+    )
+    session.place(L7, element, rect=(600, 50, 700, 120))
+    rendered = render_working(session, [L7])
+    assert list(rendered) == [L7]
+    assert element in rendered[L7].svg and rendered[L7].name == "L7" and rendered[L7].png is None
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+
+
+def test_stacking_order_change_warns(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    root = _parse(export_svg(session, L7))
+    group = next(g for g in _groups(root) if g.get("data-ea-kind") == "element")
+    group.set("data-ea-z", str(int(group.get("data-ea-z")) + 7))
+    results = import_svg(session, _text(root))
+    assert session.changes().is_empty()
+    assert [w.code for r in results for w in r.warnings] == ["z-kept"]
+
+
+def test_import_message_order_and_offset(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    root = _parse(export_svg(session, P6))
+    first, second, _ = [g for g in _groups(root) if g.get("data-ea-kind") == "message"]
+    first.set("data-ea-seq", "2")
+    second.set("data-ea-seq", "1")
+    second.set("data-ea-offset", "-60")
+    import_svg(session, _text(root))
+    changes = session.changes()
+    assert not changes.inserts and not changes.deletes
+    assert {u.table for u in changes.updates} == {"t_connector"}
+    rows = {g.get("data-ea-guid"): session.working.get("t_connector", g.get("data-ea-guid")) for g in (first, second)}
+    assert rows[first.get("data-ea-guid")].values["attr_seqno"] == 2
+    assert rows[second.get("data-ea-guid")].values["attr_seqno"] == 1
+    assert "SY=-60;" in rows[second.get("data-ea-guid")].values["attr_pdata5"]

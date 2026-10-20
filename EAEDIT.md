@@ -210,4 +210,5 @@ Automated tests cannot prove EA accepts the result. Check once by hand:
 
 ## Package boundaries
 
-`eaedit` depends on `eacore`. It does not import `eaidl`, and `eaidl` does not import it.
+`eaedit` depends on `eacore`. It does not import `eaidl`, except `eaedit.diagrams.render`, which renders diagrams
+with eaidl's native diagram extractor and SVG renderer; `eaidl` does not import `eaedit`.
