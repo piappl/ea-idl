@@ -100,6 +100,11 @@ def link_note(session, note: str, target: str) -> str:
         ends = {existing.values.get("attr_start_object_id"), existing.values.get("attr_end_object_id")}
         if existing.values.get("attr_connector_type") == "NoteLink" and ends == {end, this}:
             session.warn("already-linked", "the note is already linked to the element", guid_of(record))
+            for diagram in common:
+                if session.working.get("t_diagramlinks", _link_key(diagram, existing)) is None:
+                    row = _link_row(session, diagram, existing)
+                    if row is not None:
+                        session.put(row)
             return guid_of(existing)
     # All six hand-made NoteLinks in nafv4.qea run Start = the annotated element, End = the Note.
     guid = connect(session, guid_of(found), guid_of(record), type="NoteLink")

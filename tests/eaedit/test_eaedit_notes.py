@@ -64,6 +64,20 @@ def test_link_note_twice_returns_the_existing_link(nafv4_path, qea_copy):
     assert len(list(session.working.records("t_diagramlinks"))) == links
 
 
+def test_link_note_again_writes_missing_link_rows(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    note = session.add_note(L7, "About messages").guid
+    link = session.link_note(note, MESSAGE).guid
+    other = session.create_diagram("Model::core::message", "Other").guid
+    session.place(other, MESSAGE)
+    session.place(other, note)
+    connector = _rec(session, "t_connector", link)
+    key = (Ref("t_diagram", other), Ref("t_connector", connector.key))
+    session.working.remove("t_diagramlinks", key)  # a diagram showing both ends but lacking the link row
+    assert session.link_note(note, MESSAGE).guid == link
+    assert session.working.get("t_diagramlinks", key) is not None
+
+
 def test_link_note_to_connector_twice_keeps_one_idref(nafv4_path, qea_copy):
     session = _open(qea_copy(nafv4_path))
     p6 = "{EB2441A2-EE65-42fe-A5FD-350317D3216F}"
