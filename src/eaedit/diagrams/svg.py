@@ -16,7 +16,7 @@ from eacore.records import Record, Ref, TextRefs
 from eaedit.diagrams.geometry import Rect, check_rect, from_ea
 from eaedit.diagrams.render import Ids, render_working
 from eaedit.errors import EditWarning, InvalidOperationError, NotFoundError
-from eaedit.ops.diagrams import _link_key, _objects
+from eaedit.ops.diagrams import _link_key, _objects, shown_element
 from eaedit.resolve import guid_of
 from eaedit.session import OpResult
 
@@ -59,26 +59,29 @@ def _kind(element: Record) -> str:
     return "readonly" if kind in READONLY_TYPES else "element"
 
 
-def _markup(session, diagram: Record) -> tuple[list[tuple[str, dict]], list[tuple[str | None, dict]]]:
-    """``(element GUID, attributes)`` per diagram object and ``(connector GUID, attributes)`` per shown connector."""
+def _markup(session, diagram: Record) -> tuple[list[tuple[str | None, dict]], list[tuple[str | None, dict]]]:
+    """``(element GUID, attributes)`` per diagram object (None for a dangling one) and ``(connector GUID,
+    attributes)`` per shown connector."""
     this = Ref("t_diagram", diagram.key)
     working = session.working
-    objects: list[tuple[str, dict]] = []
+    objects: list[tuple[str | None, dict]] = []
     shown: set[Ref] = set()
     for row in sorted(_objects(session, this), key=lambda r: (r.values.get("attr_sequence") or 0, str(r.key))):
-        element = working.resolve(row.values.get("attr_object_id"))
-        if element is None:
-            continue  # a dangling row: nothing eaedit can name; left as it is
-        shown.add(Ref("t_object", element.key))
-        values = {"data-ea-guid": guid_of(element)}
+        element = shown_element(session, row)
+        values = {} if element is None else {"data-ea-guid": guid_of(element)}
+        if element is not None:
+            shown.add(Ref("t_object", element.key))
         if duid(row.values.get("attr_objectstyle")):
             values["data-ea-duid"] = duid(row.values.get("attr_objectstyle"))
+        elif element is None:
+            continue  # a dangling object without a DUID: nothing the file could name it by; left as it is
         values["data-ea-rect"] = ",".join(str(v) for v in from_ea(row.values))
         values["data-ea-z"] = row.values.get("attr_sequence") or 0
-        values["data-ea-kind"] = _kind(element)
+        # A dangling object (its element is gone) is named by its DUID alone and carried through read-only.
+        values["data-ea-kind"] = "readonly" if element is None else _kind(element)
         if values["data-ea-kind"] == "note":
             values["data-ea-text"] = element.values.get("attr_note") or ""
-        objects.append((guid_of(element), values))
+        objects.append((None if element is None else guid_of(element), values))
     lines: list[tuple[str | None, dict]] = []
     for link in working.records("t_diagramlinks"):
         if link.values.get("attr_diagramid") != this:
@@ -112,7 +115,7 @@ def _markup(session, diagram: Record) -> tuple[list[tuple[str, dict]], list[tupl
         lines.append((guid_of(message), values))
     listed = {Ref("t_connector", working.resolve(session.find(g, kinds=("connector",))).key) for g, _ in lines}
     for row in _objects(session, this):
-        note = working.resolve(row.values.get("attr_object_id"))
+        note = shown_element(session, row)
         if note is None or note.values.get("attr_object_type") != "Note":
             continue
         pdata4 = note.values.get("attr_pdata4")
@@ -135,7 +138,8 @@ def annotate(session, record: Record, rendered: str, ids: Ids) -> str:
     objects, lines = _markup(session, record)
     by_element: dict[str, list[dict]] = {}
     for guid, values in objects:
-        by_element.setdefault(guid, []).append(values)
+        if guid is not None:
+            by_element.setdefault(guid, []).append(values)
     by_connector = {guid: values for guid, values in lines if guid is not None}
     done: set[int] = set()
 
@@ -172,6 +176,7 @@ def annotate(session, record: Record, rendered: str, ids: Ids) -> str:
 @dataclass
 class _Shape:
     label: str
+    kind: str
     guid: str | None
     local: str | None
     duid: str | None
@@ -220,12 +225,24 @@ def _read(svg_text: str) -> tuple[dict[str, str], list[_Shape], list[_Line]]:
         kind, guid, local = group.get("data-ea-kind"), group.get("data-ea-guid"), group.get("data-ea-id")
         if kind is None and guid is None and local is None:
             continue
-        label = f"group {guid}" if guid else f"group data-ea-id={local!r}" if local else f"a {kind!r} group"
+        named = group.get("data-ea-duid")
+        label = (
+            f"group {guid}"
+            if guid
+            else f"group data-ea-id={local!r}"
+            if local
+            else f"group data-ea-duid={named!r}"
+            if named
+            else f"a {kind!r} group"
+        )
         if kind in OBJECT_KINDS:
             if group.get("data-ea-rect") is None:
                 raise InvalidOperationError(f"{label}: an object needs data-ea-rect")
-            if guid is None and not (kind == "note" and local):
-                raise InvalidOperationError(f"{label}: an object needs data-ea-guid (a new note: data-ea-id)")
+            dangling = kind == "readonly" and group.get("data-ea-duid")
+            if guid is None and not (kind == "note" and local) and not dangling:
+                raise InvalidOperationError(
+                    f"{label}: an object needs data-ea-guid (a new note: data-ea-id; a dangling one: data-ea-duid)"
+                )
             try:
                 rect = check_rect(group.get("data-ea-rect").split(","))
             except InvalidOperationError as exc:
@@ -233,7 +250,9 @@ def _read(svg_text: str) -> tuple[dict[str, str], list[_Shape], list[_Line]]:
             z = _int(group, "data-ea-z", label)
             if z is not None and z < 0:
                 raise InvalidOperationError(f"{label}: data-ea-z must not be negative")
-            shapes.append(_Shape(label, guid, local, group.get("data-ea-duid"), rect, z, group.get("data-ea-text")))
+            shapes.append(
+                _Shape(label, kind, guid, local, group.get("data-ea-duid"), rect, z, group.get("data-ea-text"))
+            )
         elif kind in LINE_KINDS or (kind is None and guid is not None):
             if guid is None and kind != "notelink":
                 raise InvalidOperationError(f"{label}: a connector needs data-ea-guid")
@@ -280,13 +299,53 @@ def _inside(rect: Rect, outer: Rect) -> bool:
     return rect[0] >= outer[0] and rect[1] >= outer[1] and rect[2] <= outer[2] and rect[3] <= outer[3]
 
 
-def _validate(session, shapes: list[_Shape], lines: list[_Line]) -> None:
+def _rows(session, diagram: str) -> list[Record]:
+    return sorted(_objects(session, Ref("t_diagram", diagram)), key=lambda r: str(r.key))
+
+
+def _match(session, rows: list[Record], shapes: list[_Shape]) -> dict[int, Record]:
+    """The diagram object each shape stands for (by ``id(shape)``): the one with its DUID showing its element,
+    else the first object still free that shows the element; a dangling object by its DUID alone."""
+    by_duid = {duid(r.values.get("attr_objectstyle")): r for r in rows if duid(r.values.get("attr_objectstyle"))}
+    matched: dict[int, Record] = {}
+    used: set = set()
+    for shape in shapes:
+        row = by_duid.get((shape.duid or "").upper())
+        if shape.element is None:
+            if shape.kind != "readonly" or row is None or shown_element(session, row) is not None:
+                continue
+        elif row is None or row.values.get("attr_object_id") != Ref("t_object", shape.element.key):
+            row = None
+        if row is None or row.key in used:
+            ref = Ref("t_object", shape.element.key) if shape.element is not None else None
+            row = next((r for r in rows if ref and r.values.get("attr_object_id") == ref and r.key not in used), None)
+        if row is not None:
+            matched[id(shape)] = row
+            used.add(row.key)
+    return matched
+
+
+def _stored_rects(session, header: dict[str, str], shapes: list[_Shape]) -> dict[int, Rect]:
+    """The diagram's current rectangle of each shape the file shows of it."""
+    guid = header.get("data-ea-diagram")
+    try:
+        if guid is None:
+            return {}
+        record = session.working.resolve(session.find(guid, kinds=("diagram",)))
+    except NotFoundError:
+        return {}  # refused when the header is read
+    return {k: from_ea(row.values) for k, row in _match(session, _rows(session, record.key), shapes).items()}
+
+
+def _validate(session, header: dict[str, str], shapes: list[_Shape], lines: list[_Line]) -> None:
     """Every refusal rule, before anything is staged."""
     locals_: dict[str, _Shape] = {}
     duids: set[str] = set()
     for shape in shapes:
         if shape.guid is not None:
             shape.element = _resolve(session, shape.guid, ("element",), shape.label)
+        elif shape.kind == "readonly":
+            pass  # a dangling object, matched by its DUID
         elif shape.local in locals_:
             raise InvalidOperationError(f"{shape.label}: data-ea-id used twice")
         else:
@@ -321,6 +380,11 @@ def _validate(session, shapes: list[_Shape], lines: list[_Line]) -> None:
             notes += element.values.get("attr_object_type") == "Note"
         if not notes:
             raise InvalidOperationError(f"{line.label}: a note link needs a note at one end")
+    stored = _stored_rects(session, header, shapes)
+
+    def moved(shape: _Shape) -> bool:
+        return stored.get(id(shape)) != shape.rect
+
     for shape in shapes:
         element = shape.element
         if element is None or element.values.get("attr_object_type") != "Part":
@@ -330,8 +394,11 @@ def _validate(session, shapes: list[_Shape], lines: list[_Line]) -> None:
             for s in shapes
             if s.element is not None and Ref("t_object", s.element.key) == element.values.get("attr_parentid")
         ]
+        # Only a break the file makes is refused: a Part already outside (placed before its owner, or its owner
+        # moved by set_bounds) is carried as it is while neither rectangle changes.
         if owners and not any(_inside(shape.rect, owner.rect) for owner in owners):
-            raise InvalidOperationError(f"{shape.label}: a Part must lie inside its owner's rectangle")
+            if moved(shape) or any(moved(owner) for owner in owners):
+                raise InvalidOperationError(f"{shape.label}: a Part must lie inside its owner's rectangle")
 
 
 class _Importer:
@@ -374,28 +441,18 @@ class _Importer:
             self.warn("type-kept", f"the diagram type stays {diagram_type(record)!r}; eaedit cannot change it", guid)
 
     def objects(self, shapes: list[_Shape]) -> None:
-        working = self.session.working
-        rows = sorted(_objects(self.session, self.this), key=lambda r: str(r.key))
-        by_duid = {duid(r.values.get("attr_objectstyle")): r for r in rows if duid(r.values.get("attr_objectstyle"))}
-        matched: dict[int, Record] = {}
-        used: set = set()
-        for shape in shapes:
-            if shape.element is None:
-                continue
-            ref = Ref("t_object", shape.element.key)
-            row = by_duid.get((shape.duid or "").upper())
-            if row is None or row.values.get("attr_object_id") != ref or row.key in used:
-                # Without a matching DUID, the first object still free that shows the element.
-                row = next((r for r in rows if r.values.get("attr_object_id") == ref and r.key not in used), None)
-            if row is not None:
-                matched[id(shape)] = row
-                used.add(row.key)
+        rows = _rows(self.session, self.diagram)
+        matched = _match(self.session, rows, shapes)
+        used = {row.key for row in matched.values()}
         # Removals first, so the places and moves below see the diagram as the file has it.
         for row in rows:
             if row.key in used:
                 continue
-            element = working.resolve(row.values.get("attr_object_id"))
+            element = shown_element(self.session, row)
             if element is None:
+                label = duid(row.values.get("attr_objectstyle"))
+                if label:  # one without a DUID is not exported either
+                    self.warn("readonly-kept", f"dangling object {label} is not in the file; kept", None)
                 continue
             label = duid(row.values.get("attr_objectstyle")) or guid_of(element)
             if _kind(element) == "readonly":
@@ -417,10 +474,18 @@ class _Importer:
         return all(r.values.get("attr_diagram_id") == self.this and r.key not in used for r in rows)
 
     def _object(self, shape: _Shape, row: Record | None) -> None:
+        if shape.element is None and shape.kind == "readonly":
+            if row is None:
+                self.warn("readonly-kept", f"{shape.label}: no dangling object with this DUID; skipped", None)
+            elif from_ea(row.values) != shape.rect or shape.z not in (None, row.values.get("attr_sequence") or 0):
+                self.warn("readonly-kept", f"{shape.label}: dangling object kept where it is", None)
+            return
         if shape.element is None:
-            self.notes[shape.local] = self.run(
-                "add_note", diagram=self.diagram, text=shape.text or "", rect=list(shape.rect)
-            )
+            note = self.run("add_note", diagram=self.diagram, text=shape.text or "", rect=list(shape.rect))
+            self.notes[shape.local] = note
+            ref = Ref("t_object", self.session.find(note, kinds=("element",)).key)
+            row = next(o for o in _objects(self.session, self.this) if o.values.get("attr_object_id") == ref)
+            self._stack(shape, row, duid(row.values.get("attr_objectstyle")) or note)
             return
         guid = guid_of(shape.element)
         if _kind(shape.element) == "readonly":
@@ -436,14 +501,17 @@ class _Importer:
             if from_ea(row.values) != shape.rect:
                 self.run("set_bounds", diagram=self.diagram, element=target, rect=list(shape.rect))
         # Read after the moves: place stacks a new object (and an owner behind its Parts) itself.
-        current = self.session.working.get("t_diagramobjects", (self.this, target))
-        sequence = current.values.get("attr_sequence") or 0 if current is not None else None
-        if shape.z is not None and sequence is not None and shape.z != sequence:
-            self.run("set_stacking", diagram=self.diagram, element=target, sequence=shape.z)
+        self._stack(shape, self.session.working.get("t_diagramobjects", (self.this, target)), target)
         if _kind(shape.element) == "note" and shape.text is not None:
             current = self.session.working.get("t_object", shape.element.key)
             if (current.values.get("attr_note") or "") != shape.text:
                 self.run("set_note_text", note=guid, text=shape.text)
+
+    def _stack(self, shape: _Shape, current: Record | None, target: str) -> None:
+        """``set_stacking`` when the file's ``data-ea-z`` differs from the object's Sequence."""
+        sequence = current.values.get("attr_sequence") or 0 if current is not None else None
+        if shape.z is not None and sequence is not None and shape.z != sequence:
+            self.run("set_stacking", diagram=self.diagram, element=target, sequence=shape.z)
 
     def lines(self, lines: list[_Line]) -> None:
         working = self.session.working
@@ -511,7 +579,7 @@ def import_svg(session, svg_text: str, owner: str | None = None) -> list[OpResul
     part way undoes the ones before it.
     """
     header, shapes, lines = _read(svg_text)
-    _validate(session, shapes, lines)
+    _validate(session, header, shapes, lines)
     importer = _Importer(session)
     start = len(session.log)
     try:

@@ -11,7 +11,7 @@ from eaedit.diagrams.geometry import Rect, from_ea
 from eaedit.errors import InvalidOperationError
 from eaedit.layout.engine import MARGIN, PAGE, Box, Edge, contain, fits, hub, layers, split_suggestion, suggest
 from eaedit.ops import operation
-from eaedit.ops.diagrams import _SIZE, _SIZES, _diagram, _objects, place, set_bounds
+from eaedit.ops.diagrams import _SIZE, _SIZES, _diagram, _objects, place, set_bounds, shown_element
 from eaedit.resolve import guid_of
 
 #: Spec keys each pattern takes, besides ``pattern`` and ``page``.
@@ -73,7 +73,8 @@ def size_for(session, element: str, diagram: str | None = None) -> tuple[int, in
 
 #: Connector types drawn with the target above the source: the general or abstract end on top, as UML draws them.
 _TARGET_ABOVE = {"Generalization", "Realization", "Realisation", "Abstraction"}
-#: Connector types drawn with the whole above the part; the whole is the end marked ``...IsAggregate``.
+#: Connector types drawn with the whole above the part; the whole is the end marked ``...IsAggregate``, else the
+#: target (eaedit's own ``connect`` marks neither end, and UML puts the diamond at the target).
 _WHOLE_ABOVE = {"Aggregation", "Composition"}
 
 
@@ -82,7 +83,7 @@ def _edge(values: dict, source: str, target: str) -> Edge:
     kind = values.get("attr_connector_type")
     if kind in _TARGET_ABOVE:
         return Edge(target, source)
-    if kind in _WHOLE_ABOVE and not values.get("attr_sourceisaggregate") and values.get("attr_destisaggregate"):
+    if kind in _WHOLE_ABOVE and not values.get("attr_sourceisaggregate"):
         return Edge(target, source)
     return Edge(source, target)
 
@@ -95,8 +96,14 @@ class _Plan:
         self.diagram = diagram
         self.record = _diagram(session, diagram)
         self.shown: dict[str, list[Record]] = {}
+        #: Rectangles of dangling objects (their element is gone): never moved, but the layout keeps clear of them.
+        self.dangling: list[Rect] = []
         for obj in _objects(session, Ref("t_diagram", self.record.key)):
-            self.shown.setdefault(obj.values["attr_object_id"].key, []).append(obj)
+            element = shown_element(session, obj)
+            if element is None:
+                self.dangling.append(from_ea(obj.values))
+            else:
+                self.shown.setdefault(element.key, []).append(obj)
         #: Elements shown more than once: which object to move is ambiguous, so they are left alone.
         self.twice = {k for k, objects in self.shown.items() if len(objects) > 1}
         self.skipped: list[str] = []
@@ -227,7 +234,8 @@ class _Plan:
 
     def unnamed(self, laid_out: dict[str, Rect]) -> list[Rect]:
         """Rectangles of the diagram's objects the layout was not given."""
-        return [from_ea(o.values) for k, objects in sorted(self.shown.items()) if k not in laid_out for o in objects]
+        given = [from_ea(o.values) for k, objects in sorted(self.shown.items()) if k not in laid_out for o in objects]
+        return given + self.dangling
 
 
 def _gap(spec: dict) -> tuple[int, int]:
@@ -258,7 +266,7 @@ def _padding(spec: dict) -> int:
         if isinstance(padding, bool):
             raise TypeError
         return int(padding)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         raise InvalidOperationError(f"padding is a number of pixels, not {padding!r}") from None
 
 
@@ -336,7 +344,12 @@ def plan_layout(session, diagram: str, spec: dict) -> LayoutReport:
             keys = plan.keys(spec["elements"], "elements") if given else sorted(set(plan.shown) - plan.twice)
             if not given:
                 plan.skipped += sorted(plan.twice)
-            focus = plan.keys([spec["focus"]], "focus")[0] if spec.get("focus") is not None else None
+            focus = None
+            if spec.get("focus") is not None:
+                found = plan.keys([spec["focus"]], "focus")
+                if not found:
+                    raise InvalidOperationError(f"focus {spec['focus']!r} is on the diagram more than once")
+                focus = found[0]
             members = set(keys)
             keys = [k for k in keys if not plan.owned(k, members)]
             for key in keys:
@@ -377,7 +390,11 @@ def layout(session, diagram: str, spec: dict) -> str:
     report = plan_layout(session, diagram, spec)
     record = _diagram(session, diagram)
     this = Ref("t_diagram", record.key)
-    shown = {o.values["attr_object_id"].key: o for o in _objects(session, this)}
+    shown = {}
+    for obj in _objects(session, this):
+        element = shown_element(session, obj)
+        if element is not None:
+            shown[element.key] = obj
     for key in report.skipped:
         session.warn("layout-skipped", f"{_name(session, key)!r} is on the diagram more than once: not moved", key)
     # Owners come before their Parts in ``report.rects``, so each Part is set inside its owner's new rectangle.

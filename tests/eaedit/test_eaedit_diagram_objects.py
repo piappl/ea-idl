@@ -3,10 +3,12 @@ from datetime import datetime
 
 import pytest
 
+from eacore.changes import Insert, Update
 from eacore.embedded import duid, link_ends
 from eacore.records import Ref
 from eaedit import InvalidOperationError, Session
 from eaedit.diagrams.geometry import from_ea, to_ea
+from eaedit.diagrams.svg import export_svg, import_svg
 
 FIXED = datetime(2026, 1, 2, 3, 4, 5)
 L7 = "{0BA44FD3-F22C-4f9a-AC35-3BDB736B3C80}"
@@ -185,6 +187,35 @@ def test_lifeline_style_on_sequence_diagram(nafv4_path, qea_copy):
     assert re.fullmatch(r"DUID=[0-9A-F]{8};NSL=0;BCol=-1;.*HideIcon=0;", style)
 
 
+def _allowed(session, changes) -> list:
+    """Changes outside what diagram operations may write: diagram tables, Note objects, NoteLink connectors, the
+    diagram's own t_xref properties, and on a sequence message DiagramID/SeqNo/PDATA5."""
+    message_columns = {"attr_diagramid", "attr_seqno", "attr_pdata5"}
+
+    def row(table, key):
+        return session.working.get(table, key) or session.original.get(table, key)
+
+    bad = []
+    for change in [*changes.inserts, *changes.updates, *changes.deletes]:
+        table, key = (
+            (change.record.table, change.record.key) if isinstance(change, Insert) else (change.table, change.key)
+        )
+        values = row(table, key).values
+        if table in ("t_diagram", "t_diagramobjects", "t_diagramlinks"):
+            continue
+        if table == "t_object" and values.get("attr_object_type") == "Note":
+            continue
+        if table == "t_connector" and values.get("attr_connector_type") == "NoteLink":
+            continue
+        if table == "t_connector" and values.get("attr_connector_type") == "Sequence" and isinstance(change, Update):
+            if set(change.changes) <= message_columns:
+                continue
+        if table == "t_xref" and values.get("attr_type") == "diagram properties":
+            continue
+        bad.append((type(change).__name__, table, key))
+    return bad
+
+
 def test_diagram_ops_change_no_model_rows(nafv4_path, qea_copy):
     session = _open(qea_copy(nafv4_path))
     owner, part = _owner_and_part(session)
@@ -195,11 +226,31 @@ def test_diagram_ops_change_no_model_rows(nafv4_path, qea_copy):
     session.hide_connector(L7, link)
     session.place(L7, part)
     session.remove_from_diagram(L7, part)
+    note = session.add_note(L7, "about it").guid
+    session.link_note(note, MESSAGE)
+    p6 = "{EB2441A2-EE65-42fe-A5FD-350317D3216F}"
+    message = next(
+        r.key
+        for r in session.working.records("t_connector")
+        if r.values["attr_connector_type"] == "Sequence" and r.values["attr_diagramid"] == Ref("t_diagram", p6)
+    )
+    on_message = session.add_note(p6, "on a message").guid
+    session.link_note(on_message, message)
+    session.show_message(p6, message, order=9, offset=-120)
+    session.layout(L7, {"pattern": "suggest"})
+    svg = export_svg(session, L7)
+    first = re.search(r'data-ea-rect="(-?\d+),(-?\d+),(-?\d+),(-?\d+)"', svg)
+    left, top, right, bottom = (int(v) for v in first.groups())
+    svg = svg.replace(first.group(0), f'data-ea-rect="{left + 7},{top},{right + 7},{bottom}"', 1)
+    svg = re.sub(r'data-ea-text="about it"', 'data-ea-text="edited"', svg)
+    imported = import_svg(session, svg)
+    assert [r for r in imported if r.guid is not None]
     changes = session.changes()
     assert not changes.is_empty()
     touched = {c.record.table for c in changes.inserts} | {c.table for c in changes.deletes}
     touched |= {c.table for c in changes.updates}
-    assert touched <= {"t_diagramobjects", "t_diagramlinks"}
+    assert {"t_object", "t_connector"} <= touched
+    assert _allowed(session, changes) == []
 
 
 def test_parts_without_rect_do_not_overlap_in_owner(nafv4_path, qea_copy):

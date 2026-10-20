@@ -153,7 +153,8 @@ def _replayed(model, changes, catalogues, focus, policy, author, out=None, rende
 def preview(model, changes, catalogues, focus, policy, author, out) -> None:
     """Replay CHANGES on a working copy of MODEL and print what would change; MODEL is not written."""
     with _errors():
-        _replayed(model, changes, catalogues, focus, policy, author, out)
+        # Diagrams are rendered only to be written: without --out the SVGs would be thrown away.
+        _replayed(model, changes, catalogues, focus, policy, author, out, render=bool(out))
 
 
 @cli.command()
@@ -203,7 +204,7 @@ def diagram_import(model, svg, owner, apply_, out, policy, focus, catalogues, au
         import_svg(session, Path(svg).read_text(encoding="utf-8"), owner=owner)
         if session.changes().is_empty():
             click.echo("no changes")
-        _report(session, out)
+        _report(session, out, render=bool(out))
         if apply_ and not session.changes().is_empty():
             committed = session.commit()
             total = len(committed.inserts) + len(committed.updates) + len(committed.deletes)

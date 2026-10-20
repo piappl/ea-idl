@@ -362,10 +362,23 @@ class Session:
 
     def changed_diagrams(self, changes: ChangeSet | None = None) -> list[str]:
         """GUIDs of the diagrams that exist in the working copy and changed: their own row, objects, links or
-        messages (removals included), or an element or note they show."""
+        messages (removals included), an element or note they show, or a new connector between two they show."""
         changes = changes or self.changes()
         found: dict[str, None] = {}
-        shown: dict[Key, list[Ref]] | None = None
+        index: dict[Key, list[Ref]] | None = None
+
+        def shown(ref: object) -> list[Ref]:
+            """Diagrams showing element ``ref``; the index is built only when an element or connector changed."""
+            nonlocal index
+            if index is None:
+                index = {}
+                for row in self.working.records("t_diagramobjects"):
+                    diagram, shown_object = row.values.get("attr_diagram_id"), row.values.get("attr_object_id")
+                    # A dangling reference is kept raw by the loader: nothing to show for it.
+                    if isinstance(diagram, Ref) and isinstance(shown_object, Ref):
+                        index.setdefault(shown_object.key, []).append(diagram)
+            return index.get(ref.key, []) if isinstance(ref, Ref) else []
+
         for change in [*changes.inserts, *changes.updates, *changes.deletes]:
             if isinstance(change, Insert):
                 table, key, rs = change.record.table, change.record.key, self.working
@@ -376,20 +389,19 @@ class Session:
             if table == "t_diagram":
                 found[key] = None
             elif table == "t_object":
-                if shown is None:  # only needed when an element or note changed
-                    shown = {}
-                    for row in self.working.records("t_diagramobjects"):
-                        diagram, shown_object = row.values.get("attr_diagram_id"), row.values.get("attr_object_id")
-                        # A dangling reference is left unset by the loader: nothing to show for it.
-                        if isinstance(diagram, Ref) and isinstance(shown_object, Ref):
-                            shown.setdefault(shown_object.key, []).append(diagram)
-                for ref in shown.get(key, []):
+                for ref in shown(Ref("t_object", key)):
                     found[ref.key] = None
             elif table in self._DIAGRAM_COLUMNS or table == "t_connector":
                 row = rs.get(table, key)
                 ref = row.values.get(self._DIAGRAM_COLUMNS.get(table, "attr_diagramid")) if row else None
                 if isinstance(ref, Ref) and ref.table == "t_diagram":
                     found[ref.key] = None
+                if isinstance(change, Insert) and table == "t_connector":
+                    # EA draws a new connector on every diagram showing both its ends, link row or not.
+                    start, end = (shown(row.values.get(c)) for c in ("attr_start_object_id", "attr_end_object_id"))
+                    for diagram in start:
+                        if diagram in end:
+                            found[diagram.key] = None
         return [guid for guid in found if self.working.get("t_diagram", guid) is not None]
 
     def preview(self, render: bool | None = None) -> Preview:

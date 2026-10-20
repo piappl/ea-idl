@@ -90,15 +90,13 @@ def update_diagram(session, diagram: str, **fields) -> str:
 def delete_diagram(session, diagram: str) -> str:
     record = _diagram(session, diagram)
     this = Ref("t_diagram", record.key)
-    placed: dict = {}
+    placed: dict[str, set] = {}
     for row in session.working.records("t_diagramobjects"):
-        placed.setdefault(row.values.get("attr_object_id"), set()).add(row.values.get("attr_diagram_id"))
+        element = shown_element(session, row)
+        if element is not None and element.values.get("attr_object_type") == "Note":
+            placed.setdefault(element.key, set()).add(row.values.get("attr_diagram_id"))
     # A Note placed only on this diagram has no other home; EA deletes it with the diagram's content.
-    notes = []
-    for ref, diagrams in placed.items():
-        element = session.working.resolve(ref) if isinstance(ref, Ref) else None
-        if element is not None and element.values.get("attr_object_type") == "Note" and diagrams == {this}:
-            notes.append(element.key)
+    notes = [key for key, diagrams in placed.items() if diagrams == {this}]
     cascade_delete(session, notes, [record.key])
     return guid_of(record)
 
@@ -111,6 +109,15 @@ _GAP = 30
 
 def _objects(session, diagram: Ref) -> list[Record]:
     return [r for r in session.working.records("t_diagramobjects") if r.values.get("attr_diagram_id") == diagram]
+
+
+def shown_element(session, obj: Record) -> Record | None:
+    """The element a diagram object shows; None for a dangling object (Object_ID unset or naming no element, which
+    the loader keeps as the raw value). Diagram operations carry a dangling object through untouched."""
+    ref = obj.values.get("attr_object_id")
+    if not isinstance(ref, Ref) or ref.table != "t_object":
+        return None
+    return session.working.resolve(ref)
 
 
 def _element(session, identifier: str) -> Record:
@@ -329,8 +336,9 @@ def set_bounds(session, diagram: str, element: str, rect: Sequence[int]) -> str:
     this = Ref("t_diagram", _diagram(session, diagram).key)
     obj = _object(session, this, element)
     wanted = check_rect(rect)
-    target = session.working.resolve(obj.values["attr_object_id"])
-    wanted = _keep_in_owner(session, this, target, wanted)
+    target = shown_element(session, obj)
+    if target is not None:
+        wanted = _keep_in_owner(session, this, target, wanted)
     # Link rows are left alone: EA routes them from the stored geometry, which a move does not rewrite.
     session.put(Record("t_diagramobjects", obj.key, {**obj.values, **to_ea(wanted)}, obj.rid))
     return duid(obj.values.get("attr_objectstyle")) or ""
@@ -352,6 +360,14 @@ def remove_from_diagram(session, diagram: str, element: str) -> str:
     this = Ref("t_diagram", _diagram(session, diagram).key)
     obj = _object(session, this, element)
     gone = duid(obj.values.get("attr_objectstyle"))
+    note = shown_element(session, obj)
+    if note is not None and note.values.get("attr_object_type") == "Note":
+        ref = Ref("t_object", note.key)
+        rows = session.working.records("t_diagramobjects")
+        if not any(o.key != obj.key and o.values.get("attr_object_id") == ref for o in rows):
+            # A Note shown nowhere else has no other home: it goes with its last object, as delete_diagram treats it.
+            cascade_delete(session, [note.key])
+            return gone or ""
     session.drop("t_diagramobjects", obj.key)
     shown = obj.values.get("attr_object_id")
     still = any(o.values.get("attr_object_id") == shown for o in _objects(session, this))

@@ -166,14 +166,23 @@ byte for byte.
 | Sequence messages | `show_message(diagram, connector, order=None, offset=None)`, `set_message_order(diagram, connectors)` |
 | Layout | `layout(diagram, spec)`; `plan_layout(session, diagram, spec)` computes the same positions without staging |
 
-- `type` is a UML type (`Class`, `Sequence`, ...) or an MDG view by name; only the P2, P6, L7 and P7 views are written
-  from hand-made rows; every other view and the UML types (`Class`, ...) warn `unverified-default`.
+- `type` is a UML type (`Class`, `Sequence`, ...) or an MDG view by name. The P2, P6, L7 and P7 views, and plain
+  `Sequence` and `Custom` (written with the defaults read from the hand-made p6 row and from the hand-made Custom rows
+  P2, L7 and P7), do not warn. Every other UML type (`Class`, `Activity`, `Package`, ...) and every other view warns
+  `unverified-default`.
+- `update_diagram(diagram, **fields)` takes `name`, `notes`, `page_width` (`cx`), `page_height` (`cy`) and
+  `orientation` (`P` portrait or `L` landscape).
+- `place`, `set_bounds`, `set_stacking` and `remove_from_diagram` return the diagram object's DUID (`""` for an object
+  without one); the other operations return the GUID of the diagram, note or connector they act on.
 - Elements go on a diagram wherever you place them; `place` without `rect` finds a free spot. A Part is kept inside its
   owner's rectangle (`moved-inside-owner`). When both ends of a connector are on the diagram its link row is written,
-  as the GUI does. A note on a connector is stored as EA does (the note refers to the connector); a note on an
-  element gets a `NoteLink` from the element to the note.
-- Deleting an element or connector removes its diagram rows; deleting a diagram deletes notes that appear on no
-  other diagram.
+  as the GUI does. A note on a connector is stored as EA does (the note refers to the connector in `PDATA4`, `NType`
+  1); `NType` 1 comes from the single hand-made sample, so it warns `unverified-default`. A note on an element gets a
+  `NoteLink` from the element to the note.
+- Deleting an element or connector removes its diagram rows. A note shown nowhere else is deleted with its last
+  object: by `delete_element`, by `remove_from_diagram` and by `delete_diagram` (and by an SVG import that drops it).
+- A dangling diagram object (its element is gone) is carried through untouched by every operation, layout and
+  import.
 
 **`Rect`** is `(left, top, right, bottom)` in SVG orientation: `y` grows downwards, all values are non-negative,
 `left < right`, `top < bottom`. The database stores `RectTop`/`RectBottom` negated; eaedit converts. Any 4-sequence is
@@ -199,10 +208,11 @@ diagrams. Elements shown twice on a diagram are skipped (`layout-skipped`).
 ### Preview
 
 `session.preview()` has `diagrams`: for each diagram the session created or changed, a `RenderedDiagram` (`guid`,
-`name`, `svg`, `png`, which is None unless `cairosvg` happens to be installed) of how it will look after commit.
-It is rendered from a temporary copy of the model with the staged changes applied; the model is not touched. Pass
-`render=False` to skip it. The same renderer is available directly as `eaedit.diagrams.render.render_working(session,
-diagrams=None, png=False)`.
+`name`, `svg`, `png`) of how it will look after commit. `png` is always None there: `Session.preview` never asks for
+one. It is rendered from a temporary copy of the model with the staged changes applied; the model is not touched.
+Pass `render=False` to skip it. The same renderer is available directly as
+`eaedit.diagrams.render.render_working(session, diagrams=None, png=False)`; `png=True` fills `png` when `cairosvg` is
+installed.
 
 ```bash
 uv run eaedit preview model.qea changes.yaml --out previews/      # also writes previews/<diagram name>.svg
@@ -210,7 +220,8 @@ uv run eaedit diagram export model.qea Model::pkg::Overview -o overview.svg
 uv run eaedit diagram import model.qea overview.svg [--owner Model::pkg] [--apply]   # previews unless --apply
 ```
 
-`diagram import` takes `--focus`, `--policy`, `-c` and `--author` like `preview`.
+`diagram import` takes `--focus`, `--policy`, `-c` and `--author` like `preview`. Both render diagrams only with
+`--out`.
 
 ### eaedit SVG
 
@@ -226,7 +237,7 @@ On any element (`<g>`) for an object on the diagram:
 
 | Attribute | Meaning |
 |-----------|---------|
-| `data-ea-guid` | GUID of the element or note. Required, except on a new note. |
+| `data-ea-guid` | GUID of the element or note. Required, except on a new note and a dangling object. |
 | `data-ea-duid` | The diagram object's DUID: tells apart an element shown twice. Optional. |
 | `data-ea-rect` | `left,top,right,bottom` (see `Rect`). Required. |
 | `data-ea-z` | Stacking order (`Sequence`), a non-negative integer; applied with `set_stacking`. Optional. |
@@ -255,16 +266,20 @@ Rules:
   `data-ea-kind` and no rect counts as one); an unknown GUID or `data-ea-kind`; a bad rectangle, a negative
   `data-ea-z`, a `data-ea-hidden` other than 0 or 1; `data-ea-id` or `data-ea-duid` used twice; a connector whose ends
   are not both shown; a note link whose ends are not both shown or that has no note at an end; a Part outside its
-  owner's rectangle.
-- `data-ea-kind="readonly"` marks objects eaedit has no operation for (interaction fragments, boundaries, text).
-  They are kept where they are; moving or dropping one only warns `readonly-kept`.
+  owner's rectangle when the file changed the Part's or the owner's rectangle (a Part already outside, e.g. placed
+  before its owner or left behind by `set_bounds` on the owner, is carried as it is).
+- `data-ea-kind="readonly"` marks objects eaedit has no operation for (interaction fragments, boundaries, text), and
+  dangling objects, whose element is gone: those have no `data-ea-guid` and are named by `data-ea-duid`. They are
+  kept where they are; moving or dropping one only warns `readonly-kept`.
+- A new note's `data-ea-z` is applied like any other object's, so a file written from scratch, imported, then
+  imported again naming what it created stages nothing.
 - A Part is checked against its owner's new rectangle, so when you move an owner, move its Parts in the same file.
 
 ### Limitations
 
 | Limitation | How it will be lifted |
 |---|---|
-| Views other than P2, P6, L7 and P7, and UML diagram types such as `Class`, work but warn `unverified-default`. | Hand-made samples of each view turn their defaults into verified ones. |
+| Views other than P2, P6, L7 and P7, and UML diagram types other than `Sequence` and `Custom` (such as `Class`), work but warn `unverified-default`. | Hand-made samples of each view turn their defaults into verified ones. |
 | eaedit cannot create bend points or set a connector's route style or label positions. Existing routes, bend points and label positions are kept. | Operations (and SVG rules) for waypoints, route style, label offsets. |
 | Objects eaedit has no operation for (interaction fragments, boundaries, swimlanes, hyperlinks, text, images, ...) are carried through unchanged; the SVG marks them `readonly`. | One operation set (and SVG rule) per object kind, as needed. |
 | Per-object appearance (colours, fonts, line widths), feature visibility and diagram-wide settings (`StyleEx`, `PDATA` switches) are written with EA's defaults and otherwise preserved, not editable. | Appearance and visibility operations mapping to those style keys. |

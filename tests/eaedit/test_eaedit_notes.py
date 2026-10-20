@@ -92,3 +92,33 @@ def test_note_on_message_writes_pdata4(nafv4_path, qea_copy):
     assert value.template == "idref1={0};" and value.refs[0] == Ref(
         "t_connector", _rec(session, "t_connector", MSG1).key
     )
+
+
+def test_note_on_connector_sets_ntype(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    p6 = "{EB2441A2-EE65-42fe-A5FD-350317D3216F}"
+    note = session.add_note(p6, "on message").guid
+    assert _rec(session, "t_object", note).values["attr_ntype"] == 0
+    result = session.link_note(note, MSG1)
+    # As on hand-made note 77 (PDATA4 idref1=54;), the single sample: so it warns.
+    assert _rec(session, "t_object", note).values["attr_ntype"] == 1
+    assert [w.code for w in result.warnings] == ["unverified-default"]
+
+
+def test_remove_from_diagram_deletes_note_shown_nowhere_else(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    note = session.add_note(L7, "lonely").guid
+    session.link_note(note, MESSAGE)
+    other = session.create_diagram("Model::p2", "D").guid
+    kept = session.add_note(L7, "shown twice").guid
+    session.place(other, kept)
+    session.remove_from_diagram(L7, note)
+    assert session.working.get("t_object", note) is None
+    assert not any(
+        Ref("t_object", note) in (c.values["attr_start_object_id"], c.values["attr_end_object_id"])
+        for c in session.working.records("t_connector")
+    )
+    # Still on another diagram: only the object goes.
+    session.remove_from_diagram(L7, kept)
+    assert session.working.get("t_object", kept) is not None
+    assert len(_shown(session, kept)) == 1

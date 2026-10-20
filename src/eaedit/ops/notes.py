@@ -60,7 +60,9 @@ def _attach_to_connector(session, note: Record, connector: Record) -> None:
         raise InvalidOperationError("the note is already attached to the connector")
     template += f"idref{len(refs) + 1}={{{len(refs)}}};"
     value = TextRefs(template, (*refs, ref))
-    session.put(Record("t_object", note.key, {**note.values, "attr_pdata4": value}, note.rid))
+    # Note 77 is the only note on a connector in nafv4.qea and the only one with NType 1 (the others have 0).
+    session.put(Record("t_object", note.key, {**note.values, "attr_pdata4": value, "attr_ntype": 1}, note.rid))
+    session.warn("unverified-default", "NType 1 for a note on a connector is read from a single sample", guid_of(note))
 
 
 @operation("link_note")

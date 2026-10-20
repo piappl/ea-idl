@@ -148,7 +148,7 @@ def test_example_diagram_change_file_applies(empty_path, qea_copy):
     assert len(list(reopened.working.records("t_diagramobjects"))) == 3  # two classes and the note
 
 
-def test_replay_diagram_ops_identical(empty_path, qea_copy):
+def test_replay_diagram_ops_identical(empty_path, qea_copy, tmp_path):
     first = qea_copy(empty_path, "one.qea")
     second = qea_copy(empty_path, "two.qea")
     for model in (first, second):
@@ -157,3 +157,28 @@ def test_replay_diagram_ops_identical(empty_path, qea_copy):
         s.commit()
     assert _diagram_rows(first) == _diagram_rows(second)
     assert any("DUID=" in str(rows) for rows in _diagram_rows(first)[1])
+
+    # The session that ran the ops and a replay of its change file write the same rows, DUIDs included.
+    original = qea_copy(empty_path, "original.qea")
+    session = Session.open(original, policy="off", clock=lambda: FIXED, author="tester")
+    session.create_package(parent="Model", name="Shapes")
+    shape = session.create_element(package="Model::Shapes", name="Shape", type="Class").guid
+    circle = session.create_element(package="Model::Shapes", name="Circle", type="Class").guid
+    link = session.connect(source=circle, target=shape, type="Generalization").guid
+    diagram = session.create_diagram("Model::Shapes", "Overview", "Class").guid
+    session.layout(diagram, {"pattern": "layers", "rows": [[shape], [circle]]})
+    note = session.add_note(diagram, "a note", rect=[300, 40, 480, 100]).guid
+    session.link_note(note, circle)
+    session.set_bounds(diagram, circle, rect=[40, 200, 160, 280])
+    session.set_stacking(diagram, shape, 3)
+    session.hide_connector(diagram, link)
+    session.update_diagram(diagram, name="Shapes overview")
+    changes_file = tmp_path / "diagram.yaml"
+    save(session, changes_file)
+    session.commit()
+    replayed = qea_copy(empty_path, "replayed.qea")
+    again = Session.open(replayed, policy="off", clock=lambda: FIXED, author="tester")
+    replay(again, changes_file)
+    again.commit()
+    assert _diagram_rows(original) == _diagram_rows(replayed)
+    assert len(_diagram_rows(original)[1]) == 3

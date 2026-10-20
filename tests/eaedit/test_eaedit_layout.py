@@ -229,3 +229,18 @@ def test_layout_skips_element_shown_twice(nafv4_path, qea_copy):
     for padding in (None, [1]):
         with pytest.raises(InvalidOperationError):
             plan_layout(session, diagram, {"pattern": "contain", "owner": DATA_MESSAGE, "padding": padding})
+    with pytest.raises(InvalidOperationError, match="padding"):
+        plan_layout(session, diagram, {"pattern": "contain", "owner": DATA_MESSAGE, "padding": float("inf")})
+    with pytest.raises(InvalidOperationError, match="more than once"):
+        plan_layout(session, diagram, {"pattern": "suggest", "focus": MESSAGE})
+
+
+def test_unmarked_aggregation_puts_target_above(nafv4_path, qea_copy):
+    # eaedit's connect marks neither end (SourceIsAggregate = DestIsAggregate = 0): the target is the whole.
+    assert _edge({"attr_connector_type": "Composition"}, "part", "whole") == Edge("whole", "part")
+    session = _open(qea_copy(nafv4_path))
+    diagram = session.create_diagram("Model::p2", "D").guid
+    part, whole = (session.create_element("Model::p2", name, type="Class").guid for name in ("Part", "Whole"))
+    session.connect(part, whole, type="Aggregation")
+    report = plan_layout(session, diagram, {"pattern": "suggest", "elements": [part, whole]})
+    assert report.rects[whole][3] <= report.rects[part][1]

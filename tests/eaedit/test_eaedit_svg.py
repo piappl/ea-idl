@@ -140,6 +140,32 @@ def test_import_new_diagram_from_scratch(nafv4_path, qea_copy):
     assert len(session.log) == before
 
 
+def test_import_from_scratch_twice_is_idempotent(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    package = session.working.resolve(session.find(L7, kinds=("diagram",))).values["attr_package_id"].key
+    _, _, start, _ = next(t for t in _link_ends(session, L7) if t[0] != "NoteLink")
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" data-ea-name="V" data-ea-type="Class">'
+        f'<g data-ea-guid="{start}" data-ea-rect="30,30,150,100" data-ea-kind="element" data-ea-z="2"/>'
+        '<g data-ea-id="n1" data-ea-rect="300,30,415,85" data-ea-kind="note" data-ea-text="hi" data-ea-z="7"/>'
+        "</svg>"
+    )
+    import_svg(session, svg, owner=package)
+    created = next(r.key for r in session.working.records("t_diagram") if r.values["attr_name"] == "V")
+    note = next(
+        r.key
+        for r in session.working.records("t_object")
+        if r.values["attr_object_type"] == "Note" and r.values["attr_note"] == "hi"
+    )
+    # The same file again, now naming the diagram and the note it made: nothing left to stage.
+    again = svg.replace("<svg ", f'<svg data-ea-diagram="{created}" ').replace(
+        'data-ea-id="n1"', f'data-ea-guid="{note}"'
+    )
+    before = len(session.log)
+    import_svg(session, again)
+    assert len(session.log) == before
+
+
 def test_import_refuses_unknown_guid(nafv4_path, qea_copy):
     session = _open(qea_copy(nafv4_path))
     root = _parse(export_svg(session, L7))
@@ -190,6 +216,32 @@ def test_import_refuses_part_outside_owner(nafv4_path, qea_copy):
     with pytest.raises(InvalidOperationError, match=part.get("data-ea-guid").strip("{}")):
         import_svg(session, _text(root))
     assert session.changes().is_empty()
+
+
+def test_round_trip_diagrams_built_by_ops(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    part = next(r for r in session.working.records("t_object") if r.values["attr_object_type"] == "Part")
+    owner = part.values["attr_parentid"].key
+    # A Part placed before its owner, and an owner moved away from its Part: both leave the Part outside.
+    before_owner = session.create_diagram("Model::p2", "A").guid
+    session.place(before_owner, part.key, rect=(500, 500, 570, 554))
+    session.place(before_owner, owner, rect=(10, 10, 200, 200))
+    moved_away = session.create_diagram("Model::p2", "B").guid
+    session.place(moved_away, owner, rect=(10, 10, 300, 300))
+    session.place(moved_away, part.key)
+    session.set_bounds(moved_away, owner, rect=(1000, 1000, 1290, 1290))
+    for diagram in (before_owner, moved_away):
+        svg = export_svg(session, diagram)
+        before = len(session.log)
+        import_svg(session, svg)
+        assert len(session.log) == before, diagram
+        # The break is carried as it is; a file that moves the Part (still outside) is refused.
+        root = _parse(svg)
+        shape = next(g for g in _groups(root) if g.get("data-ea-guid") == part.key)
+        shape.set("data-ea-rect", "700,700,770,754")
+        with pytest.raises(InvalidOperationError, match="inside its owner"):
+            import_svg(session, _text(root))
+        assert len(session.log) == before
 
 
 def test_readonly_objects_kept(nafv4_path, qea_copy):
