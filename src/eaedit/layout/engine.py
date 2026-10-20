@@ -227,8 +227,12 @@ def suggest(
     edges: Iterable[Edge],
     gap: tuple[int, int] = GAP,
     origin: tuple[int, int] = (MARGIN, MARGIN),
+    focus: str | None = None,
 ) -> dict[str, Rect]:
-    """A layered layout in edge direction: sources above targets, unconnected boxes in a last row."""
+    """A layered layout in edge direction: sources above targets, unconnected boxes in a last row.
+
+    ``focus``, the box that matters most, is moved to the middle of its layer (spec: important element central).
+    """
     keys = sorted(boxes)
     kept = _acyclic(keys, edges)
     linked = {k for k, targets in kept.items() if targets} | {t for targets in kept.values() for t in targets}
@@ -248,6 +252,12 @@ def suggest(
         _order(rows, kept, range(len(rows) - 2, -1, -1))
     _order(rows, upper, range(1, len(rows)))
     alone = [k for k in keys if k not in linked]
+    if focus is not None:
+        if focus not in boxes:
+            raise ValueError(f"focus {focus!r} is not laid out")
+        row = next(r for r in [*rows, alone] if focus in r)
+        row.remove(focus)
+        row.insert(len(row) // 2, focus)
     return layers([*rows, alone], boxes, gap, "down", origin)
 
 

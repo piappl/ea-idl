@@ -6,12 +6,14 @@ from eacore.records import Ref
 from eaedit import InvalidOperationError, Session
 from eaedit.diagrams.geometry import from_ea
 from eaedit.layout import Box, Edge, contain, fits, hub, layers, split_suggestion, suggest
-from eaedit.ops.layout import plan_layout, size_for
+from eaedit.ops.layout import _edge, plan_layout, size_for
 
 FIXED = datetime(2026, 1, 2, 3, 4, 5)
 L7 = "{0BA44FD3-F22C-4f9a-AC35-3BDB736B3C80}"
 MESSAGE = "{308FD88F-3514-4a20-942B-5CF2F35B042F}"  # Model::core::message::Message, on L7
 DATA_MESSAGE = "{9F3D867F-2B36-4ab7-9F95-7EB442443042}"  # generalizes Message
+ABSTRACT_MESSAGE = "{B2CA2761-3F36-4cf0-BACA-64B20F260AA0}"  # the other Message on L7, realized by both
+L7_NOTE = "{6D090FA2-D220-4840-84DA-71C5F3E0BBFF}"  # NoteLink from ABSTRACT_MESSAGE
 
 
 def _open(path):
@@ -125,9 +127,14 @@ def test_layout_op_on_nafv4_l7(nafv4_path, qea_copy):
     rects = {r.key: from_ea(r.values) for r in _objects(session, L7)}
     assert len(rects) == 4 and _no_overlaps(rects)
     assert {r.key: r.values["attr_geometry"] for r in session.working.records("t_diagramlinks")} == geometry
-    # Dependency direction: the source of each connector sits above its target.
+    # The hand-made convention: general and abstract ends above (Generalization, Abstraction targets).
     by_element = {r.values["attr_object_id"].key: from_ea(r.values) for r in _objects(session, L7)}
-    assert by_element[DATA_MESSAGE][3] <= by_element[MESSAGE][1]
+    assert by_element[MESSAGE][3] <= by_element[DATA_MESSAGE][1]
+    assert by_element[ABSTRACT_MESSAGE][3] <= by_element[DATA_MESSAGE][1]
+    assert by_element[ABSTRACT_MESSAGE][3] <= by_element[MESSAGE][1]
+    # The Note sits beside the element it is linked to, not in a layer of its own.
+    note, linked = by_element[L7_NOTE], by_element[ABSTRACT_MESSAGE]
+    assert note[0] == linked[2] + 40 and note[1] == linked[1]
     # A second run changes nothing, and the plan reports what was applied.
     session.layout(L7, {"pattern": "suggest"})
     assert {r.key: from_ea(r.values) for r in _objects(session, L7)} == rects
@@ -173,3 +180,52 @@ def test_layout_rejects_bad_spec(nafv4_path, qea_copy):
         session.layout(L7, {"pattern": "spiral"})
     with pytest.raises(InvalidOperationError):
         session.layout(L7, {"pattern": "hub", "center": MESSAGE, "around": [DATA_MESSAGE]})
+
+
+def test_edge_direction_by_connector_type():
+    assert _edge({"attr_connector_type": "Generalization"}, "child", "parent") == Edge("parent", "child")
+    assert _edge({"attr_connector_type": "Realisation"}, "impl", "iface") == Edge("iface", "impl")
+    assert _edge({"attr_connector_type": "Dependency"}, "client", "supplier") == Edge("client", "supplier")
+    whole_at_dest = {"attr_connector_type": "Aggregation", "attr_sourceisaggregate": 0, "attr_destisaggregate": 2}
+    assert _edge(whole_at_dest, "part", "whole") == Edge("whole", "part")
+    whole_at_source = {"attr_connector_type": "Aggregation", "attr_sourceisaggregate": 1, "attr_destisaggregate": 0}
+    assert _edge(whole_at_source, "whole", "part") == Edge("whole", "part")
+
+
+def test_subset_layout_goes_below_objects_not_given(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    diagram = session.create_diagram("Model::p2", "D").guid
+    session.place(diagram, ABSTRACT_MESSAGE, rect=(10, 10, 300, 200))
+    session.layout(diagram, {"pattern": "layers", "rows": [[MESSAGE, DATA_MESSAGE]]})
+    rows = {r.values["attr_object_id"].key: from_ea(r.values) for r in _objects(session, diagram)}
+    assert rows[ABSTRACT_MESSAGE] == (10, 10, 300, 200)
+    assert _no_overlaps(rows)
+    assert min(rows[MESSAGE][1], rows[DATA_MESSAGE][1]) >= 200 + 60
+
+
+def test_suggest_focus_is_centred(nafv4_path, qea_copy):
+    boxes = _boxes(*[(k, 90, 70, None) for k in ("top", "a", "b", "c")])
+    edges = [Edge("top", k) for k in ("a", "b", "c")]
+    for focus in ("a", "c"):
+        rects = suggest(boxes, edges, focus=focus)
+        row = sorted(("a", "b", "c"), key=lambda k: rects[k][0])
+        assert row[1] == focus
+    session = _open(qea_copy(nafv4_path))
+    diagram = session.create_diagram("Model::p2", "D").guid
+    keys = [session.create_element("Model::p2", f"E{i}", type="Class").guid for i in range(3)]
+    report = plan_layout(session, diagram, {"pattern": "suggest", "elements": keys, "focus": keys[2]})
+    assert sorted(keys, key=lambda k: report.rects[k][0])[1] == keys[2]
+
+
+def test_layout_skips_element_shown_twice(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    diagram = session.create_diagram("Model::p2", "D").guid
+    session.place(diagram, MESSAGE, rect=(10, 10, 100, 80))
+    session.place(diagram, MESSAGE, rect=(10, 100, 100, 170))
+    result = session.layout(diagram, {"pattern": "layers", "rows": [[MESSAGE, DATA_MESSAGE]]})
+    assert [w.code for w in result.warnings] == ["layout-skipped"]
+    rows = [from_ea(r.values) for r in _objects(session, diagram)]
+    assert (10, 10, 100, 80) in rows and (10, 100, 100, 170) in rows and _no_overlaps(dict(enumerate(rows)))
+    for padding in (None, [1]):
+        with pytest.raises(InvalidOperationError):
+            plan_layout(session, diagram, {"pattern": "contain", "owner": DATA_MESSAGE, "padding": padding})
