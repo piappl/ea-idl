@@ -283,3 +283,17 @@ def test_reconnect_warns_when_a_link_is_dropped(nafv4_path, qea_copy):
     result = session.reconnect(conn=HEADER_TIME, target=MEASUREMENT)  # Measurement is not on diagram 'header'
     assert _links(session.working, HEADER_TIME) == []
     assert _codes(result, "diagram-link-dropped")
+
+
+def test_stereotyped_connector_gets_ea_label(nafv4_path, qea_copy):
+    # The label EA keeps for a stereotyped connector: nafv4.qea's «Implements» Abstraction, EA 16.1's API.
+    session = _open(qea_copy(nafv4_path), infer=False)
+    flow = session.connect(MESSAGE, TIME, type="InformationFlow", stereotype="Flowing").guid
+    assert session.working.get("t_connector", flow).values["attr_btm_mid_label"] == "«Flowing»"
+    abstraction = session.connect(MESSAGE, TIME, type="Abstraction", stereotype="Shows").guid
+    label = session.working.get("t_connector", abstraction).values["attr_btm_mid_label"]
+    assert label == "«abstraction» \n«Shows»"
+    session.remove_stereotype(abstraction, "Shows")
+    assert session.working.get("t_connector", abstraction).values["attr_btm_mid_label"] is None
+    message = session.connect(MESSAGE, TIME, type="Message", stereotype="Calls").guid
+    assert session.working.get("t_connector", message).values["attr_btm_mid_label"] is None

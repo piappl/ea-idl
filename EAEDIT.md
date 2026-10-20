@@ -94,6 +94,9 @@ Notes:
 - `move_element` moves nested elements with their owner. Moving a nested element on its own unnests it (ParentID
   reset, `unnested` warning), since its owner stays in the old package. Diagrams owned by moved elements move too.
 - Adding a stereotype also adds the tags it defines (own and inherited) that the target lacks, with catalogue defaults.
+  A profile-less stereotype the model has never used is registered in `t_stereotypes` and referred to by GUID, as
+  EA does; this repository-wide row never counts against the focus. A stereotyped connector gets the label EA
+  shows on it (`«S»`; `«abstraction»` above it on an Abstraction).
   Removing a stereotype keeps its tags (`stereotype-removed-tags-kept`).
 - `connect` with a stereotype checks both ends against the profile's connector rules and warns, never refuses.
 

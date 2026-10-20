@@ -141,10 +141,14 @@ def set_classifier(session, target: str, classifier: str | None) -> str:
         session.warn("unverified-kind", f"classifier of a {kind} element is unverified", guid_of(record))
     if classifier is None:
         value = unset_value("t_object", "attr_classifier", record.values)[0]
+        classifier_guid = None
     else:
         element = _classifier_element(session, classifier)
         if element is None:
             raise NotFoundError(f"nothing matches {classifier!r}")
         value = Ref("t_object", element.key)
-    session.put(Record("t_object", record.key, {**record.values, "attr_classifier": value}, record.rid))
+        # EA 16.1 (API) writes the classifier's GUID next to its ID when typing a Part.
+        classifier_guid = guid_of(element)
+    values = {**record.values, "attr_classifier": value, "attr_classifier_guid": classifier_guid}
+    session.put(Record("t_object", record.key, values, record.rid))
     return guid_of(record)

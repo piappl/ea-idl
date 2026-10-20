@@ -9,6 +9,7 @@ from eacore.integrity import check
 from eacore.records import Ref
 from eaedit import InvalidOperationError, NotFoundError, ScopeError, Session
 from eaedit.ops.common import stereotype_names
+from eaedit.ops.elements import PART_PROPERTIES
 from eaedit.resolve import find
 
 FIXED = datetime(2026, 1, 2, 3, 4, 5)
@@ -623,3 +624,41 @@ def test_real_operations_take_positional_arguments(nafv4_path, qea_copy):
     session.delete_element(guid)
     assert session.log[-1].args == {"el": guid}
     assert session.working.get("t_object", guid) is None
+
+
+def test_new_free_text_stereotype_is_registered(nafv4_path, qea_copy):
+    # EA 16.1 adds a stereotype new to the model to t_stereotypes and refers to it by GUID.
+    path = qea_copy(nafv4_path)
+    baseline = _issues(load_file(nafv4_path))
+    session = Session.open(path, focus=["Model::core"], policy="package", clock=lambda: FIXED, author="tester")
+    guid = session.create_element(package="Model::core", name="F", stereotype="brandNew").guid
+    row = session.working.get("t_stereotypes", ("brandNew", "Class"))
+    assert row is not None and row.values["attr_description"] == "brandNew"
+    stereo = row.values["attr_ea_guid"]
+    assert _stereo_description(session.working, guid) == f"@STEREO;Name=brandNew;GUID={stereo};@ENDSTEREO;"
+    # Applying it again reuses the row; the repository-wide row is allowed under a package focus.
+    other = session.create_element(package="Model::core", name="G", stereotype="brandNew").guid
+    assert _stereo_description(session.working, other) == f"@STEREO;Name=brandNew;GUID={stereo};@ENDSTEREO;"
+    session.commit()
+    assert _errors(load_file(path), baseline) == []
+
+
+def test_part_has_custom_properties_and_classifier_guid(nafv4_path, qea_copy):
+    path = qea_copy(nafv4_path)
+    baseline = _issues(load_file(nafv4_path))
+    session = _open(path)
+    owner = session.create_element(package="Model::core", name="Whole").guid
+    typ = session.create_element(package="Model::core", name="Kind").guid
+    part = session.create_element(parent=owner, name="p", type="Part").guid
+    props = [x for x in session.working.records("t_xref") if x.values["attr_client"] == part]
+    assert [(x.values["attr_name"], x.values["attr_description"], x.values["attr_supplier"]) for x in props] == [
+        ("CustomProperties", PART_PROPERTIES, "<none>")
+    ]
+    session.set_classifier(part, typ)
+    assert session.working.get("t_object", part).values["attr_classifier_guid"] == typ
+    session.set_classifier(part, None)
+    assert session.working.get("t_object", part).values["attr_classifier_guid"] is None
+    session.delete_element(part)
+    assert not [x for x in session.working.records("t_xref") if x.values["attr_client"] == part]
+    session.commit()
+    assert _errors(load_file(path), baseline) == []

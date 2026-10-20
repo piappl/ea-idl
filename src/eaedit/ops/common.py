@@ -108,8 +108,11 @@ def write_stereotypes(session, table: str, target: Record, entries: list[Stereot
     """Make ``entries`` the stereotype list: the Stereotype column and the ``t_xref`` row agree."""
     owner = _owner(session, table, target)
     primary = entries[0].name if entries else None
-    if owner.values.get("attr_stereotype") != primary:
-        session.put(Record(owner.table, owner.key, {**owner.values, "attr_stereotype": primary}, owner.rid))
+    values = {**owner.values, "attr_stereotype": primary}
+    if owner.table == "t_connector":
+        values["attr_btm_mid_label"] = _connector_label(owner, primary)
+    if values != owner.values:
+        session.put(Record(owner.table, owner.key, values, owner.rid))
     xref = _stereotype_xref(session, owner)
     if not entries:
         if xref is not None:
@@ -126,6 +129,15 @@ def write_stereotypes(session, table: str, target: Record, entries: list[Stereot
         session.put(new_record(session, "t_xref", values, "Stereotypes"))
     elif xref.values.get("attr_description") != description:
         session.put(Record("t_xref", xref.key, {**xref.values, "attr_description": description}, xref.rid))
+
+
+def _connector_label(connector: Record, primary: str | None) -> str | None:
+    """The label EA keeps for a stereotyped connector (nafv4.qea; EA 16.1 API): ``«S»``, an Abstraction's with
+    ``«abstraction»`` above it. Sequence messages get none."""
+    kind = connector.values.get("attr_connector_type")
+    if primary is None or kind == "Sequence":
+        return None
+    return ("\u00ababstraction\u00bb \n" if kind == "Abstraction" else "") + f"\u00ab{primary}\u00bb"
 
 
 def _base_type(owner: Record) -> str:
@@ -165,7 +177,21 @@ def _entry(session, owner: Record, name: str, fqname: str | None) -> Stereotype:
     """The list entry for stereotype ``name``: profile-less ones (no or the unknown profile) as EA writes them."""
     if fqname is not None and fqname.rpartition("::")[0] != UNKNOWN_PROFILE:
         return Stereotype(name, fqname, None)
-    return Stereotype(name, None, _stereotype_guid(session, name, _base_type(owner)))
+    base = _base_type(owner)
+    guid = _stereotype_guid(session, name, base)
+    if guid is None and fqname is None:
+        # A stereotype new to the model: EA 16.1 adds it to its stereotype list when first applied. Profile-less
+        # ones the model already uses without such a row (nafv4.qea's 'collapse') stay as they are.
+        guid = session.new_guid()
+        values = {
+            "attr_stereotype": name,
+            "attr_appliesto": base,
+            "attr_description": name,
+            "attr_mfenabled": 0,
+            "attr_ea_guid": guid,
+        }
+        session.put(Record("t_stereotypes", (name, base), values, None))
+    return Stereotype(name, None, guid)
 
 
 def apply_stereotype(session, table: str, target: Record, name: str) -> None:

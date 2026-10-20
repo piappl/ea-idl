@@ -195,6 +195,9 @@ class Scope:
                 problems.append(f"{verb} {table} {key_str(key)} {side}owned by {names(owners)} is outside the focus")
 
         for ins in changes.inserts:
+            if ins.record.table == "t_stereotypes":
+                # EA registers a new free-text stereotype here when it is applied: part of that edit, no package's.
+                continue
             rec = after.get(ins.record.table, ins.record.key) or ins.record
             check("insert", rec.table, rec.key, rec, from_after, guids(after, before), inside_after)
         for upd in changes.updates:

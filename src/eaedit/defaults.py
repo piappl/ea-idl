@@ -219,6 +219,8 @@ DEFAULTS: dict[tuple[str, str], Defaults] = {
     ("t_xref", "Stereotypes"): Defaults(
         {"attr_visibility": "Public", "attr_partition": "0", "attr_supplier": "<none>"}, True
     ),
+    # CustomProperties rows differ by owner (diagram settings, a Part's isReference); callers give every column.
+    ("t_xref", "CustomProperties"): Defaults({"attr_visibility": "Public", "attr_partition": "0"}, True),
     # Verified empty by design: EA-made tag rows have no constant columns beyond the owner ref, name and value.
     ("t_objectproperties", "*"): Defaults({}, True),
     ("t_connectortag", "*"): Defaults({}, True),

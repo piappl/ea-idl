@@ -105,3 +105,19 @@ def test_numeric_pdata4_on_class_is_still_a_connector_reference(tmp_path):
         con.execute(f"update t_object set PDATA4='999999' where Object_ID={FIRST_CLASS}")
     issues = [i for i in check(load_file(path)) if "attr_pdata4" in i.message]
     assert [(i.severity, i.rule) for i in issues] == [("error", "dangling-reference")]
+
+
+def test_classifier_guid_may_name_an_element(tmp_path):
+    # EA types a Part by writing the classifier element's GUID to Classifier_guid.
+    path = tmp_path / "copy.qea"
+    path.write_bytes(NAFV4.read_bytes())
+    with sqlite3.connect(path) as con:
+        con.execute(
+            "update t_object set Classifier_guid=(select ea_guid from t_object where Object_ID="
+            f"{FIRST_CLASS}) where Object_ID=(select max(Object_ID) from t_object where Object_Type='Class')"
+        )
+        con.execute(f"update t_object set Classifier_guid={NEW_GUID} where Object_ID={FIRST_CLASS}")
+    issues = [i for i in check(load_file(path)) if "attr_classifier_guid" in i.message]
+    assert [(i.severity, i.rule, i.message) for i in issues] == [
+        ("error", "dangling-reference", f"attr_classifier_guid -> unknown GUID {NEW_GUID.strip(chr(39))}")
+    ]

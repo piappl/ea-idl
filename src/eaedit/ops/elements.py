@@ -25,6 +25,10 @@ from eaedit.ops.common import (
 from eaedit.resolve import guid_of, twin_package
 
 
+#: What EA stores for a new Part that is not a reference (nafv4.qea; EA 16.1 API).
+PART_PROPERTIES = "@PROP=@NAME=isReference@ENDNAME;@TYPE=boolean@ENDTYPE;@VALU=0@ENDVALU;@PRMT=@ENDPRMT;@ENDPROP;"
+
+
 def _element(session, identifier: str) -> Record:
     record = session.working.resolve(session.find(identifier, kinds=("element",)))
     if record.values.get("attr_object_type") == "Package":
@@ -96,6 +100,17 @@ def create_element(
     record = new_record(session, "t_object", values, kind.type_value)
     record.values.update(apply_fields("t_object", record.values, fields))
     session.put(record)
+    if kind.type_value == "Part":
+        values = {
+            "attr_name": "CustomProperties",
+            "attr_type": "element property",
+            "attr_visibility": "Public",
+            "attr_partition": "0",
+            "attr_description": PART_PROPERTIES,
+            "attr_client": guid,
+            "attr_supplier": "<none>",
+        }
+        session.put(new_record(session, "t_xref", values, "CustomProperties"))
     if stereotype:
         apply_stereotype(session, "t_object", record, stereotype)
     return guid

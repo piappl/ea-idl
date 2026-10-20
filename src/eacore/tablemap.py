@@ -207,7 +207,8 @@ EA_TABLEMAP = TableMap(
                 # classes are Classes; nafv4.qea and its history have no non-Note PDATA4 > 0, so any
                 # other element type with a numeric PDATA4 is reported unexplained, not dangling.
                 RefRule("attr_pdata4", "t_connector", encoding="text", when=is_type("Class")),
-                GuidRefRule("attr_classifier_guid", ("t_connector", "t_operation")),
+                # EA 16.1 also writes the classifier element's GUID here when a Part is typed (API).
+                GuidRefRule("attr_classifier_guid", ("t_object", "t_connector", "t_operation")),
             ),
             owner="attr_package_id",
         ),
