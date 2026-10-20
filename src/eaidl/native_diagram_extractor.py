@@ -28,6 +28,7 @@ import re
 from typing import Dict, List, Optional, Tuple
 
 import sqlalchemy
+from eacore.embedded import parse_stereotypes
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -73,6 +74,17 @@ def _parse_kv(s: Optional[str], sep: str = ";") -> Dict[str, str]:
             k, _, v = token.partition("=")
             result[k.strip()] = v.strip()
     return result
+
+
+def _view_id(style_ex: str) -> Optional[str]:
+    """``MDGDgm=<profile>::<view> - <title>`` -> the text before `` - `` in the view name."""
+    value = _parse_kv(style_ex).get("MDGDgm", "")
+    if "::" not in value:
+        return None
+    view = value.split("::", 1)[1]
+    if " - " not in view:
+        return None
+    return view.split(" - ", 1)[0].strip() or None
 
 
 def parse_object_style(raw: Optional[str]) -> NativeObjectStyle:
@@ -405,6 +417,7 @@ class NativeDiagramExtractor:
             show_foreign=show_foreign,
             show_fqn=show_fqn,
             hide_attributes=hide_attributes,
+            view_id=_view_id(style_ex),
             nodes=nodes,
             connectors=connectors,
             sequence_messages=sequence_messages,
@@ -581,9 +594,26 @@ class NativeDiagramExtractor:
                                 )
                             )
 
+            stereo_xref = (
+                self.session.query(TXref)
+                .filter(TXref.attr_client == getattr(t_obj, "attr_ea_guid", None))
+                .filter(TXref.attr_name == "Stereotypes")
+                .first()
+            )
+            try:
+                stereotypes = [s.name for s in parse_stereotypes(stereo_xref.attr_description)] if stereo_xref else []
+            except ValueError:
+                stereotypes = []
+
             if object_type == "Part":
+                classifier_id = getattr(t_obj, "attr_classifier", 0) or 0
                 classifier_guid = getattr(t_obj, "attr_pdata1", None)
-                if classifier_guid:
+                if classifier_id:
+                    classifier = (
+                        self.session.query(TObject.attr_name).filter(TObject.attr_object_id == classifier_id).first()
+                    )
+                    classifier_name = classifier[0] if classifier else None
+                elif classifier_guid:
                     classifier = (
                         self.session.query(TObject.attr_name).filter(TObject.attr_ea_guid == classifier_guid).first()
                     )
@@ -766,6 +796,7 @@ class NativeDiagramExtractor:
                     object_type=object_type,
                     ntype=getattr(t_obj, "attr_ntype", 0) or 0,
                     stereotype=getattr(t_obj, "attr_stereotype", None),
+                    stereotypes=stereotypes,
                     is_abstract=(getattr(t_obj, "attr_abstract", "0") or "0") == "1",
                     parent_name=parent_names.get(object_id),
                     classifier_name=classifier_name,
@@ -803,6 +834,28 @@ class NativeDiagramExtractor:
             .all()
         )
 
+        # EA draws every connector whose two ends are on the diagram, even without a
+        # t_diagramlinks row (as the elements-only diagrams eaedit writes); those get default geometry.
+        TDiagramObjects = _base.classes.t_diagramobjects
+        linked_ids = {t_cn.attr_connector_id for _, t_cn in rows}
+        on_diagram = [
+            r[0]
+            for r in self.session.query(TDiagramObjects.attr_object_id).filter(
+                TDiagramObjects.attr_diagram_id == diagram_id
+            )
+        ]
+        unlinked = (
+            self.session.query(TConnector)
+            .filter(TConnector.attr_start_object_id.in_(on_diagram))
+            .filter(TConnector.attr_end_object_id.in_(on_diagram))
+            .filter(sqlalchemy.or_(TConnector.attr_diagramid.is_(None), TConnector.attr_diagramid == 0))
+            .order_by(TConnector.attr_connector_id)
+            .all()
+            if on_diagram
+            else []
+        )
+        rows = list(rows) + [(None, t_cn) for t_cn in unlinked if t_cn.attr_connector_id not in linked_ids]
+
         connectors: List[NativeDiagramConnector] = []
         for t_dl, t_cn in rows:
             geometry = parse_link_geometry(
@@ -822,6 +875,7 @@ class NativeDiagramExtractor:
                 NativeDiagramConnector(
                     connector_id=t_cn.attr_connector_id,
                     connector_type=getattr(t_cn, "attr_connector_type", "Association") or "Association",
+                    ea_guid=getattr(t_cn, "attr_ea_guid", None) or None,
                     name=getattr(t_cn, "attr_name", None) or None,
                     stereotype=getattr(t_cn, "attr_stereotype", None) or None,
                     top_mid_label=getattr(t_cn, "attr_top_mid_label", None) or None,

@@ -637,6 +637,8 @@ def _ea_detail_name_lines(node: NativeDiagramNode) -> List[str]:
     display_name = (
         f"{node.display_context}::{node.name}" if node.display_context and not node.foreign_package_path else node.name
     )
+    if node.object_type == "Part" and node.classifier_name:
+        display_name += f" / {node.classifier_name}"
     width = node.rect_right - node.rect_left
     # EA wraps against the actual Carlito bold text width; our glyph estimate
     # is slightly narrow, so leave the measured margin seen in EA exports.
@@ -1343,7 +1345,7 @@ def _render_ea_detail_node(parent: ET.Element, node: NativeDiagramNode, style) -
             y=str(y + 15),
             **{"text-anchor": "middle", "font-family": style.font_family, "font-size": "9", "fill": "#595959"},
         ).text = "«ResourceRole»"
-        label = node.name + (f": {node.classifier_name}" if node.classifier_name else "")
+        label = node.name + (f" / {node.classifier_name}" if node.classifier_name else "")
         lines = textwrap.wrap(label, width=max(8, int((width - 8) / 5.5)))
         for index, line in enumerate(lines):
             ET.SubElement(
@@ -1391,7 +1393,7 @@ def _render_ea_detail_node(parent: ET.Element, node: NativeDiagramNode, style) -
             x=str(x + width / 2),
             y=str(y + 16 + header_shift),
             **{"text-anchor": "middle", "font-family": style.font_family, "font-size": "10", "fill": header_text},
-        ).text = f"«{node.stereotype}»"
+        ).text = f"«{','.join(node.stereotypes) if node.stereotypes else node.stereotype}»"
     name_size = style.font_size
     for index, line in enumerate(name_lines):
         ET.SubElement(
@@ -2838,7 +2840,9 @@ def render_svg(diagram: NativeDiagram, style=None) -> str:
         )
         title = diagram.name
         prefix = re.match(r"^([PL]\d+)\s*:", title)
-        if prefix:
+        if diagram.view_id:
+            title = f"{diagram.view_id} {title}"
+        elif prefix:
             title = f"{prefix.group(1)} {title}"
         tab_right = frame_x + _ea_text_width(title, 10) + 20
         tab = (

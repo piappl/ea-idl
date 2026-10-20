@@ -2760,6 +2760,7 @@ class TestSvgStyleConfig:
                 diagram.model_copy(
                     update={
                         "name": "L7 : Example",
+                        "view_id": None,
                         "diagram_type": "Custom",
                         "nodes": [node],
                         "connectors": [],
@@ -3558,3 +3559,73 @@ class TestSvgGranularLinks:
         diag = extractor.extract_by_id(3)
         svg = render_svg(diag, style=style)
         assert "<a " not in svg
+
+
+# ---------------------------------------------------------------------------
+# Renderer gaps: unlinked connectors, EA-mode labels
+# ---------------------------------------------------------------------------
+
+
+def _render_copy(db_path, diagram_name, ea_detail_nodes=False):
+    from eaidl.config import NativeDiagramStyleConfig
+
+    ex = NativeDiagramExtractor.from_url(f"sqlite:///{db_path}")
+    try:
+        diagram = next(d for d in ex.extract_all() if d.name == diagram_name)
+    finally:
+        ex.close()
+    return diagram, render_svg(diagram, style=NativeDiagramStyleConfig(ea_detail_nodes=ea_detail_nodes))
+
+
+def _texts(svg):
+    from xml.etree import ElementTree as ET
+
+    return [t.text for t in ET.fromstring(svg).iter("{http://www.w3.org/2000/svg}text")]
+
+
+class TestRendererGaps:
+    def test_connector_without_link_row_drawn(self, tmp_path):
+        import shutil
+        import sqlite3
+
+        db = tmp_path / "copy.qea"
+        shutil.copy("tests/data/nafv4.qea", db)
+        con = sqlite3.connect(db)
+        con.execute("delete from t_diagramlinks where DiagramID = (select Diagram_ID from t_diagram where Name='L7')")
+        con.commit()
+        con.close()
+        diagram, svg = _render_copy(db, "L7")
+        assert len(diagram.connectors) == 4
+        assert all(c.ea_guid for c in diagram.connectors)
+        assert svg.count('class="connector"') == 4
+
+    def test_ea_mode_labels(self):
+        diagram, svg = _render_copy("tests/data/nafv4.qea", "L7", ea_detail_nodes=True)
+        assert diagram.view_id == "L7"
+        texts = _texts(svg)
+        assert "L7 L7" in texts
+        assert "«DataElement,idlStruct»" in texts
+        assert all(n.ea_guid for n in diagram.nodes)
+        _, default_svg = _render_copy("tests/data/nafv4.qea", "L7")
+        default_texts = _texts(default_svg)
+        assert "L7" in default_texts
+        assert "L7 L7" not in default_texts
+        assert "«DataElement»" in default_texts
+        assert "«DataElement,idlStruct»" not in default_texts
+
+    def test_part_label_with_classifier(self, tmp_path):
+        import shutil
+        import sqlite3
+
+        db = tmp_path / "copy.qea"
+        shutil.copy("tests/data/nafv4.qea", db)
+        con = sqlite3.connect(db)
+        class_id, class_name = con.execute(
+            "select Object_ID, Name from t_object where Object_Type='Class' order by length(Name), Object_ID limit 1"
+        ).fetchone()
+        con.execute("update t_object set Classifier = ? where Name = 'Asset1'", (class_id,))
+        con.commit()
+        con.close()
+        _, svg = _render_copy(db, "p2", ea_detail_nodes=True)
+        # EA wraps the label inside the narrow Part box
+        assert f"Asset1 / {class_name}" in " ".join(_texts(svg))

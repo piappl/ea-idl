@@ -210,6 +210,8 @@ class NativeDiagramNode(BaseModel):
     """EA NType distinguishes initial (100) and final (101) activity nodes."""
 
     stereotype: Optional[str] = None
+    stereotypes: List[str] = Field(default_factory=list)
+    """All stereotypes from the ``t_xref`` list, primary first; EA mode shows them comma-joined."""
     is_abstract: bool = False
     parent_name: Optional[str] = None
     """Immediate generalization parent displayed in EA's class header."""
@@ -261,6 +263,7 @@ class NativeDiagramConnector(BaseModel):
 
     connector_id: int
     connector_type: str
+    ea_guid: Optional[str] = None
     name: Optional[str] = None
     stereotype: Optional[str] = None
     top_mid_label: Optional[str] = None
@@ -364,6 +367,8 @@ class NativeDiagram(BaseModel):
     """EA ShowFQN: place a foreign class's full package path below its box."""
     hide_attributes: bool = False
     """EA diagram PDATA HideAtts: suppress all class attribute compartments."""
+    view_id: Optional[str] = None
+    """View id from StyleEx ``MDGDgm=<profile>::<view> - <title>`` (``P2``); EA prefixes the frame title with it."""
 
     nodes: List[NativeDiagramNode] = Field(default_factory=list)
     connectors: List[NativeDiagramConnector] = Field(default_factory=list)
