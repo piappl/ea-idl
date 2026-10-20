@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from eacore.records import Record, Ref
-from eaedit.defaults import apply_fields, new_record, timestamp
+from eaedit.defaults import DIAGRAM_PROPERTIES, apply_fields, new_record, timestamp
 from eaedit.diagrams.views import resolve_view
 from eaedit.errors import InvalidOperationError
 from eaedit.ops import operation
@@ -48,6 +48,14 @@ def create_diagram(session, owner: str, name: str, type: str = "Class", guid: st
         if not view.verified:
             session.warn("unverified-default", f"view {type!r} has no EA-made sample; written from the MDG alone", guid)
     session.put(record)
+    # Every hand-made diagram in nafv4.qea has this row (type 'diagram properties', supplier NULL).
+    properties = {
+        "attr_name": "CustomProperties",
+        "attr_type": "diagram properties",
+        "attr_description": DIAGRAM_PROPERTIES,
+        "attr_client": guid,
+    }
+    session.put(new_record(session, "t_xref", properties, "CustomProperties"))
     return guid
 
 

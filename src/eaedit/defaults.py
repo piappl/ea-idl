@@ -215,6 +215,15 @@ _DIAGRAM = {
     "attr_styleex": _DIAGRAM_STYLEEX,
 }
 
+# Description of a new diagram's t_xref CustomProperties row: the shortest of the 11 hand-made ones in nafv4.qea (one
+# swimlane segment; EA appends segments on later saves).
+DIAGRAM_PROPERTIES = (
+    "DGS=On=0:CNT=8:W=120:H=40:SG=0:SGH=0:AEB=0:;AR=0;DCL=0;Swimlanes=locked=false;orientation=0;width=0;inbar=false;"
+    "names=false;color=-1;bold=false;fcol=0;tcol=-1;ofCol=-1;ufCol=-1;hl=1;ufh=0;hh=0;cls=0;bw=0;hli=0;bro=0;"
+    "SwimlaneFont=lfh:-10,lfw:0,lfi:0,lfu:0,lfs:0,lfface:Carlito,lfe:0,lfo:0,lfchar:1,lfop:0,lfcp:0,lfq:0,lfpf=0,"
+    "lfWidth=0;;"
+)
+
 DEFAULTS: dict[tuple[str, str], Defaults] = {
     # Sub-packages; the root "Model" row differs (Version NULL, Batch* 0) but is never created.
     ("t_package", "*"): Defaults(

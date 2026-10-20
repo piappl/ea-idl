@@ -6,7 +6,7 @@ from eacore.backends.sql import load_file
 from eacore.integrity import check
 from eacore.records import Ref
 from eaedit import InvalidOperationError, ScopeError, Session
-from eaedit.defaults import defaults_for
+from eaedit.defaults import DIAGRAM_PROPERTIES, defaults_for
 from eaedit.resolve import find
 
 FIXED = datetime(2026, 1, 2, 3, 4, 5)
@@ -132,3 +132,22 @@ def test_delete_diagram(nafv4_path, qea_copy, name, has_notes):
     # every other diagram keeps its objects
     kept = [r for r in before.records("t_diagramobjects") if r.values["attr_diagram_id"] != diagram]
     assert all(after.get("t_diagramobjects", r.key) is not None for r in kept)
+
+
+def _properties(rs, guid):
+    return [x for x in rs.records("t_xref") if x.values["attr_client"] == guid]
+
+
+def test_diagram_properties_row_created_and_deleted(nafv4_path, qea_copy):
+    before = load_file(nafv4_path)
+    session = _open(qea_copy(nafv4_path))
+    guid = session.create_diagram("Model::p2", "Props", "Custom").guid
+    (row,) = _properties(session.working, guid)
+    (hand,) = _properties(before, P2)
+    skip = {"attr_xrefid", "attr_description", "attr_client"}
+    assert {k: v for k, v in row.values.items() if k not in skip} == {
+        k: v for k, v in hand.values.items() if k not in skip
+    }
+    assert row.values["attr_description"] == DIAGRAM_PROPERTIES
+    session.delete_diagram(guid)
+    assert _properties(session.working, guid) == []

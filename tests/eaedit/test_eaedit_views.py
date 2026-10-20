@@ -25,3 +25,12 @@ def test_resolve_unknown_view(naf_mdg_path):
         resolve_view(cats, "NAFv4-Core::P99")
     with pytest.raises(InvalidOperationError, match="Clas"):
         resolve_view(cats, "Clas")
+
+
+def test_uml_type_spellings():
+    cats = CatalogueSet([])
+    for given in ("UseCase", "Use Case"):
+        assert resolve_view(cats, given).diagram_type == "Use Case"
+    assert resolve_view(cats, "StateMachine").diagram_type == "Statechart"
+    assert resolve_view(cats, "Communication").diagram_type == "Collaboration"
+    assert resolve_view(cats, "Class").verified is False

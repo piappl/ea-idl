@@ -26,14 +26,22 @@ class ResolvedView:
 
 
 # UML diagram types are accepted as given; nafv4.qea has no hand-made sample of any, so none is verified.
+# EA 16.1 wrote Diagram_Type='Class' through its API; the rest use EA's own spellings, with friendly aliases.
 _UML_TYPES = {
     "Class", "Sequence", "Activity", "Component", "Package", "Custom", "Object", "Deployment", "Statechart",
-    "UseCase", "Collaboration", "Analysis", "CompositeStructure", "Timing", "InteractionOverview",
+    "Use Case", "Collaboration", "Analysis", "CompositeStructure", "Timing", "InteractionOverview", "Logical",
 }  # fmt: skip
+_ALIASES = {
+    "UseCase": "Use Case",
+    "StateMachine": "Statechart",
+    "State": "Statechart",
+    "Communication": "Collaboration",
+}
 
 
 def resolve_view(catalogues: CatalogueSet, type: str) -> ResolvedView:
     if "::" not in type:
+        type = _ALIASES.get(type, type)
         if type in _UML_TYPES:
             return ResolvedView(None, type, "", False)
         raise InvalidOperationError(_unknown(type, sorted(_UML_TYPES)))
