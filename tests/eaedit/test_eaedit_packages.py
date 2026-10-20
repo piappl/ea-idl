@@ -136,6 +136,7 @@ def test_apply_known_stereotype_adds_tags_with_values_notes(nafv4_path, qea_copy
     tags = [
         TagDef(name="kind", type="enumeration", values=["A", "B"]),
         TagDef(name="toBe", type="boolean", values=["true", "false"]),
+        TagDef(name="mode", type="enumeration", values=["X", "Y"], default="Y"),
         TagDef(name="URI"),
         TagDef(name="n", default="3"),
         # A RefGUID tag's Values are the metaclasses it may point at, not choices: no note.
@@ -157,12 +158,13 @@ def test_apply_known_stereotype_adds_tags_with_values_notes(nafv4_path, qea_copy
         for t in session.working.records("t_objectproperties")
         if t.values["attr_object_id"] == Ref("t_object", guid)
     }
-    # Enumeration choices go to Notes as on EA-made DataModel packages in nafv4.qea ('kind').
+    # Notes as EA 16.1 writes them when it applies a stereotype: enumeration/boolean choices, then any default.
     assert rows == {
         "kind": (None, "Values: A,B\r\n"),
         "toBe": (None, "Values: true,false\r\n"),
+        "mode": ("Y", "Values: X,Y\r\nDefault: Y\r\n"),
         "URI": (None, None),
-        "n": ("3", None),
+        "n": ("3", "Default: 3\r\n"),
         "ref": (None, None),
     }
     assert not [i for i in check(session.working) if i.rule.startswith("stereotype")]
@@ -177,6 +179,20 @@ def _in_op(session, fn):
         return session.run("_test_adhoc").warnings
     finally:
         OPERATIONS.pop("_test_adhoc")
+
+
+def test_apply_stereotype_warns_missing_base(nafv4_path, qea_copy):
+    from eacore.catalogue import Catalogue, Source, StereotypeDef
+
+    catalogue = Catalogue(
+        profile="T",
+        source=Source(kind="yaml"),
+        stereotypes=[StereotypeDef(name="Kid", applies_to=["Package"], generalizes=["Other::Mixin"])],
+    )
+    session = _open(qea_copy(nafv4_path), catalogues=[catalogue], infer=False)
+    result = session.create_package(parent="Model", name="Data", stereotype="Kid")
+    assert [(w.code, w.target) for w in result.warnings] == [("missing-base", "T::Kid")]
+    assert "Other::Mixin" in result.warnings[0].message
 
 
 def test_apply_stereotype_second_entry_ambiguous_and_duplicate(nafv4_path, qea_copy, mini_mdg_path):

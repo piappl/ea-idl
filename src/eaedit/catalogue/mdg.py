@@ -88,6 +88,13 @@ def _tag(el: ET.Element, types: dict[str, dict[str, str]]) -> TagDef:
     return tag
 
 
+def _parents(el: ET.Element) -> list[str]:
+    # 'generalizes' names one parent; 'baseStereotypes' lists every one, possibly from other profiles
+    # ('SysML1.4::block'). EA applies the tags of all of them.
+    parents = el.get("generalizes", "").split()
+    return parents + [p for p in el.get("baseStereotypes", "").split() if p not in parents]
+
+
 def _stereotype(el: ET.Element, types: dict[str, dict[str, str]]) -> StereotypeDef:
     style: dict[str, str | int] = {}
     for key in _STYLE_KEYS:
@@ -108,7 +115,7 @@ def _stereotype(el: ET.Element, types: dict[str, dict[str, str]]) -> StereotypeD
         name=el.get("name", ""),
         applies_to=applies_to,
         abstract=el.get("isAbstract", "").lower() == "true",
-        generalizes=el.get("generalizes", "").split(),
+        generalizes=_parents(el),
         tags=[_tag(t, types) for t in el.findall("TaggedValues/Tag")],
         constraints=constraints,
         properties=properties,

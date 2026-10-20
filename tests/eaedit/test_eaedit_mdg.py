@@ -72,5 +72,36 @@ def test_real_naf_mdg(naf_mdg_path):
     assert len(cat.diagrams) > 40
     resolved = CatalogueSet([cat]).resolved("ActualEnterprisePhase")
     assert {"startDate", "endDate"} <= {t.name for t in resolved.tags}
+    # ResourceArtifact -> ... -> ResourcePerformer, whose further bases bring URI.
+    assert "URI" in {t.name for t in CatalogueSet([cat]).resolved("ResourceArtifact").tags}
     to_be = next(t for t in CatalogueSet([cat]).resolved("ArchitecturalDescription").tags if t.name == "toBe")
     assert (to_be.type, to_be.values) == ("boolean", ["true", "false"])
+
+
+def test_all_base_stereotypes_are_parents(tmp_path):
+    # 'generalizes' names one parent; 'baseStereotypes' lists every one, possibly from other profiles.
+    xml = tmp_path / "multi.xml"
+    xml.write_text(
+        '<?xml version="1.0" encoding="windows-1252"?><MDG.Technology version="1.0">'
+        '<Documentation id="M" name="M" version="1"/><UMLProfiles><UMLProfile profiletype="uml2">'
+        '<Documentation id="M" name="M" version="1"/><Content><Stereotypes>'
+        '<Stereotype name="Kid" generalizes="Mum" baseStereotypes="Mum Dad Other::Mixin"/>'
+        "</Stereotypes></Content></UMLProfile></UMLProfiles></MDG.Technology>",
+        encoding="cp1252",
+    )
+    (cat,) = parse_mdg(xml)
+    assert _stereo(cat, "Kid").generalizes == ["Mum", "Dad", "Other::Mixin"]
+
+
+def test_naf_with_sysml_catalogue_has_no_missing_bases(naf_mdg_path):
+    from pathlib import Path
+
+    from eacore.catalogue import load_yaml_all
+
+    sysml = load_yaml_all(Path(__file__).parents[2] / "docs" / "examples" / "sysml14-catalogue.yaml")
+    (naf,) = parse_mdg(naf_mdg_path)
+    alone = CatalogueSet([naf]).resolved("NAFv4-Core::ResourceArtifact")
+    assert "SysML1.4::block" in alone.missing and "isEncapsulated" not in {t.name for t in alone.tags}
+    resolved = CatalogueSet([naf, *sysml]).resolved("NAFv4-Core::ResourceArtifact")
+    # What EA 16.1 adds to a new ResourceArtifact: URI and SysML block's isEncapsulated.
+    assert {t.name for t in resolved.tags} == {"URI", "isEncapsulated"} and resolved.missing == []

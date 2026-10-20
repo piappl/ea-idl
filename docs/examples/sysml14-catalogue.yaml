@@ -1,0 +1,34 @@
+# The SysML 1.4 stereotypes other MDGs build on (NAFv4-Core's 'baseStereotypes' name SysML1.4::block and others).
+# EA has its SysML profile compiled in, so there is no MDG file to read. Tag names are from the OMG SysML 1.4
+# specification; the boolean's values give the Notes EA writes ('Values: true,false').
+# Use: eaedit ... -c NAF-MDG.xml -c docs/examples/sysml14-catalogue.yaml
+profile: SysML1.4
+source:
+  kind: yaml
+  file: sysml14-catalogue.yaml
+stereotypes:
+  - name: block
+    applies_to: [Class]
+    tags:
+      - name: isEncapsulated
+        type: boolean
+        values: ["true", "false"]
+  - name: InterfaceBlock
+    applies_to: [Class]
+    generalizes: [block]
+  - name: itemFlow
+    applies_to: [InformationFlow]
+    tags:
+      - name: itemProperty
+  - name: ValueType
+    applies_to: [DataType]
+    tags:
+      - name: quantityKind
+      - name: unit
+  - name: requirement
+    applies_to: [Class]
+    tags:
+      - name: id
+      - name: text
+  - name: allocate
+    applies_to: [Abstraction]

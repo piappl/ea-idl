@@ -109,6 +109,15 @@ connector end constraints. Sources, most authoritative first:
 For each stereotype the highest-precedence source wins; within a level, the order given. Bare names resolve if
 unambiguous, otherwise write `Profile::Name`.
 
+A stereotype inherits the tags of every parent its MDG lists (`generalizes` and `baseStereotypes`), including
+parents from other profiles. NAFv4-Core builds on EA's own BPMN 2.0 and SysML 1.4 profiles, so to add the same
+tags as EA, also load EA's `BPMN 2.0 Technology.xml` (in EA's `MDGTechnologies` folder) and
+`docs/examples/sysml14-catalogue.yaml` (EA has no SysML file to read). A parent no catalogue defines gives a
+`missing-base` warning.
+
+When a stereotype is applied, each new tag gets its Notes as EA writes them: `Values: a,b` for an enumeration or
+boolean, then `Default: x` when the tag has a default.
+
 Stereotypes a model uses without a profile (no `FQName` in EA's stereotype list) are inferred under the profile
 `(unknown)`. A bare name found both there and in a named profile means the named one. Applying an `(unknown)`
 stereotype writes it as EA does: by name, plus `GUID=` of its `t_stereotypes` row when one applies to the target's
@@ -147,6 +156,7 @@ be done. Warnings appear in `OpResult.warnings`, `session.warnings` (until `comm
 | `unknown-stereotype` | Not in any catalogue; the name is stored as given. |
 | `ambiguous-stereotype` | Bare name matches several profiles; stored without a profile. |
 | `abstract-stereotype` | The stereotype is abstract. |
+| `missing-base` | The stereotype inherits from one no loaded catalogue defines (often one of EA's built-in profiles); EA would add its tags, eaedit cannot. |
 | `wrong-base-type` | The stereotype does not apply to the target's base type. |
 | `unknown-tag` | `set_tag` named a tag none of the target's stereotypes defines. |
 | `stereotype-removed-tags-kept` | A stereotype was removed; its tag rows stay. |

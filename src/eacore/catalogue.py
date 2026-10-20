@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Literal
 
@@ -120,6 +120,8 @@ class ResolvedStereotype:
     tags: list[TagDef]
     #: Own and all ancestors', de-duplicated, order kept.
     constraints: list[Constraint]
+    #: Ancestors named in the chain that no loaded catalogue defines (their tags are unknown).
+    missing: list[str] = field(default_factory=list)
 
 
 class CatalogueSet:
@@ -171,6 +173,7 @@ class CatalogueSet:
         # Depth first, nearest first; the visited set guards against cycles.
         chain: list[StereotypeDef] = []
         seen: set[str] = set()
+        missing: list[str] = []
 
         def walk(current: str) -> None:
             if current in seen:
@@ -182,6 +185,8 @@ class CatalogueSet:
                 ancestor = self._ancestor(parent, current.rpartition("::")[0])
                 if ancestor:
                     walk(ancestor)
+                elif parent not in missing:
+                    missing.append(parent)
 
         walk(fq)
         tags: dict[str, TagDef] = {}
@@ -191,4 +196,4 @@ class CatalogueSet:
                 tags.setdefault(tag.name, tag)
             constraints.extend(c for c in entry.constraints if c not in constraints)
         applies_to = next((entry.applies_to for entry in chain if entry.applies_to), [])
-        return ResolvedStereotype(fq, definition, source, list(applies_to), list(tags.values()), constraints)
+        return ResolvedStereotype(fq, definition, source, list(applies_to), list(tags.values()), constraints, missing)

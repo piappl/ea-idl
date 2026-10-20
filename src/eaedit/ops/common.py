@@ -141,12 +141,15 @@ def _applies(metaclasses: list[str], base: str) -> bool:
 
 
 def _values_note(tag: TagDef) -> str | None:
-    # EA-made enumeration and boolean tags keep the choices like this ('kind', 'isEncapsulated' in nafv4.qea; an
-    # EA-applied NAF ArchitecturalDescription's 'toBe'); other types' values (a RefGUID tag's metaclasses) are no
-    # choices.
-    if tag.type not in ("enumeration", "boolean") or not tag.values:
-        return None
-    return "Values: " + ",".join(tag.values) + "\r\n"
+    # What EA writes to a new tag's Notes (EA 16.1 applying every NAFv4-Core stereotype through the API): the choices
+    # of an enumeration or boolean tag, then the default of any tag. Other types' values (a RefGUID tag's
+    # metaclasses) are no choices.
+    note = ""
+    if tag.type in ("enumeration", "boolean") and tag.values:
+        note += "Values: " + ",".join(tag.values) + "\r\n"
+    if tag.default:
+        note += f"Default: {tag.default}\r\n"
+    return note or None
 
 
 def _stereotype_guid(session, name: str, base: str) -> str | None:
@@ -188,6 +191,14 @@ def apply_stereotype(session, table: str, target: Record, name: str) -> None:
         source = resolved.source.file or resolved.source.kind
         if resolved.definition.abstract:
             session.warn("abstract-stereotype", f"{resolved.fqname} is abstract", resolved.fqname, source)
+        if resolved.missing:
+            session.warn(
+                "missing-base",
+                f"{resolved.fqname} inherits from {', '.join(resolved.missing)}, which no catalogue defines; "
+                "their tags are not added",
+                resolved.fqname,
+                source,
+            )
         base = _base_type(owner)
         if not _applies(resolved.applies_to, base):
             allowed = ", ".join(resolved.applies_to)
