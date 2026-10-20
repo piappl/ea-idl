@@ -71,6 +71,11 @@ class SqlBackend:
     def for_file(cls, path: str | Path, tablemap: TableMap = EA_TABLEMAP) -> SqlBackend:
         return cls(f"sqlite+pysqlite:///{Path(path).resolve().as_posix()}", tablemap)
 
+    def close(self) -> None:
+        """Close every pooled connection, so the file can be moved or deleted (Windows keeps open files locked)."""
+        self._read_engine.dispose()
+        self._write_engine.dispose()
+
     @property
     def path(self) -> Path | None:
         if self._sa_url.get_backend_name() != "sqlite" or not self._sa_url.database:

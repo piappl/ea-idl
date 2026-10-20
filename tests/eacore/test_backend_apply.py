@@ -21,6 +21,18 @@ def test_empty_changeset_leaves_file_byte_identical(nafv4_path, qea_copy):
     assert path.read_bytes() == before
 
 
+def test_close_disposes_engines_and_releases_the_file(nafv4_path, qea_copy):
+    path = qea_copy(nafv4_path)
+    backend = SqlBackend.for_file(path)
+    rs = backend.load()
+    record = _first_class(rs)
+    backend.apply(ChangeSet(updates=[Update("t_object", record.key, {"attr_note": (record.values["attr_note"], "x")})]))
+    backend.close()
+    # No pooled connection is left: the engines hold none after dispose().
+    assert backend._read_engine.pool.checkedin() == 0 and backend._write_engine.pool.checkedin() == 0
+    backend.close()  # closing twice is harmless
+
+
 def test_update_writes_only_that_column(nafv4_path, qea_copy):
     path = qea_copy(nafv4_path)
     backend = SqlBackend.for_file(path)

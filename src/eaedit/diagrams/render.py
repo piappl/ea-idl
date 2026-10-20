@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import shutil
 import sqlite3
 import tempfile
@@ -64,7 +65,8 @@ def _png(svg: str) -> bytes | None:
 
 
 def _ids(path: Path) -> tuple[dict[str, int], Ids]:
-    with sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True) as conn:
+    # closing(): sqlite3's own context manager only ends the transaction, it leaves the file open.
+    with contextlib.closing(sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)) as conn:
         diagrams = {guid: id for id, guid in conn.execute("SELECT Diagram_ID, ea_guid FROM t_diagram")}
         ids = Ids(
             dict(conn.execute("SELECT Object_ID, ea_guid FROM t_object")),
@@ -90,19 +92,29 @@ def render_working(session, diagrams: Iterable[str] | None = None, png: bool = F
     with tempfile.TemporaryDirectory(prefix="eaedit-render-") as tmp:
         copy = Path(tmp) / session.path.name
         shutil.copyfile(session.path, copy)
+        # A model EA has open may be in WAL mode: its latest pages are in the -wal file, not yet in the model.
+        for suffix in ("-wal", "-shm"):
+            side = session.path.with_name(session.path.name + suffix)
+            if side.exists():
+                shutil.copyfile(side, copy.with_name(copy.name + suffix))
         changes = session.changes()
         if not changes.is_empty():
             backend = SqlBackend.for_file(copy)
-            backend.load()
-            backend.apply(changes)
+            try:
+                backend.load()
+                backend.apply(changes)
+            finally:
+                backend.close()
         numbers, ids = _ids(copy)
-        extractor = NativeDiagramExtractor.from_url(f"sqlite:///{copy.as_posix()}")
+        extractor = None
         try:
+            extractor = NativeDiagramExtractor.from_url(f"sqlite:///{copy.as_posix()}")
             for guid in guids:
                 diagram = extractor.extract_by_id(numbers[guid])
                 record = session.working.get("t_diagram", guid)
                 svg = annotate(session, record, render_svg(diagram, style), ids)
                 result[guid] = RenderedDiagram(guid, diagram.name, svg, _png(svg) if png else None)
         finally:
-            extractor.close()
+            if extractor is not None:
+                extractor.close()
     return result

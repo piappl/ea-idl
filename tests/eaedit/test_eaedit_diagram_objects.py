@@ -137,6 +137,19 @@ def test_set_bounds_needs_duid_for_duplicates(nafv4_path, qea_copy):
     assert [r for d, r in rects.items() if d != first] == [(10, 120, 100, 190)]
 
 
+def test_set_stacking(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    row = _on(session, L7, MESSAGE)[0]
+    assert session.set_stacking(L7, MESSAGE, 9).guid == duid(row.values["attr_objectstyle"])
+    after = session.working.get("t_diagramobjects", row.key)
+    assert after.values == {**row.values, "attr_sequence": 9}
+    session.set_stacking(L7, duid(row.values["attr_objectstyle"]), 2)
+    assert session.working.get("t_diagramobjects", row.key).values["attr_sequence"] == 2
+    for bad in (0, -1, "x", 1.5):
+        with pytest.raises(InvalidOperationError):
+            session.set_stacking(L7, MESSAGE, bad)
+
+
 def test_remove_and_hide(nafv4_path, qea_copy):
     session = _open(qea_copy(nafv4_path))
     gone = duid(_on(session, L7, MESSAGE)[0].values["attr_objectstyle"])

@@ -336,6 +336,17 @@ def set_bounds(session, diagram: str, element: str, rect: Sequence[int]) -> str:
     return duid(obj.values.get("attr_objectstyle")) or ""
 
 
+@operation("set_stacking")
+def set_stacking(session, diagram: str, element: str, sequence: int) -> str:
+    """Set an object's ``Sequence``: lower is in front, as on the hand-made rows (an owner behind its Parts on p2)."""
+    if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence < 1:
+        raise InvalidOperationError(f"sequence must be an integer >= 1, not {sequence!r}")
+    this = Ref("t_diagram", _diagram(session, diagram).key)
+    obj = _object(session, this, element)
+    session.put(Record("t_diagramobjects", obj.key, {**obj.values, "attr_sequence": sequence}, obj.rid))
+    return duid(obj.values.get("attr_objectstyle")) or ""
+
+
 @operation("remove_from_diagram")
 def remove_from_diagram(session, diagram: str, element: str) -> str:
     this = Ref("t_diagram", _diagram(session, diagram).key)

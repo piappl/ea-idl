@@ -231,6 +231,8 @@ def _read(svg_text: str) -> tuple[dict[str, str], list[_Shape], list[_Line]]:
             except InvalidOperationError as exc:
                 raise InvalidOperationError(f"{label}: {exc}") from None
             z = _int(group, "data-ea-z", label)
+            if z is not None and z < 0:
+                raise InvalidOperationError(f"{label}: data-ea-z must not be negative")
             shapes.append(_Shape(label, guid, local, group.get("data-ea-duid"), rect, z, group.get("data-ea-text")))
         elif kind in LINE_KINDS or (kind is None and guid is not None):
             if guid is None and kind != "notelink":
@@ -424,17 +426,20 @@ class _Importer:
         if _kind(shape.element) == "readonly":
             if row is None:
                 self.warn("readonly-kept", f"{shape.label}: read-only objects cannot be placed; skipped", guid)
-            elif from_ea(row.values) != shape.rect:
+            elif from_ea(row.values) != shape.rect or shape.z not in (None, row.values.get("attr_sequence") or 0):
                 self.warn("readonly-kept", f"{shape.label}: read-only object kept where it is", guid)
             return
         if row is None:
-            self.run("place", diagram=self.diagram, element=guid, rect=list(shape.rect))
-        elif from_ea(row.values) != shape.rect:
+            target = self.run("place", diagram=self.diagram, element=guid, rect=list(shape.rect))
+        else:
             target = duid(row.values.get("attr_objectstyle")) or guid
-            self.run("set_bounds", diagram=self.diagram, element=target, rect=list(shape.rect))
-        if row is not None and shape.z is not None and shape.z != (row.values.get("attr_sequence") or 0):
-            # No operation sets Sequence yet; place still stacks new objects as on the hand-made rows.
-            self.warn("z-kept", f"{shape.label}: stacking order is not imported yet; kept", guid)
+            if from_ea(row.values) != shape.rect:
+                self.run("set_bounds", diagram=self.diagram, element=target, rect=list(shape.rect))
+        # Read after the moves: place stacks a new object (and an owner behind its Parts) itself.
+        current = self.session.working.get("t_diagramobjects", (self.this, target))
+        sequence = current.values.get("attr_sequence") or 0 if current is not None else None
+        if shape.z is not None and sequence is not None and shape.z != sequence:
+            self.run("set_stacking", diagram=self.diagram, element=target, sequence=shape.z)
         if _kind(shape.element) == "note" and shape.text is not None:
             current = self.session.working.get("t_object", shape.element.key)
             if (current.values.get("attr_note") or "") != shape.text:

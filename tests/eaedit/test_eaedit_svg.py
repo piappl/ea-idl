@@ -63,6 +63,7 @@ def test_round_trip_every_nafv4_diagram(nafv4_path, qea_copy):
         assert root.get("data-ea-diagram") == diagram
         import_svg(session, svg)
         assert session.changes().is_empty(), diagram
+        assert not session.log, diagram
 
 
 def test_export_markup(nafv4_path, qea_copy):
@@ -249,14 +250,19 @@ def test_render_working_shows_staged_changes(nafv4_path, qea_copy):
     assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
 
 
-def test_stacking_order_change_warns(nafv4_path, qea_copy):
+def test_import_stacking_order(nafv4_path, qea_copy):
     session = _open(qea_copy(nafv4_path))
     root = _parse(export_svg(session, L7))
     group = next(g for g in _groups(root) if g.get("data-ea-kind") == "element")
-    group.set("data-ea-z", str(int(group.get("data-ea-z")) + 7))
-    results = import_svg(session, _text(root))
-    assert session.changes().is_empty()
-    assert [w.code for r in results for w in r.warnings] == ["z-kept"]
+    z = int(group.get("data-ea-z")) + 7
+    group.set("data-ea-z", str(z))
+    import_svg(session, _text(root))
+    assert [entry.name for entry in session.log] == ["set_stacking"]
+    changes = session.changes()
+    assert [(u.table, u.key[1], u.changes["attr_sequence"][1]) for u in changes.updates] == [
+        ("t_diagramobjects", group.get("data-ea-duid"), z)
+    ]
+    assert not changes.inserts and not changes.deletes
 
 
 def test_import_message_order_and_offset(nafv4_path, qea_copy):
