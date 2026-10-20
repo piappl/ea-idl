@@ -1,0 +1,1 @@
+"""Diagram editing for eaedit."""

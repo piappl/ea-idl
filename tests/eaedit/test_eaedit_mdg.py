@@ -58,7 +58,9 @@ def test_multi_target_constraint_split(mini_mdg_path):
 
 def test_diagrams_and_toolboxes(mini_mdg_path):
     cat = parse_mdg(mini_mdg_path)[0]
-    assert cat.diagrams == [DiagramDef(name="D1", base="Custom", id="D1", alias="Diagram one", toolbox="MINI-D1")]
+    assert cat.diagrams == [
+        DiagramDef(name="D1", base="Custom", id="D1", alias="Diagram one", toolbox="MINI-D1", profile="MINI")
+    ]
     assert [(t.name, t.items) for t in cat.toolboxes] == [("MINI-D1", ["MINI::Thing"])]
 
 
@@ -105,3 +107,11 @@ def test_naf_with_sysml_catalogue_has_no_missing_bases(naf_mdg_path):
     resolved = CatalogueSet([naf, *sysml]).resolved("NAFv4-Core::ResourceArtifact")
     # What EA 16.1 adds to a new ResourceArtifact: URI and SysML block's isEncapsulated.
     assert {t.name for t in resolved.tags} == {"URI", "isEncapsulated"} and resolved.missing == []
+
+
+def test_diagram_profile_recorded(naf_mdg_path):
+    diagrams = {d.name: d for cat in parse_mdg(naf_mdg_path) for d in cat.diagrams}
+    p2 = diagrams["P2 - Resource Structure"]
+    assert (p2.id, p2.base) == ("P2", "Custom")
+    assert p2.profile == "NAFv4-Core Physical Resource Specification Viewpoints"
+    assert diagrams["P6 - Resource Sequence"].base == "Sequence"

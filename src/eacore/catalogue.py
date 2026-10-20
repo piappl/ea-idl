@@ -57,6 +57,7 @@ class DiagramDef(_Model):
     id: str = ""
     alias: str = ""
     toolbox: str = ""
+    profile: str = ""
 
 
 class Toolbox(_Model):

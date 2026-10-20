@@ -185,8 +185,10 @@ def parse_mdg(path: str | Path) -> list[Catalogue]:
         return next((c for c in catalogues if c.profile == name), catalogues[0])
 
     for profile in root.findall("DiagramProfile/UMLProfile"):
-        cat = target(profile.find("Documentation").get("name", ""))
-        cat.diagrams += [_diagram(s) for s in profile.findall("Content/Stereotypes/Stereotype")]
+        doc_name = profile.find("Documentation").get("name", "")
+        cat = target(doc_name)
+        for s in profile.findall("Content/Stereotypes/Stereotype"):
+            cat.diagrams.append(_diagram(s).model_copy(update={"profile": doc_name}))
     for profile in root.findall("UIToolboxes/UMLProfile"):
         cat = target(profile.find("Documentation").get("name", ""))
         cat.toolboxes.append(_toolbox(profile))
