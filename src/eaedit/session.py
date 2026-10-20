@@ -286,7 +286,11 @@ class Session:
             self._guid_queue = []
             raise InvalidOperationError(f"unknown operation {name!r}")
         # Logged as plain values, checked before the operation runs so an unloggable call changes nothing.
-        args = {key: _plain(value, f"{name}: argument {key!r}") for key, value in kwargs.items()}
+        try:
+            args = {key: _plain(value, f"{name}: argument {key!r}") for key, value in kwargs.items()}
+        except InvalidOperationError:
+            self._guid_queue = []  # as for an unknown name: the queued GUIDs were meant for this call
+            raise
         op = _Running([], set(), [], self.clock(), [])
         self._running = op
         try:

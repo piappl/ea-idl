@@ -256,6 +256,14 @@ def test_operation_name_shadowed_by_session_attribute_refused(name):
     assert name not in OPERATIONS
 
 
+def test_refused_argument_clears_the_guid_queue(path):
+    session = _open(path)
+    session.queue_guids(["{11111111-0000-0000-0000-00000000000F}"])
+    with pytest.raises(InvalidOperationError, match="change file"):
+        session.run("_test_rename", target=IN_MESSAGE, name=object())
+    assert session._guid_queue == []
+
+
 def test_commit_clears_warnings(path):
     session = _open(path, focus=[MESSAGE], policy="advisory")
     session.run("_test_rename", target=IN_DATA, name="Outside")
