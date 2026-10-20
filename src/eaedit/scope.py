@@ -152,6 +152,10 @@ class Scope:
         def from_after(ref: Ref) -> Record | None:
             return after.resolve(ref) or from_before(ref)
 
+        def just_before(ref: Ref) -> Record | None:
+            # A row the change touched as it stood before it (its pre-image), else as it stands now or stood at start.
+            return extra_before.get((ref.table, ref.key)) or after.resolve(ref) or before.resolve(ref)
+
         def guids(*sets: RecordSet) -> ByGuid:
             def lookup(guid: str) -> list[Ref]:
                 found = [ref for rs in sets for ref in rs.by_guid(guid)]
@@ -211,5 +215,5 @@ class Scope:
                 )
         for dele in changes.deletes:
             rec = dele.record or before.get(dele.table, dele.key) or extra_before.get((dele.table, dele.key))
-            check("delete", dele.table, dele.key, rec, from_after, guids(after, before), inside_deleted)
+            check("delete", dele.table, dele.key, rec, just_before, guids(after, before), inside_deleted)
         return problems

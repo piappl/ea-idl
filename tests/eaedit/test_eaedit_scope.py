@@ -243,3 +243,43 @@ def test_guid_owned_cascade_only_in_extra_before(before):
     changes = ChangeSet(deletes=[Delete("t_xref", xref.key, xref)])
     assert scope.violations(changes, gone, gone) != []  # owner unknown: fails closed
     assert scope.violations(changes, gone, gone, {("t_object", elem.key): elem}) == []
+
+
+def test_delete_owner_resolved_where_it_stood_just_before(before):
+    """A cascade delete judges a row's owner by its pre-image in the change, not by the session's start."""
+    scope = Scope([Ref("t_package", A)], "package")
+    elem = _element_in(before, B)  # outside at the session's start
+    attr = next(r for r in before.records("t_attribute") if r.values["attr_object_id"] == Ref("t_object", elem.key))
+    moved = Record(elem.table, elem.key, {**elem.values, "attr_package_id": Ref("t_package", A)}, elem.rid)
+    after = before.copy()
+    after.remove("t_attribute", attr.key)
+    after.remove("t_object", elem.key)
+    changes = ChangeSet(deletes=[Delete("t_attribute", attr.key, attr), Delete("t_object", elem.key, moved)])
+    extra = {("t_attribute", attr.key): attr, ("t_object", elem.key): moved}
+    assert scope.violations(changes, before, after, extra) == []
+
+
+def test_session_delete_after_move_into_new_subpackage(nafv4_path, qea_copy):
+    from eaedit import Session
+
+    session = Session.open(qea_copy(nafv4_path), focus=["Model::core::message"], policy="package")
+    package = session.create_package(parent="Model::core::message", name="P").guid
+    session.move_element(el="Model::core::message::MessageTypeEnum", package=package)
+    result = session.delete_attribute(attr="{873D5B47-B4A5-44af-8B7C-F81A9FDF92FE}")  # MessageTypeEnum_MEASUREMENT
+    assert result.warnings == []
+    session.delete_element(el="Model::core::message::P::MessageTypeEnum")
+    session.commit()
+
+
+def test_session_delete_after_move_in_warns_only_for_rows_outside(nafv4_path, qea_copy):
+    from eaedit import Session
+
+    session = Session.open(qea_copy(nafv4_path), focus=["Model::core::message"], policy="advisory")
+    session.move_element(el="Model::core::data::Measurement", package="Model::core::message")
+    warnings = session.delete_element(el="Model::core::message::Measurement").warnings
+    flagged = [w.message for w in warnings if w.code == "scope"]
+    # Measurement's own attributes, tags and xrefs stood inside the focus when they were deleted; only rows of
+    # connectors crossing to Model::core::data are outside.
+    assert flagged
+    owned_by_data_only = [m for m in flagged if m.endswith("owned by Model::core::data is outside the focus")]
+    assert not [m for m in owned_by_data_only if m.split()[1] in ("t_attribute", "t_objectproperties", "t_xref")]
