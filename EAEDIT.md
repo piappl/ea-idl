@@ -328,7 +328,9 @@ replay(Session.open("other.qea"), "changes.yaml")
 ```
 
 The file is YAML (`eaedit: 1`, `author`, then `ops` with `op`, `at`, `args`, `created`). Each operation stores the
-timestamp it ran at and the GUIDs it created, so replaying onto the same starting model gives identical rows. Replay
+timestamp it ran at and the GUIDs it created, so replaying onto the same starting model gives identical rows.
+Arguments are logged as plain values (tuples and sets as lists, paths as text, enums by value); an operation called
+with anything else is refused before it runs. Replay
 records the change file's author unless you pass `author=` (`--author` on the command line). A replay failure names the operation number. See
 [docs/examples/eaedit-example.yaml](./docs/examples/eaedit-example.yaml).
 

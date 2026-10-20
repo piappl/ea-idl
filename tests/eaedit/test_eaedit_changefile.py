@@ -182,3 +182,43 @@ def test_replay_diagram_ops_identical(empty_path, qea_copy, tmp_path):
     again.commit()
     assert _diagram_rows(original) == _diagram_rows(replayed)
     assert len(_diagram_rows(original)[1]) == 3
+
+
+def test_python_arguments_logged_as_plain_values(nafv4_path, qea_copy, tmp_path):
+    import enum
+
+    from eaedit.ops import OPERATIONS, operation
+
+    class Side(enum.Enum):
+        LEFT = "left"
+
+    @operation("_test_plain_args")
+    def plain_args(session, **kwargs):
+        return None
+
+    try:
+        session = Session.open(qea_copy(nafv4_path), clock=lambda: FIXED)
+        session.run(
+            "_test_plain_args",
+            rect=(1, 2, 3, 4),
+            names={"b", "a"},
+            path=Path("x/y.svg"),
+            side=Side.LEFT,
+            nested={"items": [(1, 2), Path("z")]},
+        )
+        assert session.log[-1].args == {
+            "rect": [1, 2, 3, 4],
+            "names": ["a", "b"],
+            "path": str(Path("x/y.svg")),
+            "side": "left",
+            "nested": {"items": [[1, 2], "z"]},
+        }
+        out = tmp_path / "changes.yaml"
+        save(session, out)
+        assert load(out)[0].args == session.log[-1].args
+        # an argument a change file cannot hold is refused before the operation runs, not when saving
+        with pytest.raises(InvalidOperationError, match="_test_plain_args.*'thing'.*object"):
+            session.run("_test_plain_args", thing=object())
+        assert len(session.log) == 1
+    finally:
+        OPERATIONS.pop("_test_plain_args", None)

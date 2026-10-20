@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import enum
 import functools
 import getpass
 import inspect
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Any, Callable, Iterable
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -104,6 +105,27 @@ def _keywords(name: str, args: tuple, kwargs: dict) -> dict:
         else:
             result[parameter] = value
     return result
+
+
+def _plain(value: Any, where: str) -> Any:
+    """``value`` as a change file stores it (YAML-safe): tuples and sets as lists, paths as text, enums by value."""
+    if value is None or isinstance(value, (bool, int, float, str, datetime)):
+        return value
+    if isinstance(value, enum.Enum):
+        return _plain(value.value, where)
+    if isinstance(value, PurePath):
+        return str(value)
+    if isinstance(value, (list, tuple)):
+        return [_plain(item, where) for item in value]
+    if isinstance(value, (set, frozenset)):
+        items = [_plain(item, where) for item in value]
+        try:
+            return sorted(items)
+        except TypeError:
+            return items
+    if isinstance(value, dict) and all(isinstance(k, str) for k in value):
+        return {k: _plain(v, where) for k, v in value.items()}
+    raise InvalidOperationError(f"{where}: a change file cannot hold a value of type {type(value).__name__}")
 
 
 def _issue_id(issue: Issue) -> tuple:
@@ -263,6 +285,8 @@ class Session:
         if fn is None:
             self._guid_queue = []
             raise InvalidOperationError(f"unknown operation {name!r}")
+        # Logged as plain values, checked before the operation runs so an unloggable call changes nothing.
+        args = {key: _plain(value, f"{name}: argument {key!r}") for key, value in kwargs.items()}
         op = _Running([], set(), [], self.clock(), [])
         self._running = op
         try:
@@ -274,9 +298,6 @@ class Session:
         finally:
             self._running = None
             self._guid_queue = []
-        args = dict(kwargs)
-        if isinstance(args.get("rect"), tuple):
-            args["rect"] = list(args["rect"])  # rectangles are logged as lists, as the change file stores them
         if op.created and "guid" not in args and _takes_guid(fn):
             args["guid"] = op.created[0]
         self.log.append(LoggedOp(name, args, op.at, list(op.minted)))
