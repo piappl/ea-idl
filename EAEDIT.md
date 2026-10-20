@@ -180,7 +180,10 @@ byte for byte.
   owner's rectangle (`moved-inside-owner`). When both ends of a connector are on the diagram its link row is written,
   as the GUI does. A note on a connector is stored as EA does (the note refers to the connector in `PDATA4`, `NType`
   1); `NType` 1 comes from the single hand-made sample, so it warns `unverified-default`. A note on an element gets a
-  `NoteLink` from the element to the note.
+  `NoteLink` from the element to the note. Linking it again returns the existing link (`already-linked`).
+- A sequence message is shown on one diagram: `show_message` refuses a message another diagram shows (the error names
+  it). An explicit `order` already taken on the diagram moves that message and the later ones down one, so the
+  diagram's numbers stay unique.
 - Deleting an element or connector removes its diagram rows. A note shown nowhere else is deleted with its last
   object: by `delete_element`, by `remove_from_diagram` and by `delete_diagram` (and by an SVG import that drops it).
 - A dangling diagram object (its element is gone) is carried through untouched by every operation, layout and

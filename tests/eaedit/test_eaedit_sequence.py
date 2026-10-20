@@ -61,3 +61,35 @@ def test_show_message_rejects_non_lifelines(nafv4_path, qea_copy):
     other = session.connect(MESSAGE, ASSET2, type="Message").guid
     with pytest.raises(InvalidOperationError):
         session.show_message(P6, other)  # one end not on the diagram
+
+
+def test_show_message_refuses_rehoming(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    other = session.create_diagram("Model::p6", "Another", "Sequence").guid
+    session.place(other, ASSET1)
+    session.place(other, ASSET2)
+    with pytest.raises(InvalidOperationError, match=P6):
+        session.show_message(other, MSG1)
+    assert session.working.resolve(_conn(session, MSG1).values["attr_diagramid"]).values["attr_ea_guid"] == P6
+    session.show_message(P6, MSG1, offset=-50)  # its own diagram: allowed
+    new = session.connect(ASSET1, ASSET2, type="Message", name="New").guid
+    session.show_message(other, new)  # no diagram yet: allowed
+
+
+def test_show_message_explicit_order_shifts_later_messages(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    assert [_conn(session, g).values["attr_seqno"] for g in (MSG1, MSG2, MSG3)] == [1, 2, 3]
+    others = {
+        r.key: r.values.get("attr_seqno")
+        for r in session.working.records("t_connector")
+        if r.values.get("attr_ea_guid") not in (MSG1, MSG2, MSG3)
+    }
+    new = session.connect(ASSET1, ASSET2, type="Message", name="New").guid
+    session.show_message(P6, new, order=2)
+    assert [_conn(session, g).values["attr_seqno"] for g in (MSG1, new, MSG2, MSG3)] == [1, 2, 3, 4]
+    # only messages on the diagram renumber
+    assert {k: session.working.get("t_connector", k).values.get("attr_seqno") for k in others} == others
+    # an order past the end, or not taken, shifts nothing
+    last = session.connect(ASSET1, ASSET2, type="Message", name="Last").guid
+    session.show_message(P6, last, order=9)
+    assert [_conn(session, g).values["attr_seqno"] for g in (MSG1, new, MSG2, MSG3, last)] == [1, 2, 3, 4, 9]

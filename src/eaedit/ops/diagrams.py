@@ -465,7 +465,18 @@ def show_message(session, diagram: str, connector: str, order: int | None = None
     for column in ("attr_start_object_id", "attr_end_object_id"):
         if message.values.get(column) not in shown:
             raise InvalidOperationError("both ends of the message must be lifelines on the diagram")
+    home = message.values.get("attr_diagramid")
+    if isinstance(home, Ref) and home != this:
+        current = session.working.resolve(home)
+        name = guid_of(current) if current is not None else home.key
+        raise InvalidOperationError(f"the message is shown on diagram {name}: a message is shown on one diagram only")
     others = [m for m in _messages(session, this) if m.key != message.key]
+    if order is not None and any(m.values.get("attr_seqno") == order for m in others):
+        # EA keeps a diagram's message numbers 1..n: the taken number and those after it move down one.
+        for later in others:
+            if (later.values.get("attr_seqno") or 0) >= order:
+                seqno = later.values["attr_seqno"] + 1
+                session.put(Record("t_connector", later.key, {**later.values, "attr_seqno": seqno}, later.rid))
     values = dict(message.values)
     values["attr_diagramid"] = this
     values["attr_seqno"] = (
