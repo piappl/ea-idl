@@ -124,6 +124,18 @@ def _local_clock(timezone: str | None) -> Callable[[], datetime]:
 
 
 class Session:
+    # Instance attributes, declared so an operation named like one is refused (``eaedit.ops.operation``).
+    path: Path
+    backend: SqlBackend
+    original: RecordSet
+    working: RecordSet
+    catalogues: CatalogueSet
+    scope: Scope
+    author: str
+    clock: Callable[[], datetime]
+    log: list[LoggedOp]
+    warnings: list[EditWarning]
+
     def __init__(
         self,
         path: Path,
@@ -244,13 +256,13 @@ class Session:
     # --- running ---
 
     def run(self, name: str, /, **kwargs) -> OpResult:
+        if self._running is not None:
+            # The queue belongs to the running operation, whose own run clears it when it ends.
+            raise InvalidOperationError(f"{name!r} called while another operation is running")
         fn = OPERATIONS.get(name)
         if fn is None:
             self._guid_queue = []
             raise InvalidOperationError(f"unknown operation {name!r}")
-        if self._running is not None:
-            # The queue belongs to the running operation, whose own run clears it when it ends.
-            raise InvalidOperationError(f"{name!r} called while another operation is running")
         op = _Running([], set(), [], self.clock(), [])
         self._running = op
         try:

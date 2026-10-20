@@ -227,6 +227,35 @@ def test_failed_dispatch_clears_the_guid_queue(path):
     assert session._guid_queue == []
 
 
+def test_nested_unknown_operation_keeps_the_outer_guid_queue(path):
+    queued = "{11111111-0000-0000-0000-00000000000E}"
+
+    @operation("_test_nested_unknown")
+    def nested(session):
+        with pytest.raises(InvalidOperationError, match="while another operation is running"):
+            session.run("no_such_operation")
+        return session.new_guid()
+
+    try:
+        session = _open(path)
+        session.queue_guids([queued])
+        assert session.run("_test_nested_unknown").guid == queued
+        assert session.log[-1].created == [queued]
+    finally:
+        OPERATIONS.pop("_test_nested_unknown", None)
+
+
+@pytest.mark.parametrize("name", ["preview", "commit", "warnings", "working", "log"])
+def test_operation_name_shadowed_by_session_attribute_refused(name):
+    with pytest.raises(ValueError, match=f"{name!r}.*Session"):
+
+        @operation(name)
+        def shadowed(session):
+            return None
+
+    assert name not in OPERATIONS
+
+
 def test_commit_clears_warnings(path):
     session = _open(path, focus=[MESSAGE], policy="advisory")
     session.run("_test_rename", target=IN_DATA, name="Outside")

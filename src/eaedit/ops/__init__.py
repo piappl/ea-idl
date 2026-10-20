@@ -14,6 +14,11 @@ def operation(name: str):
     """Register ``fn(session, **kwargs) -> str | None`` (returns the primary GUID touched/created)."""
 
     def register(fn):
+        from eaedit.session import Session  # ops modules load after the session module
+
+        if name in dir(Session) or name in Session.__annotations__:
+            # ``session.<name>`` would reach the attribute, never the operation.
+            raise ValueError(f"operation name {name!r} is taken by a Session attribute")
         OPERATIONS[name] = fn
         return fn
 
