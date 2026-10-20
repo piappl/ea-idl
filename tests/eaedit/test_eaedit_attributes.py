@@ -117,6 +117,39 @@ def test_delete_attribute_clears_side_letter_references(nafv4_path, qea_copy):
     assert "reference-cleared" in [w.code for w in result.warnings]
 
 
+def test_delete_attribute_strips_whole_feature_link_entries_in_the_file(nafv4_path, qea_copy):
+    import sqlite3
+
+    path = qea_copy(nafv4_path)
+    nationality = "{2D501BC6-55E7-4902-8D24-0F94971CFB1B}"  # Message.nationality
+    uuid = "{114D8348-AB4E-46d0-9C4E-75F731B80914}"  # Message.uuid, kept
+    styles = {
+        "only": f"LFSP={nationality}R;",
+        "last, no semicolon": f"Mode=3;LFEP={nationality}L",
+        "between": f"LFSP={uuid}L;LFEP={nationality}R;paramvalues=Argument1;",
+        "lower case": f"LFSP={nationality.lower()}L;Mode=3;",
+    }
+    expected = {
+        "only": None,  # as the EA-made connectors in nafv4.qea without one (StyleEx NULL)
+        "last, no semicolon": "Mode=3;",
+        "between": f"LFSP={uuid}L;paramvalues=Argument1;",
+        "lower case": "Mode=3;",
+    }
+    with sqlite3.connect(path) as conn:
+        ids = [row[0] for row in conn.execute("SELECT Connector_ID FROM t_connector WHERE StyleEx IS NULL LIMIT 4")]
+        for connector_id, style in zip(ids, styles.values()):
+            conn.execute("UPDATE t_connector SET StyleEx = ? WHERE Connector_ID = ?", (style, connector_id))
+    session = _open(path)
+    session.delete_attribute(attr=nationality)
+    session.commit()
+    with sqlite3.connect(path) as conn:
+        found = {
+            case: conn.execute("SELECT StyleEx FROM t_connector WHERE Connector_ID = ?", (i,)).fetchone()[0]
+            for case, i in zip(styles, ids)
+        }
+    assert found == expected
+
+
 def test_set_classifier_on_part(nafv4_path, qea_copy):
     path = qea_copy(nafv4_path)
     baseline = _issues(load_file(nafv4_path))

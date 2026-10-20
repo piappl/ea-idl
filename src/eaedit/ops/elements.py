@@ -322,6 +322,8 @@ def clear_references(session, rows: dict[tuple[str, Key], Record]) -> None:
                         changed[rule.column] = unset(rule.column)
                 elif isinstance(rule, EmbeddedGuidRule) and isinstance(value, str):
                     current = changed.get(rule.column, value)
+                    if current is None:
+                        continue  # an earlier rule on this column already emptied it
                     # EA writes a side letter after LFSP/LFEP GUIDs (``LFSP={GUID}L;``).
                     tail = "[LR]?;?" if rule.column == "attr_styleex" else ";?"
                     text = re.sub(
