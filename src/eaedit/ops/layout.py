@@ -9,7 +9,19 @@ from eacore.embedded import duid
 from eacore.records import Record, Ref
 from eaedit.diagrams.geometry import Rect, from_ea
 from eaedit.errors import InvalidOperationError
-from eaedit.layout.engine import MARGIN, PAGE, Box, Edge, contain, fits, hub, layers, split_suggestion, suggest
+from eaedit.layout.engine import (
+    CHILD_GAP,
+    MARGIN,
+    PAGE,
+    Box,
+    Edge,
+    contain,
+    fits,
+    hub,
+    layers,
+    split_suggestion,
+    suggest,
+)
 from eaedit.ops import operation
 from eaedit.ops.diagrams import _SIZE, _SIZES, _diagram, _objects, place, set_bounds, shown_element
 from eaedit.resolve import guid_of
@@ -28,6 +40,9 @@ _FIRST_ROW = 14
 _STEREOTYPE_ROW = 17
 _BOTTOM = 6
 _PADDING_X = 10
+
+#: Space on each side of a connector label between two Parts.
+LABEL_MARGIN = 20
 
 
 @dataclass
@@ -153,10 +168,25 @@ class _Plan:
         if children:
             for child in children:
                 self.box(child, members)
-            self.inner[key] = contain(key, children, self.boxes, padding)
+            self.inner[key] = contain(key, children, self.boxes, padding, spacing=self.child_gap(children))
             owner = self.inner[key][key]
             self.boxes[key] = Box(key, owner[2] - owner[0], owner[3] - owner[1])
         return self.boxes[key]
+
+    def child_gap(self, children: list[str]) -> tuple[int, int]:
+        """Room between Parts: at least ``CHILD_GAP``, and wide enough for the label of a connector between two of them."""
+        from eaedit.diagrams.render import text_width  # the only module allowed to reach the renderer
+
+        refs = {Ref("t_object", k) for k in children}
+        width = CHILD_GAP[0]
+        for connector in self.session.working.records("t_connector"):
+            values = connector.values
+            if values.get("attr_start_object_id") in refs and values.get("attr_end_object_id") in refs:
+                label = values.get("attr_btm_mid_label") or values.get("attr_name") or ""
+                lines = [line for line in label.splitlines() if line]
+                if lines:
+                    width = max(width, int(max(text_width(line, 8) for line in lines)) + 2 * LABEL_MARGIN)
+        return width, CHILD_GAP[1]
 
     def beside(self, keys: list[str], gap: int) -> list[str]:
         """Notes linked to a laid-out element join that element's box, to its right; ``keys`` without them."""

@@ -244,3 +244,22 @@ def test_unmarked_aggregation_puts_target_above(nafv4_path, qea_copy):
     session.connect(part, whole, type="Aggregation")
     report = plan_layout(session, diagram, {"pattern": "suggest", "elements": [part, whole]})
     assert report.rects[whole][3] <= report.rects[part][1]
+
+
+def test_contain_leaves_room_for_labels_between_parts(empty_path, qea_copy):
+    # EA puts a connector's label on the middle of the line: Parts that nearly touch get it drawn over both (seen in EA
+    # 16.1's export of a P2 view laid out with contain).
+    session = Session.open(qea_copy(empty_path), policy="off")
+    owner = session.create_element("Model", "Owner").guid
+    a = session.create_element(parent=owner, name="a", type="Part").guid
+    b = session.create_element(parent=owner, name="b", type="Part").guid
+    label = "«ResourceExchange»"
+    flow = session.connect(a, b, type="Dependency").guid
+    session.update_connector(flow, name=label)
+    diagram = session.create_diagram("Model", "D").guid
+    session.layout(diagram, {"pattern": "contain", "owner": owner})
+    rects = plan_layout(session, diagram, {"pattern": "contain", "owner": owner}).rects
+    left, right = sorted((rects[a], rects[b]))
+    assert right[0] - left[2] >= len(label) * 4  # far more than the old 10px; fits the label
+    plain = contain("o", ["x", "y"], _boxes(("o", 90, 70, None), ("x", 70, 54, "o"), ("y", 70, 54, "o")))
+    assert plain["y"][0] - plain["x"][2] == 40

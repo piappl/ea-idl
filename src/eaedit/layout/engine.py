@@ -36,6 +36,9 @@ MARGIN = 20
 #: An owner's name compartment above its Parts, and the spacing between Parts (as ``place`` leaves them).
 NAME_H = 30
 SPACING = 10
+#: Room between Parts inside their owner: a connector between two Parts needs a visible length (EA puts its label
+#: on the line's middle, over both Parts when they nearly touch).
+CHILD_GAP = (40, 30)
 SIDES = ("above", "below", "left", "right")
 
 
@@ -132,17 +135,25 @@ def hub(
 
 
 def contain(
-    owner: str, children: list[str], boxes: dict[str, Box], padding: int = 20, origin: tuple[int, int] = (0, 0)
+    owner: str,
+    children: list[str],
+    boxes: dict[str, Box],
+    padding: int = 20,
+    origin: tuple[int, int] = (0, 0),
+    spacing: tuple[int, int] = CHILD_GAP,
 ) -> dict[str, Rect]:
-    """``children`` in a grid inside ``owner`` (below its name compartment), the owner grown to fit, never shrunk."""
+    """``children`` in a grid inside ``owner`` (below its name compartment), the owner grown to fit, never shrunk.
+
+    ``spacing`` is the (horizontal, vertical) room between children.
+    """
     _unique([owner, *children])
     box = boxes[owner]
     columns = math.ceil(math.sqrt(len(children))) if children else 1
     grid = [children[i : i + columns] for i in range(0, len(children), columns)]
     widths = [max(boxes[row[c]].width for row in grid if c < len(row)) for c in range(columns)] if children else [0]
     heights = [max(boxes[k].height for k in row) for row in grid]
-    grid_w = sum(widths) + SPACING * (columns - 1)
-    grid_h = sum(heights) + SPACING * (len(heights) - 1)
+    grid_w = sum(widths) + spacing[0] * (columns - 1)
+    grid_h = sum(heights) + spacing[1] * (len(heights) - 1)
     width = max(box.width, grid_w + 2 * padding) if children else box.width
     height = max(box.height, NAME_H + grid_h + padding) if children else box.height
     x0, y0 = origin
@@ -153,8 +164,8 @@ def contain(
         for column, key in enumerate(row):
             child = boxes[key]
             rects[key] = (left, top, left + child.width, top + child.height)
-            left += widths[column] + SPACING
-        top += row_h + SPACING
+            left += widths[column] + spacing[0]
+        top += row_h + spacing[1]
     return rects
 
 
