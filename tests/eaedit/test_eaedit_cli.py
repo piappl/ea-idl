@@ -1,3 +1,5 @@
+import re
+
 import yaml
 from click.testing import CliRunner
 
@@ -116,3 +118,49 @@ def test_cli_catalogue_build_several_profiles_writes_a_list(mini_mdg_path, tmp_p
     result = CliRunner().invoke(cli, ["catalogue", "show", str(out)])
     assert result.exit_code == 0, result.output
     assert "OTHER::Widget" in result.output and "MINI::Extra" in result.output and "MINI::Thing" in result.output
+
+
+L7 = "{0BA44FD3-F22C-4f9a-AC35-3BDB736B3C80}"
+
+
+def test_preview_renders_changed_diagrams(nafv4_path, qea_copy):
+    session = Session.open(qea_copy(nafv4_path), policy="off")
+    assert session.preview().diagrams == {}
+    session.create_diagram("Model::core::message", "Fresh", "Class")
+    rendered = session.preview().diagrams
+    assert [d.name for d in rendered.values()] == ["Fresh"]
+    assert "<svg" in next(iter(rendered.values())).svg
+    assert session.preview(render=False).diagrams == {}
+
+
+def test_cli_preview_writes_diagram_svgs(nafv4_path, qea_copy, tmp_path):
+    model = qea_copy(nafv4_path)
+    changes = _changes(
+        tmp_path / "changes.yaml", [_op("create_diagram", owner="Model::core::message", name="Fresh", type="Class")]
+    )
+    out = tmp_path / "out"
+    result = CliRunner().invoke(cli, ["preview", str(model), str(changes), "--policy", "off", "--out", str(out)])
+    assert result.exit_code == 0, result.output
+    assert "<svg" in (out / "Fresh.svg").read_text(encoding="utf-8")
+
+
+def test_cli_diagram_export_import(nafv4_path, qea_copy, tmp_path):
+    model = qea_copy(nafv4_path)
+    svg = tmp_path / "l7.svg"
+    runner = CliRunner()
+    result = runner.invoke(cli, ["diagram", "export", str(model), L7, "-o", str(svg)])
+    assert result.exit_code == 0, result.output
+    assert 'data-ea-guid="' in svg.read_text(encoding="utf-8")
+
+    result = runner.invoke(cli, ["diagram", "import", str(model), str(svg), "--policy", "off"])
+    assert result.exit_code == 0, result.output
+    assert "no changes" in result.output.lower()
+
+    edited = re.sub(r'data-ea-name="[^"]*"', 'data-ea-name="Renamed"', svg.read_text(encoding="utf-8"), count=1)
+    svg.write_text(edited, encoding="utf-8")
+    before = model.read_bytes()
+    result = runner.invoke(cli, ["diagram", "import", str(model), str(svg), "--policy", "off"])
+    assert result.exit_code == 0 and model.read_bytes() == before
+    result = runner.invoke(cli, ["diagram", "import", str(model), str(svg), "--policy", "off", "--apply"])
+    assert result.exit_code == 0, result.output
+    assert Session.open(model).working.get("t_diagram", L7).values["attr_name"] == "Renamed"

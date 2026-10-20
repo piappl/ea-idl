@@ -118,3 +118,39 @@ def test_example_change_file_applies_to_empty_model(empty_path, qea_copy):
     reopened = Session.open(model)
     assert reopened.get("Model::Demo::Engine")["stereotypes"]
     assert len(reopened.find_connectors(source="Model::Demo::Controller")) == 1
+
+
+EXAMPLES = Path(__file__).parents[2] / "docs" / "examples"
+
+
+def _diagram_rows(model):
+    session = Session.open(model)
+    return [
+        sorted(
+            (r.table, str(r.key), sorted((k, str(v)) for k, v in r.values.items())) for r in session.working.records(t)
+        )
+        for t in ("t_diagram", "t_diagramobjects", "t_diagramlinks")
+    ]
+
+
+def test_example_diagram_change_file_applies(empty_path, qea_copy):
+    model = qea_copy(empty_path)
+    session = Session.open(model, policy="package", focus=["Model"])
+    replay(session, EXAMPLES / "eaedit-diagram.yaml")
+
+    assert [i for i in session.preview().new_issues if i.severity == "error"] == []
+    session.commit()
+    reopened = Session.open(model)
+    diagram = reopened.find("Model::Shapes::Overview", kinds=("diagram",))
+    assert diagram is not None
+    assert len(list(reopened.working.records("t_diagramobjects"))) == 3  # two classes and the note
+
+
+def test_replay_diagram_ops_identical(empty_path, qea_copy, tmp_path):
+    first = qea_copy(empty_path, "one.qea")
+    second = qea_copy(empty_path, "two.qea")
+    for model in (first, second):
+        replay(s := Session.open(model, policy="package", focus=["Model"]), EXAMPLES / "eaedit-diagram.yaml")
+        s.commit()
+    assert _diagram_rows(first) == _diagram_rows(second)
+    assert any("DUID=" in str(rows) for rows in _diagram_rows(first)[1])

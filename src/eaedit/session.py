@@ -53,6 +53,8 @@ class Preview:
     warnings: list[EditWarning]
     touched: dict[str, int]
     outside_focus: list[str]
+    #: Rendered SVG per diagram (by GUID) the session created or changed, as it will look after commit.
+    diagrams: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -352,7 +354,29 @@ class Session:
         package = rs.owner_package(ref)
         return resolve.qualified_name(rs, package) if package is not None else REPOSITORY
 
-    def preview(self) -> Preview:
+    #: Where each table that decides what a diagram shows keeps its diagram reference.
+    _DIAGRAM_COLUMNS = {"t_diagramobjects": "attr_diagram_id", "t_diagramlinks": "attr_diagramid"}
+
+    def changed_diagrams(self, changes: ChangeSet | None = None) -> list[str]:
+        """GUIDs of the diagrams that exist in the working copy and whose rows, links or messages changed."""
+        changes = changes or self.changes()
+        found: dict[str, None] = {}
+        for change in [*changes.inserts, *changes.updates]:
+            if isinstance(change, Insert):
+                table, key = change.record.table, change.record.key
+            else:
+                table, key = change.table, change.key
+            if table == "t_diagram":
+                found[key] = None
+            elif table in self._DIAGRAM_COLUMNS or table == "t_connector":
+                row = self.working.get(table, key)
+                ref = row.values.get(self._DIAGRAM_COLUMNS.get(table, "attr_diagramid")) if row else None
+                if isinstance(ref, Ref) and ref.table == "t_diagram":
+                    found[ref.key] = None
+        return [guid for guid in found if self.working.get("t_diagram", guid) is not None]
+
+    def preview(self, render: bool | None = None) -> Preview:
+        """What would change. ``render`` (default: when diagram rows changed) adds ``Preview.diagrams``."""
         changes = self.changes()
         touched: dict[str, int] = {}
         outside: dict[str, None] = {}
@@ -368,6 +392,12 @@ class Session:
             package = rs.owner_package(ref)
             if inside is not None and (package is None or package.key not in inside):
                 outside[name] = None
+        changed = self.changed_diagrams(changes) if render is not False else []
+        diagrams = {}
+        if changed and render is not False:
+            from eaedit.diagrams.render import render_working  # renders with eaidl; keep it off the import path
+
+            diagrams = render_working(self, changed)
         return Preview(
             changes,
             render_text(changes, self.original, self.working),
@@ -375,6 +405,7 @@ class Session:
             list(self.warnings),
             touched,
             list(outside),
+            diagrams,
         )
 
     def commit(self) -> ChangeSet:

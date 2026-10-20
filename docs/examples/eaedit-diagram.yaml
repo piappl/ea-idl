@@ -1,0 +1,77 @@
+# Works on tests/data/empty.qea (root package "Model"); needs no catalogue. Creates two classes, a Class diagram,
+# a layered layout and a note. Replaying it gives identical rows, DUIDs included.
+eaedit: 1
+source: empty.qea
+author: example
+ops:
+- op: create_package
+  at: '2026-01-01 10:00:00'
+  args:
+    parent: Model
+    name: Shapes
+    guid: '{E30692C6-B0B7-41A5-B5B4-06792A2DCD3D}'
+  created:
+  - '{E30692C6-B0B7-41A5-B5B4-06792A2DCD3D}'
+- op: create_element
+  at: '2026-01-01 10:00:01'
+  args:
+    package: Model::Shapes
+    name: Shape
+    type: Class
+    guid: '{AA48280F-09FE-4FD6-AD71-8F36545B4EB7}'
+  created:
+  - '{AA48280F-09FE-4FD6-AD71-8F36545B4EB7}'
+- op: create_element
+  at: '2026-01-01 10:00:02'
+  args:
+    package: Model::Shapes
+    name: Circle
+    type: Class
+    guid: '{A11FE3FD-2B02-4D88-A83F-C8FACDDBF1A6}'
+  created:
+  - '{A11FE3FD-2B02-4D88-A83F-C8FACDDBF1A6}'
+- op: connect
+  at: '2026-01-01 10:00:03'
+  args:
+    source: Model::Shapes::Circle
+    target: Model::Shapes::Shape
+    type: Generalization
+    guid: '{E755D210-BF75-4CB2-B65A-9A4B6A120A34}'
+  created:
+  - '{E755D210-BF75-4CB2-B65A-9A4B6A120A34}'
+- op: create_diagram
+  at: '2026-01-01 10:00:04'
+  args:
+    owner: Model::Shapes
+    name: Overview
+    type: Class
+    guid: '{EFF042A5-BCE6-443A-BAC2-1FF23BFD1BDD}'
+  created:
+  - '{EFF042A5-BCE6-443A-BAC2-1FF23BFD1BDD}'
+  - '{59F3405B-4707-42EF-9356-771719AEF0E6}'
+- op: layout
+  at: '2026-01-01 10:00:05'
+  args:
+    diagram: '{EFF042A5-BCE6-443A-BAC2-1FF23BFD1BDD}'
+    spec:
+      pattern: layers
+      rows:
+      - - Model::Shapes::Shape
+      - - Model::Shapes::Circle
+  created:
+  - '{AC817BBF-7E91-483A-B622-57A16E6A14E6}'
+  - '{5B553A96-6FA2-4720-A893-1D1E404262C0}'
+- op: add_note
+  at: '2026-01-01 10:00:06'
+  args:
+    diagram: '{EFF042A5-BCE6-443A-BAC2-1FF23BFD1BDD}'
+    text: Circle specialises Shape.
+    rect:
+    - 300
+    - 40
+    - 480
+    - 100
+    guid: '{50C0D838-01A7-4A61-BD3E-C217D421C25D}'
+  created:
+  - '{50C0D838-01A7-4A61-BD3E-C217D421C25D}'
+  - '{64BC96C4-FB07-4B00-94B0-33928B952E3E}'

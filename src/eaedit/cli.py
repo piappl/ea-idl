@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 
 import click
 import sqlalchemy as sa
@@ -14,6 +15,7 @@ from eacore.catalogue import AmbiguousStereotype, save_yaml_all
 from eaedit.catalogue import load_catalogues
 from eaedit.catalogue.merge import by_profile
 from eaedit.changefile import replay
+from eaedit.diagrams.svg import export_svg, import_svg
 from eaedit.errors import CommitRefusedError, EaeditError
 from eaedit.scope import POLICIES
 from eaedit.session import Session
@@ -113,9 +115,7 @@ def _session_options(fn):
     return click.argument("model", type=EXISTING)(fn)
 
 
-def _replayed(model, changes, catalogues, focus, policy, author) -> Session:
-    session = Session.open(model, focus=focus, policy=policy, catalogues=catalogues)
-    replay(session, changes, author=author)
+def _report(session: Session, out: str | None = None) -> None:
     preview = session.preview()
     click.echo(preview.report)
     if preview.outside_focus:
@@ -124,15 +124,36 @@ def _replayed(model, changes, catalogues, focus, policy, author) -> Session:
         click.echo(f"new issue: {issue.severity} {issue.rule} {issue.message}")
     for warning in preview.warnings:
         click.echo(f"warning: {warning}")
+    if out and preview.diagrams:
+        folder = Path(out)
+        folder.mkdir(parents=True, exist_ok=True)
+        used: set[str] = set()
+        for rendered in preview.diagrams.values():
+            # A diagram name is free text: keep it a plain file name, and keep two diagrams of one name apart.
+            stem = "".join("_" if c in '/\\:*?"<>|' else c for c in rendered.name).strip() or "diagram"
+            name, count = stem, 1
+            while name.lower() in used:
+                count += 1
+                name = f"{stem} ({count})"
+            used.add(name.lower())
+            (folder / f"{name}.svg").write_text(rendered.svg, encoding="utf-8")
+            click.echo(f"diagram: {folder / f'{name}.svg'}")
+
+
+def _replayed(model, changes, catalogues, focus, policy, author, out=None) -> Session:
+    session = Session.open(model, focus=focus, policy=policy, catalogues=catalogues)
+    replay(session, changes, author=author)
+    _report(session, out)
     return session
 
 
 @cli.command()
+@click.option("--out", type=click.Path(file_okay=False), help="Folder for an SVG of each diagram the changes touch.")
 @_session_options
-def preview(model, changes, catalogues, focus, policy, author) -> None:
+def preview(model, changes, catalogues, focus, policy, author, out) -> None:
     """Replay CHANGES on a working copy of MODEL and print what would change; MODEL is not written."""
     with _errors():
-        _replayed(model, changes, catalogues, focus, policy, author)
+        _replayed(model, changes, catalogues, focus, policy, author, out)
 
 
 @cli.command()
@@ -144,3 +165,46 @@ def apply(model, changes, catalogues, focus, policy, author) -> None:
         committed = session.commit()
     total = len(committed.inserts) + len(committed.updates) + len(committed.deletes)
     click.echo(f"committed {total} change(s) to {model}")
+
+
+@cli.group()
+def diagram() -> None:
+    """Export a diagram as eaedit SVG, or import an edited one."""
+
+
+@diagram.command("export")
+@click.argument("model", type=EXISTING)
+@click.argument("diagram")
+@click.option("-o", "--output", required=True, type=click.Path(dir_okay=False), help="SVG file to write.")
+@click.option("-c", "--catalogue", "catalogues", multiple=True, type=EXISTING, help="YAML, MDG XML or .qea.")
+def diagram_export(model, diagram, output, catalogues) -> None:
+    """Write DIAGRAM (qualified name or GUID) as eaedit SVG."""
+    with _errors():
+        session = Session.open(model, policy="off", catalogues=catalogues)
+        svg = export_svg(session, diagram)
+        Path(output).write_text(svg, encoding="utf-8")
+    click.echo(f"{diagram} -> {output}")
+
+
+@diagram.command("import")
+@click.argument("model", type=EXISTING)
+@click.argument("svg", type=EXISTING)
+@click.option("--owner", help="Package (qualified name or GUID) for a new diagram, when the file names none.")
+@click.option("--apply", "apply_", is_flag=True, help="Commit the changes; without it they are only previewed.")
+@click.option("--out", type=click.Path(file_okay=False), help="Folder for an SVG of each diagram the import changes.")
+@click.option("--policy", type=click.Choice(POLICIES), default="connected", show_default=True, help="Scope policy.")
+@click.option("--focus", "focus", multiple=True, help="Package (qualified name or GUID) to keep edits in.")
+@click.option("-c", "--catalogue", "catalogues", multiple=True, type=EXISTING, help="YAML, MDG XML or .qea.")
+@click.option("--author", help="Record this author.")
+def diagram_import(model, svg, owner, apply_, out, policy, focus, catalogues, author) -> None:
+    """Stage the difference between SVG (eaedit SVG) and its diagram; commit it with --apply."""
+    with _errors():
+        session = Session.open(model, focus=focus, policy=policy, catalogues=catalogues, author=author)
+        import_svg(session, Path(svg).read_text(encoding="utf-8"), owner=owner)
+        if session.changes().is_empty():
+            click.echo("no changes")
+        _report(session, out)
+        if apply_ and not session.changes().is_empty():
+            committed = session.commit()
+            total = len(committed.inserts) + len(committed.updates) + len(committed.deletes)
+            click.echo(f"committed {total} change(s) to {model}")
