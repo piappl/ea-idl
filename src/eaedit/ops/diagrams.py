@@ -160,6 +160,25 @@ def _free_rect(session, diagram: Ref, kind: str | None) -> Rect:
     return left, top, left + width, top + height
 
 
+def _free_slot(session, diagram: Ref, outer: Rect) -> Rect | None:
+    """A Part-sized spot inside ``outer`` clear of every object, left to right then wrapping; None if full."""
+    width, height = _SIZES["Part"]
+    taken = [from_ea(o.values) for o in _objects(session, diagram)]
+    top = outer[1] + 30  # below the owner's name compartment
+    while top + height <= outer[3] - _GAP // 3:
+        left = outer[0] + 20
+        while left + width <= outer[2] - 20:
+            spot = (left, top, left + width, top + height)
+            clash = any(
+                spot[0] < t[2] and t[0] < spot[2] and spot[1] < t[3] and t[1] < spot[3] for t in taken if t != outer
+            )
+            if not clash:
+                return spot
+            left += width + 10
+        top += height + 10
+    return None
+
+
 def _inside(rect: Rect, outer: Rect) -> bool:
     return rect[0] >= outer[0] and rect[1] >= outer[1] and rect[2] <= outer[2] and rect[3] <= outer[3]
 
@@ -270,17 +289,17 @@ def place(session, diagram: str, element: str, rect: Sequence[int] | None = None
     objects = _objects(session, this)
     kind = _style_kind(target, record.values.get("attr_diagram_type"))
     owner = _owner_object(session, this, target)
-    if rect is None and owner is not None:
-        # Inside the owner from the start: its top left, below the owner's name compartment.
-        left, top = from_ea(owner.values)[:2]
-        width, height = _SIZES["Part"]
-        wanted = (left + 20, top + 30, left + 20 + width, top + 30 + height)
+    slot = _free_slot(session, this, from_ea(owner.values)) if rect is None and owner is not None else None
+    if slot is not None:
+        wanted = slot
     elif rect is None:
         wanted = _free_rect(session, this, target.values.get("attr_object_type"))
     else:
         wanted = check_rect(rect)
     if any(o.values.get("attr_object_id") == ref for o in objects):
-        session.warn("already-on-diagram", f"{target.values.get('attr_name')!r} is already on the diagram", record.key)
+        session.warn(
+            "already-on-diagram", f"{target.values.get('attr_name')!r} is already on the diagram", guid_of(target)
+        )
     wanted = _keep_in_owner(session, this, target, wanted)
     # Lower Sequence is in front: a new object gets 1, one that contains others goes behind them all.
     sequence = 1

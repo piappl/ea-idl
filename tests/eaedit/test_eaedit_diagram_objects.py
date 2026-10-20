@@ -132,7 +132,9 @@ def test_set_bounds_needs_duid_for_duplicates(nafv4_path, qea_copy):
     with pytest.raises(InvalidOperationError):
         session.set_bounds(diagram, MESSAGE, rect=(0, 0, 50, 50))
     session.set_bounds(diagram, first, rect=(0, 0, 50, 50))
-    assert from_ea(_on(session, diagram, MESSAGE)[0].values) in {(0, 0, 50, 50), (10, 120, 100, 190)}
+    rects = {duid(r.values["attr_objectstyle"]): from_ea(r.values) for r in _on(session, diagram, MESSAGE)}
+    assert rects[first] == (0, 0, 50, 50)
+    assert [r for d, r in rects.items() if d != first] == [(10, 120, 100, 190)]
 
 
 def test_remove_and_hide(nafv4_path, qea_copy):
@@ -185,3 +187,31 @@ def test_diagram_ops_change_no_model_rows(nafv4_path, qea_copy):
     touched = {c.record.table for c in changes.inserts} | {c.table for c in changes.deletes}
     touched |= {c.table for c in changes.updates}
     assert touched <= {"t_diagramobjects", "t_diagramlinks"}
+
+
+def test_parts_without_rect_do_not_overlap_in_owner(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    owner = _owner_and_part(session)[0]
+    parts = [
+        r.key
+        for r in session.working.records("t_object")
+        if r.values["attr_object_type"] == "Part" and r.values["attr_parentid"] == Ref("t_object", owner)
+    ][:2]
+    assert len(parts) == 2
+    diagram = session.create_diagram("Model::p2", "D").guid
+    session.place(diagram, owner, rect=(100, 100, 400, 400))
+    for part in parts:
+        assert session.place(diagram, part).warnings == []
+    a, b = (from_ea(_on(session, diagram, p)[0].values) for p in parts)
+    assert a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1]
+    for r in (a, b):
+        assert 100 <= r[0] and r[2] <= 400 and 100 <= r[1] and r[3] <= 400
+
+
+def test_rect_is_logged_as_list(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    diagram = session.create_diagram("Model::p2", "D").guid
+    session.place(diagram, MESSAGE, rect=(10, 20, 100, 90))
+    assert session.log[-1].args["rect"] == [10, 20, 100, 90]
+    session.set_bounds(diagram, MESSAGE, rect=(0, 0, 50, 50))
+    assert session.log[-1].args["rect"] == [0, 0, 50, 50]

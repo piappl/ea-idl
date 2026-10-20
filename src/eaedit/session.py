@@ -258,6 +258,8 @@ class Session:
             self._running = None
             self._guid_queue = []
         args = dict(kwargs)
+        if isinstance(args.get("rect"), tuple):
+            args["rect"] = list(args["rect"])  # rectangles are logged as lists, as the change file stores them
         if op.created and "guid" not in args and _takes_guid(fn):
             args["guid"] = op.created[0]
         self.log.append(LoggedOp(name, args, op.at, list(op.minted)))
