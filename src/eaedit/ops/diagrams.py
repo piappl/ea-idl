@@ -30,6 +30,17 @@ def _diagram(session, identifier: str) -> Record:
     return session.working.resolve(session.find(identifier, kinds=("diagram",)))
 
 
+def _unique_name(session, package: Ref, name: str, key=None) -> None:
+    """Refuse ``name`` when another diagram of ``package`` has it: diagrams are found by ``package::name``."""
+    for other in session.working.records("t_diagram"):
+        if (
+            other.key != key
+            and other.values.get("attr_package_id") == package
+            and other.values.get("attr_name") == name
+        ):
+            raise InvalidOperationError(f"diagram name {name!r} is taken in its package by {guid_of(other)}")
+
+
 @operation("create_diagram")
 def create_diagram(session, owner: str, name: str, type: str = "Class", guid: str | None = None) -> str:
     if not name:
@@ -41,6 +52,7 @@ def create_diagram(session, owner: str, name: str, type: str = "Class", guid: st
         # A diagram of an element sits in the element's package (ParentID names the element), as EA stores it.
         parent = ref
         ref = session.working.resolve(ref).values["attr_package_id"]
+    _unique_name(session, ref, name)
     guid = primary_guid(session, guid)
     now = timestamp(session.now())
     values = {
@@ -80,6 +92,8 @@ def update_diagram(session, diagram: str, **fields) -> str:
         raise InvalidOperationError(
             f"orientation must be 'P' (portrait) or 'L' (landscape), not {fields['orientation']!r}"
         )
+    if "name" in fields:
+        _unique_name(session, record.values.get("attr_package_id"), fields["name"], record.key)
     values = apply_fields("t_diagram", record.values, fields)
     values["attr_modifieddate"] = timestamp(session.now())
     session.put(Record("t_diagram", record.key, values, record.rid))

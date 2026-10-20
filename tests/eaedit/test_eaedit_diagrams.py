@@ -82,6 +82,22 @@ def test_create_element_owned_diagram(nafv4_path, qea_copy):
         scoped.create_diagram("Model::core::message::Message", "Inside", "Custom")
 
 
+def test_diagram_name_taken_in_package_refused(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    flexible = "{95DEF889-09FC-4a48-8F89-006A14B4402D}"
+    with pytest.raises(InvalidOperationError, match=f"'flexible'.*{flexible}"):
+        session.create_diagram("Model::core::data", "flexible")
+    # an element's diagram is found by its package's name too, so it cannot reuse a name there either
+    with pytest.raises(InvalidOperationError, match="'message'"):
+        session.create_diagram("Model::core::message::Message", "message")
+    with pytest.raises(InvalidOperationError, match=f"'flexible'.*{flexible}"):
+        session.update_diagram("Model::core::data::measurement", name="flexible")
+    assert session.log == []
+    # the same name in another package, and a diagram keeping its own name, are fine
+    session.create_diagram("Model::core::message", "flexible")
+    session.update_diagram(FLEXIBLE, name="flexible", notes="kept")
+
+
 def test_update_and_delete_diagram(nafv4_path, qea_copy):
     path = qea_copy(nafv4_path)
     session = _open(path)

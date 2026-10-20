@@ -172,6 +172,8 @@ byte for byte.
   `unverified-default`.
 - `update_diagram(diagram, **fields)` takes `name`, `notes`, `page_width` (`cx`), `page_height` (`cy`) and
   `orientation` (`P` portrait or `L` landscape).
+- A diagram is found by `package::name`, also when an element owns it, so `create_diagram` and `update_diagram(name=)`
+  refuse a name another diagram of the same package has (the error names that diagram's GUID).
 - `place`, `set_bounds`, `set_stacking` and `remove_from_diagram` return the diagram object's DUID (`""` for an object
   without one); the other operations return the GUID of the diagram, note or connector they act on.
 - Elements go on a diagram wherever you place them; `place` without `rect` finds a free spot. A Part is kept inside its
