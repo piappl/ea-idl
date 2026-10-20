@@ -444,6 +444,13 @@ FIELDS: dict[str, dict[str, str]] = {
         "source_role_note": "attr_sourcerolenote",
         "target_role_note": "attr_destrolenote",
     },
+    "t_diagram": {
+        "name": "attr_name",
+        "notes": "attr_notes",
+        "page_width": "attr_cx",
+        "page_height": "attr_cy",
+        "orientation": "attr_orientation",
+    },
 }
 
 #: Boolean columns, with the representation EA uses there ("0"/"1" text or 0/1 integer).

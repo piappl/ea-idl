@@ -7,7 +7,7 @@ from typing import Callable
 
 OPERATIONS: dict[str, Callable] = {}
 
-_MODULES = ("packages", "elements", "tags", "attributes", "connectors", "query")
+_MODULES = ("packages", "elements", "tags", "attributes", "connectors", "diagrams", "query")
 
 
 def operation(name: str):
