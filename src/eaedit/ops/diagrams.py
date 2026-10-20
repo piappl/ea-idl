@@ -387,3 +387,70 @@ def show_connector(session, diagram: str, connector: str) -> str:
         raise InvalidOperationError("both ends of the connector must be on the diagram")
     session.put(row)
     return guid_of(record)
+
+
+def _message(session, diagram: Ref, connector: str) -> Record:
+    record = session.working.resolve(session.find(connector, kinds=("connector",)))
+    if record.values.get("attr_connector_type") != "Sequence":
+        raise InvalidOperationError(f"{connector!r} is not a Sequence message")
+    return record
+
+
+def _messages(session, diagram: Ref) -> list[Record]:
+    return [
+        r
+        for r in session.working.records("t_connector")
+        if r.values.get("attr_connector_type") == "Sequence" and r.values.get("attr_diagramid") == diagram
+    ]
+
+
+def _with_offset(pdata5: str | None, offset: int) -> str:
+    """``PDATA5`` with ``SY=`` set; every other key is kept (hand-made: ``SX=0;SY=-39;EX=0;EY=0;$LLB=;...``)."""
+    if pdata5 and re.search(r"(?<![A-Za-z$])SY=-?\d+", pdata5):
+        return re.sub(r"(?<![A-Za-z$])SY=-?\d+", f"SY={offset}", pdata5, count=1)
+    if pdata5:
+        return f"SY={offset};{pdata5}"
+    return f"SX=0;SY={offset};EX=0;EY=0;$LLB=;LLT=;LMT=;LMB=;LRT=;LRB=;IRHS=;ILHS=;"
+
+
+@operation("show_message")
+def show_message(session, diagram: str, connector: str, order: int | None = None, offset: int | None = None) -> str:
+    record = _diagram(session, diagram)
+    this = Ref("t_diagram", record.key)
+    if record.values.get("attr_diagram_type") != "Sequence":
+        raise InvalidOperationError("messages are shown on Sequence diagrams only")
+    message = _message(session, this, connector)
+    shown = {o.values.get("attr_object_id") for o in _objects(session, this)}
+    for column in ("attr_start_object_id", "attr_end_object_id"):
+        if message.values.get(column) not in shown:
+            raise InvalidOperationError("both ends of the message must be lifelines on the diagram")
+    others = [m for m in _messages(session, this) if m.key != message.key]
+    values = dict(message.values)
+    values["attr_diagramid"] = this
+    values["attr_seqno"] = (
+        order if order is not None else max((m.values.get("attr_seqno") or 0 for m in others), default=0) + 1
+    )
+    pdata5 = values.get("attr_pdata5")
+    if offset is None and not (pdata5 and "SY=" in pdata5):
+        # No hand-made rule for a message EA has not laid out: step down from the previous message.
+        offset = -39 - 38 * len(others)
+        session.warn("unverified-default", "message offset chosen by spacing, not read from EA", guid_of(message))
+    if offset is not None:
+        values["attr_pdata5"] = _with_offset(pdata5, offset)
+    session.put(Record("t_connector", message.key, values, message.rid))
+    return guid_of(message)
+
+
+@operation("set_message_order")
+def set_message_order(session, diagram: str, connectors: list[str]) -> str:
+    record = _diagram(session, diagram)
+    this = Ref("t_diagram", record.key)
+    messages = [_message(session, this, c) for c in connectors]
+    if len({m.key for m in messages}) != len(messages):
+        raise InvalidOperationError("a message is listed twice")
+    for message in messages:
+        if message.values.get("attr_diagramid") != this:
+            raise InvalidOperationError("every message must be shown on the diagram: use show_message")
+    for number, message in enumerate(messages, 1):
+        session.put(Record("t_connector", message.key, {**message.values, "attr_seqno": number}, message.rid))
+    return guid_of(record)
