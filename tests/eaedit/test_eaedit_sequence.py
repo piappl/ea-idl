@@ -104,3 +104,10 @@ def test_show_message_again_with_new_order_keeps_numbers_contiguous(nafv4_path, 
     # without an order, showing it again keeps its number
     session.show_message(P6, MSG2, offset=-70)
     assert [_conn(session, g).values["attr_seqno"] for g in (MSG1, MSG2, MSG3)] == [1, 2, 3]
+
+
+def test_set_message_order_partial_list_keeps_numbers_unique(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    session.set_message_order(P6, [MSG3, MSG2])
+    # the listed ones take 1..k; the one left out follows in its stored order
+    assert [_conn(session, g).values["attr_seqno"] for g in (MSG3, MSG2, MSG1)] == [1, 2, 3]

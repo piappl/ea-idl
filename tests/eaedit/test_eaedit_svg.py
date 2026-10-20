@@ -369,6 +369,39 @@ def test_import_reordered_messages_lands_the_files_numbers(nafv4_path, qea_copy,
     assert len(session.log) == before
 
 
+def test_import_with_a_message_left_out_keeps_numbers_unique(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    root = _parse(export_svg(session, P6))
+    messages = [g for g in _groups(root) if g.get("data-ea-kind") == "message"]
+    # leave out a message no note link in the file points at
+    linked = {
+        g.get(k) for g in _groups(root) if g.get("data-ea-kind") == "notelink" for k in ("data-ea-from", "data-ea-to")
+    }
+    left_out = next(g for g in messages if g.get("data-ea-guid") not in linked)
+    first, second = [g for g in messages if g is not left_out]
+    _remove(root, left_out)
+    first.set("data-ea-seq", "3")
+    second.set("data-ea-seq", "2")
+    import_svg(session, _text(root))
+    seqno = lambda g: session.working.get("t_connector", g.get("data-ea-guid")).values["attr_seqno"]  # noqa: E731
+    assert [seqno(second), seqno(first), seqno(left_out)] == [1, 2, 3]
+
+
+def test_import_hand_written_gapped_numbers_stages_once(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    root = _parse(export_svg(session, P6))
+    messages = [g for g in _groups(root) if g.get("data-ea-kind") == "message"]
+    for group, number in zip(messages, (5, 1, 3)):
+        group.set("data-ea-seq", str(number))
+    text = _text(root)
+    import_svg(session, text)
+    seqno = lambda g: session.working.get("t_connector", g.get("data-ea-guid")).values["attr_seqno"]  # noqa: E731
+    assert [seqno(g) for g in messages] == [3, 1, 2]
+    before = len(session.log)
+    import_svg(session, text)
+    assert len(session.log) == before
+
+
 def test_import_new_message_takes_the_files_number(nafv4_path, qea_copy):
     session = _open(qea_copy(nafv4_path))
     asset1, asset2 = "{787820BD-43DC-424c-81C3-BA7A076C417C}", "{45EF1F2C-6C51-49c0-8EFE-2E4CED2BC1CF}"

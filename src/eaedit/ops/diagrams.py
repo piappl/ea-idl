@@ -515,6 +515,13 @@ def set_message_order(session, diagram: str, connectors: list[str]) -> str:
     for message in messages:
         if message.values.get("attr_diagramid") != this:
             raise InvalidOperationError("every message must be shown on the diagram: use show_message")
-    for number, message in enumerate(messages, 1):
-        session.put(Record("t_connector", message.key, {**message.values, "attr_seqno": number}, message.rid))
+    # The others on the diagram follow in their stored order, so the numbers stay 1..n with none taken twice.
+    listed = {m.key for m in messages}
+    rest = sorted(
+        (m for m in _messages(session, this) if m.key not in listed),
+        key=lambda m: (m.values.get("attr_seqno") or 0, str(m.key)),
+    )
+    for number, message in enumerate([*messages, *rest], 1):
+        if message.values.get("attr_seqno") != number:
+            session.put(Record("t_connector", message.key, {**message.values, "attr_seqno": number}, message.rid))
     return guid_of(record)

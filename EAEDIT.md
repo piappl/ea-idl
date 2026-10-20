@@ -185,8 +185,10 @@ byte for byte.
 - A sequence message is shown on one diagram: `show_message` refuses a message another diagram shows (the error names
   it). An explicit `order` already taken on the diagram moves that message and the later ones down one, and a
   message shown again leaves its old place first, so the diagram's numbers stay unique. Shown again without an
-  `order`, a message keeps its number. An SVG import shows new messages first, then applies the file's numbering
-  with one `set_message_order` when it differs from the stored one.
+  `order`, a message keeps its number. `set_message_order` numbers the messages it is given 1..k and the diagram's
+  other messages after them, in their stored order. An SVG import shows new messages first, then applies the file's
+  order with one `set_message_order` when it ranks the messages differently from the stored numbers (so a file
+  numbered with gaps is applied once).
 - Deleting an element or connector removes its diagram rows. A note shown nowhere else is deleted with its last
   object: by `delete_element`, by `remove_from_diagram` and by `delete_diagram` (and by an SVG import that drops it).
 - A dangling diagram object (its element is gone) is carried through untouched by every operation, layout and

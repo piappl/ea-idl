@@ -544,13 +544,15 @@ class _Importer:
                     self.run("hide_connector", diagram=self.diagram, connector=guid)
             elif line.hidden is not None and bool(link.values.get("attr_hidden")) != line.hidden:
                 self.run("hide_connector" if line.hidden else "show_connector", diagram=self.diagram, connector=guid)
-        # The file's numbering in one step: shown one by one, each number would shift the ones already set.
-        stored = [
-            working.resolve(self.session.find(g, kinds=("connector",))).values.get("attr_seqno") for _, g in numbered
-        ]
-        if numbered and stored != [seq for seq, _ in numbered]:
-            ordered = [g for _, g in sorted(numbered, key=lambda item: item[0])]
-            self.run("set_message_order", diagram=self.diagram, connectors=ordered)
+        # The file's numbering in one step: shown one by one, each number would shift the ones already set. Compared
+        # by rank, so a hand-written file with gaps (1, 3, ...) is applied once, not on every import.
+        stored = {
+            g: working.resolve(self.session.find(g, kinds=("connector",))).values.get("attr_seqno") or 0
+            for _, g in numbered
+        }
+        wanted = [g for _, g in sorted(numbered, key=lambda item: item[0])]
+        if wanted != sorted(stored, key=lambda g: (stored[g], wanted.index(g))):
+            self.run("set_message_order", diagram=self.diagram, connectors=wanted)
         for line in lines:
             if line.connector is None:
                 self._note_link(line)
