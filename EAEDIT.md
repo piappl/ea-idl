@@ -313,6 +313,7 @@ be done. Warnings appear in `OpResult.warnings`, `session.warnings` (until `comm
 | `unverified-default` | Defaults for a new row are a best guess, not checked against EA-made data. |
 | `moved-inside-owner` | A Part's rectangle was moved inside its owner's. |
 | `already-on-diagram` | `place` named an element the diagram already shows. |
+| `already-linked` | `link_note` named a target the note is already linked to; the existing link is returned. |
 | `page-overflow` | A layout does not fit the page; the message suggests a split. |
 | `layout-skipped` | An element shown twice on the diagram was not moved by a layout. |
 | `readonly-kept` | Import left a read-only diagram object as it is. |

@@ -56,8 +56,6 @@ def _attach_to_connector(session, note: Record, connector: Record) -> None:
     current = note.values.get("attr_pdata4")
     refs = current.refs if isinstance(current, TextRefs) else ()
     template = current.template if isinstance(current, TextRefs) else ""
-    if ref in refs:
-        raise InvalidOperationError("the note is already attached to the connector")
     template += f"idref{len(refs) + 1}={{{len(refs)}}};"
     value = TextRefs(template, (*refs, ref))
     # Note 77 is the only note on a connector in nafv4.qea and the only one with NType 1 (the others have 0).
@@ -81,6 +79,10 @@ def link_note(session, note: str, target: str) -> str:
         ]
         if not shown:
             raise InvalidOperationError("the connector is not shown on the note's diagram")
+        current = record.values.get("attr_pdata4")
+        if isinstance(current, TextRefs) and Ref("t_connector", found.key) in current.refs:
+            session.warn("already-linked", "the note is already linked to the connector", guid_of(record))
+            return guid_of(found)
         # Hand-made note 77 on message 54 in nafv4.qea has only PDATA4 idref1=54; no NoteLink, no link row.
         _attach_to_connector(session, record, found)
         if found.values.get("attr_connector_type") != "Sequence":
@@ -94,6 +96,11 @@ def link_note(session, note: str, target: str) -> str:
     common = [d for d in diagrams if any(o.values.get("attr_object_id") == end for o in _objects(session, d))]
     if not common:
         raise InvalidOperationError("the element is not on the note's diagram")
+    for existing in session.working.records("t_connector"):
+        ends = {existing.values.get("attr_start_object_id"), existing.values.get("attr_end_object_id")}
+        if existing.values.get("attr_connector_type") == "NoteLink" and ends == {end, this}:
+            session.warn("already-linked", "the note is already linked to the element", guid_of(record))
+            return guid_of(existing)
     # All six hand-made NoteLinks in nafv4.qea run Start = the annotated element, End = the Note.
     guid = connect(session, guid_of(found), guid_of(record), type="NoteLink")
     connector = session.working.resolve(session.find(guid, kinds=("connector",)))

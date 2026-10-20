@@ -51,6 +51,31 @@ def test_add_and_link_note(nafv4_path, qea_copy):
     assert _issues(session.working) == baseline
 
 
+def test_link_note_twice_returns_the_existing_link(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    note = session.add_note(L7, "About messages").guid
+    link = session.link_note(note, MESSAGE).guid
+    count = len(list(session.working.records("t_connector")))
+    links = len(list(session.working.records("t_diagramlinks")))
+    again = session.link_note(note, MESSAGE)
+    assert again.guid == link
+    assert [(w.code, w.target) for w in again.warnings] == [("already-linked", note)]
+    assert len(list(session.working.records("t_connector"))) == count
+    assert len(list(session.working.records("t_diagramlinks"))) == links
+
+
+def test_link_note_to_connector_twice_keeps_one_idref(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    p6 = "{EB2441A2-EE65-42fe-A5FD-350317D3216F}"
+    note = session.add_note(p6, "on message").guid
+    session.link_note(note, MSG1)
+    again = session.link_note(note, MSG1)
+    assert again.guid == MSG1
+    assert [(w.code, w.target) for w in again.warnings] == [("already-linked", note)]
+    value = _rec(session, "t_object", note).values["attr_pdata4"]
+    assert value.template == "idref1={0};" and len(value.refs) == 1
+
+
 def test_note_text_non_ascii(nafv4_path, qea_copy):
     session = _open(qea_copy(nafv4_path))
     note = session.add_note(L7, "x").guid
