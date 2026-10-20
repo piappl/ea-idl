@@ -1,3 +1,4 @@
+import re
 import sqlite3
 import uuid
 
@@ -235,3 +236,48 @@ def test_delete_of_vanished_row_is_refused(nafv4_path, qea_copy):
     backend._hash = backend._file_hash()  # isolate the row check from the whole-file guard
     with pytest.raises(ConcurrentModificationError):
         backend.apply(ChangeSet(deletes=[Delete("t_object", obj.key)]))
+
+
+def test_update_or_delete_of_unloaded_key_names_table_and_key(nafv4_path, qea_copy):
+    from eacore.backends.sql import UnknownRecordError
+
+    path = qea_copy(nafv4_path)
+    before = path.read_bytes()
+    backend = SqlBackend.for_file(path)
+    rs = backend.load()
+    missing = "{00000000-0000-0000-0000-0000000000AA}"
+    obj = _first_class(rs)
+    with pytest.raises(UnknownRecordError, match=rf"t_object {re.escape(missing)}"):
+        backend.apply(ChangeSet(updates=[Update("t_object", missing, {"attr_name": ("a", "b")})]))
+    with pytest.raises(UnknownRecordError, match=rf"t_attribute {re.escape(missing)}"):
+        # nothing is written, not even the valid change listed with it
+        backend.apply(
+            ChangeSet(
+                updates=[Update("t_object", obj.key, {"attr_note": (obj.values["attr_note"], "x")})],
+                deletes=[Delete("t_attribute", missing)],
+            )
+        )
+    assert path.read_bytes() == before
+
+
+def test_delete_then_insert_of_the_same_key(nafv4_path, qea_copy):
+    path = qea_copy(nafv4_path)
+    backend = SqlBackend.for_file(path)
+    rs = backend.load()
+    obj = _first_class(rs)
+    replacement = Record("t_object", obj.key, dict(obj.values, attr_name="Replaced"))
+    # a new row referring to the replaced one resolves to the replacement's ID
+    child_guid = "{" + str(uuid.uuid4()).upper() + "}"
+    child = Record(
+        "t_object", child_guid, dict(obj.values, attr_ea_guid=child_guid, attr_parentid=Ref("t_object", obj.key))
+    )
+    backend.apply(ChangeSet(inserts=[Insert(replacement), Insert(child)], deletes=[Delete("t_object", obj.key)]))
+    after = SqlBackend.for_file(path).load()
+    new = after.get("t_object", obj.key)
+    assert new.values["attr_name"] == "Replaced" and new.rid != obj.rid
+    assert after.get("t_object", child_guid).values["attr_parentid"] == Ref("t_object", obj.key)
+    with sqlite3.connect(path) as con:
+        assert con.execute("select count(*) from t_object where ea_guid = ?", (obj.key,)).fetchone()[0] == 1
+    # the backend's own ID map follows: a later update of the key reaches the new row
+    backend.apply(ChangeSet(updates=[Update("t_object", obj.key, {"attr_name": ("Replaced", "Again")})]))
+    assert SqlBackend.for_file(path).load().get("t_object", obj.key).values["attr_name"] == "Again"

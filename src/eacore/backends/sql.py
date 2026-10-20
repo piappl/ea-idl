@@ -8,7 +8,7 @@ from pathlib import Path
 
 import sqlalchemy as sa
 
-from eacore.changes import ChangeSet
+from eacore.changes import ChangeSet, Update
 from eacore.naming import column_key
 from eacore.records import Key, LoadIssue, Record, RecordSet, key_str
 from eacore.tablemap import EA_TABLEMAP, ContentKey, GuidKey, Row, TableMap
@@ -24,6 +24,10 @@ class NotAnEaRepositoryError(ValueError):
 
 class ConcurrentModificationError(RuntimeError):
     """The file changed on disk since ``load()``; nothing was written."""
+
+
+class UnknownRecordError(LookupError):
+    """A change updates or deletes a record ``load()`` did not see; nothing was written."""
 
 
 class RepositoryLockedError(RuntimeError):
@@ -209,6 +213,10 @@ class SqlBackend:
             raise RuntimeError("call load() before apply()")
         if changes.is_empty():
             return
+        for change in [*changes.updates, *changes.deletes]:
+            if change.key not in self._rids.get(change.table, {}):
+                kind = "update" if isinstance(change, Update) else "delete"
+                raise UnknownRecordError(f"{kind} of {change.table} {key_str(change.key)}: no such record was loaded")
         ridmaps: RidMaps = {table: dict(rids) for table, rids in self._rids.items()}
         try:
             with self._write_engine.begin() as conn:
@@ -229,7 +237,9 @@ class SqlBackend:
                     rid = self._rids[delete.table][delete.key]
                     self._verify_row(conn, info, rid, {}, f"{delete.table} {key_str(delete.key)}")
                     conn.execute(sa.delete(info.table).where(self._rid_column(info) == rid))
-                    ridmaps[delete.table].pop(delete.key, None)
+                    # A key inserted again in this change set already holds its new ID: keep that one.
+                    if ridmaps[delete.table].get(delete.key) == rid:
+                        ridmaps[delete.table].pop(delete.key)
                 for update in changes.updates:
                     info = self._info(update.table)
                     spec = self.tablemap.spec(update.table)

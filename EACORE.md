@@ -30,7 +30,11 @@ git config diff.eacore.cachetextconv true
 
 `eacore` writes only the rows and columns that changed, in one transaction. It refuses to write if:
 - the file changed since it was loaded, or
-- another program (e.g. EA) holds a lock.
+- another program (e.g. EA) holds a lock, or
+- a change updates or deletes a record that was not loaded (`UnknownRecordError`, naming the table and key).
+
+A change set may delete a record and insert one with the same key: the old row is deleted and the new one gets a
+fresh ID.
 
 Close the model in EA before writing to it.
 
