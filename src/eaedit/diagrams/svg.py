@@ -250,8 +250,8 @@ def _read(svg_text: str) -> tuple[dict[str, str], list[_Shape], list[_Line]]:
             except InvalidOperationError as exc:
                 raise InvalidOperationError(f"{label}: {exc}") from None
             z = _int(group, "data-ea-z", label)
-            if z is not None and z < 1:
-                raise InvalidOperationError(f"{label}: data-ea-z must be at least 1, not {z}")
+            if z is not None and z < 0:
+                raise InvalidOperationError(f"{label}: data-ea-z must not be negative")
             shapes.append(
                 _Shape(label, kind, guid, local, group.get("data-ea-duid"), rect, z, group.get("data-ea-text"))
             )
@@ -327,8 +327,8 @@ def _match(session, rows: list[Record], shapes: list[_Shape]) -> dict[int, Recor
     return matched
 
 
-def _stored_rects(session, header: dict[str, str], shapes: list[_Shape]) -> dict[int, Rect]:
-    """The diagram's current rectangle of each shape the file shows of it."""
+def _stored_rows(session, header: dict[str, str], shapes: list[_Shape]) -> dict[int, Record]:
+    """The diagram's current object for each shape the file shows of it."""
     guid = header.get("data-ea-diagram")
     try:
         if guid is None:
@@ -336,7 +336,7 @@ def _stored_rects(session, header: dict[str, str], shapes: list[_Shape]) -> dict
         record = session.working.resolve(session.find(guid, kinds=("diagram",)))
     except NotFoundError:
         return {}  # refused when the header is read
-    return {k: from_ea(row.values) for k, row in _match(session, _rows(session, record.key), shapes).items()}
+    return _match(session, _rows(session, record.key), shapes)
 
 
 def _validate(session, header: dict[str, str], shapes: list[_Shape], lines: list[_Line]) -> None:
@@ -382,7 +382,13 @@ def _validate(session, header: dict[str, str], shapes: list[_Shape], lines: list
             notes += element.values.get("attr_object_type") == "Note"
         if not notes:
             raise InvalidOperationError(f"{line.label}: a note link needs a note at one end")
-    stored = _stored_rects(session, header, shapes)
+    rows = _stored_rows(session, header, shapes)
+    stored = {key: from_ea(row.values) for key, row in rows.items()}
+    for shape in shapes:
+        # Sequence 0 (older files carry it for an unset one) is kept as it is; set_stacking writes 1 or more.
+        current = rows[id(shape)].values.get("attr_sequence") or 0 if id(shape) in rows else None
+        if shape.kind != "readonly" and shape.z is not None and shape.z < 1 and shape.z != current:
+            raise InvalidOperationError(f"{shape.label}: data-ea-z must be at least 1, not {shape.z}")
 
     def moved(shape: _Shape) -> bool:
         return stored.get(id(shape)) != shape.rect
@@ -517,6 +523,7 @@ class _Importer:
 
     def lines(self, lines: list[_Line]) -> None:
         working = self.session.working
+        numbered: list[tuple[int, str]] = []
         for line in lines:
             if line.connector is None:
                 continue
@@ -524,13 +531,11 @@ class _Importer:
             connector = working.get("t_connector", line.connector.key)
             if connector.values.get("attr_connector_type") == "Sequence":
                 on_here = connector.values.get("attr_diagramid") == self.this
-                seq = connector.values.get("attr_seqno") or 0
                 offset = _offset(connector.values.get("attr_pdata5"))
-                changed = (line.seq is not None and line.seq != seq) or (
-                    line.offset is not None and str(line.offset) != offset
-                )
-                if not on_here or changed:
-                    self.run("show_message", diagram=self.diagram, connector=guid, order=line.seq, offset=line.offset)
+                if not on_here or (line.offset is not None and str(line.offset) != offset):
+                    self.run("show_message", diagram=self.diagram, connector=guid, offset=line.offset)
+                if line.seq is not None:
+                    numbered.append((line.seq, guid))
                 continue
             link = working.get("t_diagramlinks", _link_key(self.this, connector))
             if link is None:
@@ -539,6 +544,13 @@ class _Importer:
                     self.run("hide_connector", diagram=self.diagram, connector=guid)
             elif line.hidden is not None and bool(link.values.get("attr_hidden")) != line.hidden:
                 self.run("hide_connector" if line.hidden else "show_connector", diagram=self.diagram, connector=guid)
+        # The file's numbering in one step: shown one by one, each number would shift the ones already set.
+        stored = [
+            working.resolve(self.session.find(g, kinds=("connector",))).values.get("attr_seqno") for _, g in numbered
+        ]
+        if numbered and stored != [seq for seq, _ in numbered]:
+            ordered = [g for _, g in sorted(numbered, key=lambda item: item[0])]
+            self.run("set_message_order", diagram=self.diagram, connectors=ordered)
         for line in lines:
             if line.connector is None:
                 self._note_link(line)

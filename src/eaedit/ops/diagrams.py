@@ -474,17 +474,26 @@ def show_message(session, diagram: str, connector: str, order: int | None = None
         name = guid_of(current) if current is not None else home.key
         raise InvalidOperationError(f"the message is shown on diagram {name}: a message is shown on one diagram only")
     others = [m for m in _messages(session, this) if m.key != message.key]
-    if order is not None and any(m.values.get("attr_seqno") == order for m in others):
-        # EA keeps a diagram's message numbers 1..n: the taken number and those after it move down one.
-        for later in others:
-            if (later.values.get("attr_seqno") or 0) >= order:
-                seqno = later.values["attr_seqno"] + 1
-                session.put(Record("t_connector", later.key, {**later.values, "attr_seqno": seqno}, later.rid))
+    current_number = message.values.get("attr_seqno") if home == this else None
+    if order is not None and order != current_number:
+        # EA keeps a diagram's message numbers 1..n: the message leaves its place, then the number it takes and
+        # those after it move down one.
+        numbers = {m.key: m.values.get("attr_seqno") or 0 for m in others}
+        if current_number:
+            numbers = {k: n - 1 if n > current_number else n for k, n in numbers.items()}
+        if order in numbers.values():
+            numbers = {k: n + 1 if n >= order else n for k, n in numbers.items()}
+        for other in others:
+            if numbers[other.key] != (other.values.get("attr_seqno") or 0):
+                values = {**other.values, "attr_seqno": numbers[other.key]}
+                session.put(Record("t_connector", other.key, values, other.rid))
     values = dict(message.values)
     values["attr_diagramid"] = this
-    values["attr_seqno"] = (
-        order if order is not None else max((m.values.get("attr_seqno") or 0 for m in others), default=0) + 1
-    )
+    if order is not None:
+        values["attr_seqno"] = order
+    elif not current_number:
+        # Shown again without an order, it keeps its number; newly shown, it comes last.
+        values["attr_seqno"] = max((m.values.get("attr_seqno") or 0 for m in others), default=0) + 1
     pdata5 = values.get("attr_pdata5")
     if offset is None and not (pdata5 and "SY=" in pdata5):
         # No hand-made rule for a message EA has not laid out: step down from the previous message.

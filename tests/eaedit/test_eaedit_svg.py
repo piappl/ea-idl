@@ -345,6 +345,67 @@ def test_object_without_stacking_round_trips(nafv4_path, qea_copy):
     assert not session.log
 
 
+@pytest.mark.parametrize("regroup", [False, True])
+@pytest.mark.parametrize("numbers", [(2, 1, 3, 4), (4, 3, 1, 2), (4, 3, 2, 1), (2, 4, 1, 3)])
+def test_import_reordered_messages_lands_the_files_numbers(nafv4_path, qea_copy, numbers, regroup):
+    session = _open(qea_copy(nafv4_path))
+    asset1, asset2 = "{787820BD-43DC-424c-81C3-BA7A076C417C}", "{45EF1F2C-6C51-49c0-8EFE-2E4CED2BC1CF}"
+    session.show_message(P6, session.connect(asset1, asset2, type="Message", name="Fourth").guid)
+    root = _parse(export_svg(session, P6))
+    messages = [g for g in _groups(root) if g.get("data-ea-kind") == "message"]
+    for group, number in zip(messages, numbers):
+        group.set("data-ea-seq", str(number))
+    if regroup:  # the groups' order in the file follows the new numbers
+        for group in messages:
+            _remove(root, group)
+        for group in sorted(messages, key=lambda g: int(g.get("data-ea-seq"))):
+            root.append(group)
+    import_svg(session, _text(root))
+    found = {g.get("data-ea-guid"): session.working.get("t_connector", g.get("data-ea-guid")) for g in messages}
+    assert [found[g.get("data-ea-guid")].values["attr_seqno"] for g in messages] == list(numbers)
+    # the same file again stages nothing
+    before = len(session.log)
+    import_svg(session, export_svg(session, P6))
+    assert len(session.log) == before
+
+
+def test_import_new_message_takes_the_files_number(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    asset1, asset2 = "{787820BD-43DC-424c-81C3-BA7A076C417C}", "{45EF1F2C-6C51-49c0-8EFE-2E4CED2BC1CF}"
+    new = session.connect(asset1, asset2, type="Message", name="New").guid
+    root = _parse(export_svg(session, P6))
+    messages = [g for g in _groups(root) if g.get("data-ea-kind") == "message"]
+    for group in messages:
+        group.set("data-ea-seq", str(int(group.get("data-ea-seq")) + 1))
+    ET.SubElement(root, "g", {**messages[0].attrib, "data-ea-guid": new, "data-ea-seq": "1"})
+    import_svg(session, _text(root))
+    assert session.working.get("t_connector", new).values["attr_seqno"] == 1
+    assert [session.working.get("t_connector", g.get("data-ea-guid")).values["attr_seqno"] for g in messages] == [
+        2,
+        3,
+        4,
+    ]
+
+
+def test_import_keeps_stacking_zero_when_stored_zero(nafv4_path, qea_copy):
+    import sqlite3
+
+    path = qea_copy(nafv4_path)
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            "UPDATE t_diagramobjects SET Sequence = 0 WHERE rowid = (SELECT min(o.rowid) FROM t_diagramobjects o"
+            " JOIN t_diagram d ON d.Diagram_ID = o.Diagram_ID WHERE d.ea_guid = ?)",
+            (L7,),
+        )
+    session = _open(path)
+    root = _parse(export_svg(session, L7))
+    for group in _groups(root):
+        if group.get("data-ea-rect") and group.get("data-ea-z") is None:
+            group.set("data-ea-z", "0")  # as files exported before Sequence 0 was left out carry it
+    import_svg(session, _text(root))
+    assert not session.log
+
+
 def test_import_message_order_and_offset(nafv4_path, qea_copy):
     session = _open(qea_copy(nafv4_path))
     root = _parse(export_svg(session, P6))

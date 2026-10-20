@@ -93,3 +93,14 @@ def test_show_message_explicit_order_shifts_later_messages(nafv4_path, qea_copy)
     last = session.connect(ASSET1, ASSET2, type="Message", name="Last").guid
     session.show_message(P6, last, order=9)
     assert [_conn(session, g).values["attr_seqno"] for g in (MSG1, new, MSG2, MSG3, last)] == [1, 2, 3, 4, 9]
+
+
+def test_show_message_again_with_new_order_keeps_numbers_contiguous(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    session.show_message(P6, MSG1, order=3)
+    assert [_conn(session, g).values["attr_seqno"] for g in (MSG2, MSG3, MSG1)] == [1, 2, 3]
+    session.show_message(P6, MSG1, order=1)
+    assert [_conn(session, g).values["attr_seqno"] for g in (MSG1, MSG2, MSG3)] == [1, 2, 3]
+    # without an order, showing it again keeps its number
+    session.show_message(P6, MSG2, offset=-70)
+    assert [_conn(session, g).values["attr_seqno"] for g in (MSG1, MSG2, MSG3)] == [1, 2, 3]

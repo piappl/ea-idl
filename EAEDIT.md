@@ -180,10 +180,13 @@ byte for byte.
   owner's rectangle (`moved-inside-owner`). When both ends of a connector are on the diagram its link row is written,
   as the GUI does. A note on a connector is stored as EA does (the note refers to the connector in `PDATA4`, `NType`
   1); `NType` 1 comes from the single hand-made sample, so it warns `unverified-default`. A note on an element gets a
-  `NoteLink` from the element to the note. Linking it again returns the existing link (`already-linked`).
+  `NoteLink` from the element to the note. Linking it again returns the existing link (`already-linked`) and writes
+  its missing link rows on diagrams showing both ends.
 - A sequence message is shown on one diagram: `show_message` refuses a message another diagram shows (the error names
-  it). An explicit `order` already taken on the diagram moves that message and the later ones down one, so the
-  diagram's numbers stay unique.
+  it). An explicit `order` already taken on the diagram moves that message and the later ones down one, and a
+  message shown again leaves its old place first, so the diagram's numbers stay unique. Shown again without an
+  `order`, a message keeps its number. An SVG import shows new messages first, then applies the file's numbering
+  with one `set_message_order` when it differs from the stored one.
 - Deleting an element or connector removes its diagram rows. A note shown nowhere else is deleted with its last
   object: by `delete_element`, by `remove_from_diagram` and by `delete_diagram` (and by an SVG import that drops it).
 - A dangling diagram object (its element is gone) is carried through untouched by every operation, layout and
@@ -245,7 +248,7 @@ On any element (`<g>`) for an object on the diagram:
 | `data-ea-guid` | GUID of the element or note. Required, except on a new note and a dangling object. |
 | `data-ea-duid` | The diagram object's DUID: tells apart an element shown twice. Optional. |
 | `data-ea-rect` | `left,top,right,bottom` (see `Rect`). Required. |
-| `data-ea-z` | Stacking order (`Sequence`), an integer of at least 1; applied with `set_stacking`. Optional; left out for an object with no `Sequence` (0 or unset). |
+| `data-ea-z` | Stacking order (`Sequence`), an integer of at least 1; applied with `set_stacking`. Optional; left out for an object with no `Sequence` (0 or unset), and 0 is accepted for such an object. |
 | `data-ea-kind` | `element`, `note` or `readonly`. |
 | `data-ea-text` | A note's text. |
 | `data-ea-id` | Only on a new note (no GUID): any label unique in the file, so note links can name it. |
@@ -269,7 +272,7 @@ Rules:
 - A file that breaks a rule is refused with a message naming the group, and nothing is staged: not XML or root not
   `<svg>`; an object without `data-ea-rect` or `data-ea-guid` (a group with a `data-ea-guid` of an element but no
   `data-ea-kind` and no rect counts as one); an unknown GUID or `data-ea-kind`; a bad rectangle, a
-  `data-ea-z` below 1, a `data-ea-hidden` other than 0 or 1; `data-ea-id` or `data-ea-duid` used twice; a connector whose ends
+  `data-ea-z` changed to below 1, a `data-ea-hidden` other than 0 or 1; `data-ea-id` or `data-ea-duid` used twice; a connector whose ends
   are not both shown; a note link whose ends are not both shown or that has no note at an end; a Part outside its
   owner's rectangle when the file changed the Part's or the owner's rectangle (a Part already outside, e.g. placed
   before its owner or left behind by `set_bounds` on the owner, is carried as it is).
