@@ -1,4 +1,5 @@
 import re
+import sqlite3
 
 import yaml
 from click.testing import CliRunner
@@ -176,3 +177,22 @@ def test_preview_does_not_render_deleted_diagram(nafv4_path, qea_copy):
     session = Session.open(qea_copy(nafv4_path), policy="off")
     session.delete_diagram(L7)
     assert session.preview().diagrams == {}
+
+
+def test_preview_renders_diagram_of_changed_note(nafv4_path, qea_copy):
+    session = Session.open(qea_copy(nafv4_path), policy="off")
+    note = session.add_note(L7, "first").guid
+    session.commit()
+    session.set_note_text(note, "second")
+    assert list(session.preview().diagrams) == [L7]
+
+
+def test_preview_survives_dangling_diagram_object(nafv4_path, qea_copy):
+    model = qea_copy(nafv4_path)
+    with sqlite3.connect(model) as conn:
+        conn.execute(
+            "UPDATE t_diagramobjects SET Object_ID = 999999 WHERE rowid = (SELECT min(rowid) FROM t_diagramobjects)"
+        )
+    session = Session.open(model, policy="off")
+    session.set_note_text(session.add_note(L7, "x").guid, "y")
+    assert L7 in session.preview().diagrams

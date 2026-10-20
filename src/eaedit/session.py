@@ -365,11 +365,7 @@ class Session:
         messages (removals included), or an element or note they show."""
         changes = changes or self.changes()
         found: dict[str, None] = {}
-        shown: dict[Key, list[Ref]] = {}
-        for row in self.working.records("t_diagramobjects"):
-            ref = row.values.get("attr_diagram_id")
-            if isinstance(ref, Ref):
-                shown.setdefault(row.values.get("attr_object_id").key, []).append(ref)
+        shown: dict[Key, list[Ref]] | None = None
         for change in [*changes.inserts, *changes.updates, *changes.deletes]:
             if isinstance(change, Insert):
                 table, key, rs = change.record.table, change.record.key, self.working
@@ -380,6 +376,13 @@ class Session:
             if table == "t_diagram":
                 found[key] = None
             elif table == "t_object":
+                if shown is None:  # only needed when an element or note changed
+                    shown = {}
+                    for row in self.working.records("t_diagramobjects"):
+                        diagram, shown_object = row.values.get("attr_diagram_id"), row.values.get("attr_object_id")
+                        # A dangling reference is left unset by the loader: nothing to show for it.
+                        if isinstance(diagram, Ref) and isinstance(shown_object, Ref):
+                            shown.setdefault(shown_object.key, []).append(diagram)
                 for ref in shown.get(key, []):
                     found[ref.key] = None
             elif table in self._DIAGRAM_COLUMNS or table == "t_connector":
