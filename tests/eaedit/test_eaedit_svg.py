@@ -317,6 +317,34 @@ def test_import_stacking_order(nafv4_path, qea_copy):
     assert not changes.inserts and not changes.deletes
 
 
+def test_import_refuses_zero_stacking_naming_the_group(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    root = _parse(export_svg(session, L7))
+    group = next(g for g in _groups(root) if g.get("data-ea-kind") == "element")
+    group.set("data-ea-z", "0")
+    with pytest.raises(InvalidOperationError, match=rf"{group.get('data-ea-guid').strip('{}')}.*data-ea-z"):
+        import_svg(session, _text(root))
+    assert session.changes().is_empty() and not session.log
+
+
+def test_object_without_stacking_round_trips(nafv4_path, qea_copy):
+    import sqlite3
+
+    path = qea_copy(nafv4_path)
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            "UPDATE t_diagramobjects SET Sequence = 0 WHERE rowid = (SELECT min(o.rowid) FROM t_diagramobjects o"
+            " JOIN t_diagram d ON d.Diagram_ID = o.Diagram_ID WHERE d.ea_guid = ?)",
+            (L7,),
+        )
+    session = _open(path)
+    svg = export_svg(session, L7)
+    # Sequence 0 is no stacking order eaedit could write back, so the file leaves it out.
+    assert len([g for g in _groups(_parse(svg)) if g.get("data-ea-rect") and g.get("data-ea-z") is None]) == 1
+    import_svg(session, svg)
+    assert not session.log
+
+
 def test_import_message_order_and_offset(nafv4_path, qea_copy):
     session = _open(qea_copy(nafv4_path))
     root = _parse(export_svg(session, P6))

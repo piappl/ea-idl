@@ -76,7 +76,9 @@ def _markup(session, diagram: Record) -> tuple[list[tuple[str | None, dict]], li
         elif element is None:
             continue  # a dangling object without a DUID: nothing the file could name it by; left as it is
         values["data-ea-rect"] = ",".join(str(v) for v in from_ea(row.values))
-        values["data-ea-z"] = row.values.get("attr_sequence") or 0
+        if row.values.get("attr_sequence"):
+            # Sequence 0 or unset is no stacking order ``set_stacking`` can write: the file leaves it out.
+            values["data-ea-z"] = row.values["attr_sequence"]
         # A dangling object (its element is gone) is named by its DUID alone and carried through read-only.
         values["data-ea-kind"] = "readonly" if element is None else _kind(element)
         if values["data-ea-kind"] == "note":
@@ -248,8 +250,8 @@ def _read(svg_text: str) -> tuple[dict[str, str], list[_Shape], list[_Line]]:
             except InvalidOperationError as exc:
                 raise InvalidOperationError(f"{label}: {exc}") from None
             z = _int(group, "data-ea-z", label)
-            if z is not None and z < 0:
-                raise InvalidOperationError(f"{label}: data-ea-z must not be negative")
+            if z is not None and z < 1:
+                raise InvalidOperationError(f"{label}: data-ea-z must be at least 1, not {z}")
             shapes.append(
                 _Shape(label, kind, guid, local, group.get("data-ea-duid"), rect, z, group.get("data-ea-text"))
             )

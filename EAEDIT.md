@@ -245,7 +245,7 @@ On any element (`<g>`) for an object on the diagram:
 | `data-ea-guid` | GUID of the element or note. Required, except on a new note and a dangling object. |
 | `data-ea-duid` | The diagram object's DUID: tells apart an element shown twice. Optional. |
 | `data-ea-rect` | `left,top,right,bottom` (see `Rect`). Required. |
-| `data-ea-z` | Stacking order (`Sequence`), a non-negative integer; applied with `set_stacking`. Optional. |
+| `data-ea-z` | Stacking order (`Sequence`), an integer of at least 1; applied with `set_stacking`. Optional; left out for an object with no `Sequence` (0 or unset). |
 | `data-ea-kind` | `element`, `note` or `readonly`. |
 | `data-ea-text` | A note's text. |
 | `data-ea-id` | Only on a new note (no GUID): any label unique in the file, so note links can name it. |
@@ -268,8 +268,8 @@ Rules:
 - Removing a note's group deletes the note if it is on no other diagram.
 - A file that breaks a rule is refused with a message naming the group, and nothing is staged: not XML or root not
   `<svg>`; an object without `data-ea-rect` or `data-ea-guid` (a group with a `data-ea-guid` of an element but no
-  `data-ea-kind` and no rect counts as one); an unknown GUID or `data-ea-kind`; a bad rectangle, a negative
-  `data-ea-z`, a `data-ea-hidden` other than 0 or 1; `data-ea-id` or `data-ea-duid` used twice; a connector whose ends
+  `data-ea-kind` and no rect counts as one); an unknown GUID or `data-ea-kind`; a bad rectangle, a
+  `data-ea-z` below 1, a `data-ea-hidden` other than 0 or 1; `data-ea-id` or `data-ea-duid` used twice; a connector whose ends
   are not both shown; a note link whose ends are not both shown or that has no note at an end; a Part outside its
   owner's rectangle when the file changed the Part's or the owner's rectangle (a Part already outside, e.g. placed
   before its owner or left behind by `set_bounds` on the owner, is carried as it is).

@@ -235,6 +235,35 @@ def test_layout_skips_element_shown_twice(nafv4_path, qea_copy):
         plan_layout(session, diagram, {"pattern": "suggest", "focus": MESSAGE})
 
 
+@pytest.mark.parametrize("padding", ["20", 20.0, True])
+def test_layout_padding_must_be_an_int(nafv4_path, qea_copy, padding):
+    session = _open(qea_copy(nafv4_path))
+    diagram = session.create_diagram("Model::p2", "D").guid
+    with pytest.raises(InvalidOperationError, match="padding"):
+        plan_layout(session, diagram, {"pattern": "contain", "owner": DATA_MESSAGE, "padding": padding})
+
+
+def test_layout_skipped_warning_targets_the_guid_not_the_key(nafv4_path, qea_copy):
+    import sqlite3
+
+    path = qea_copy(nafv4_path)
+    with sqlite3.connect(path) as conn:
+        # A copy of Message without a GUID: the loader gives it a key of its own, which is no GUID.
+        columns = [c[1] for c in conn.execute("PRAGMA table_info(t_object)") if c[1] != "Object_ID"]
+        listed = ", ".join(columns)
+        picked = ", ".join({"Name": "'Twin'", "ea_guid": "NULL"}.get(c, c) for c in columns)
+        conn.execute(f"INSERT INTO t_object ({listed}) SELECT {picked} FROM t_object WHERE ea_guid = ?", (MESSAGE,))
+    session = _open(path)
+    twin = next(r for r in session.working.records("t_object") if r.values.get("attr_name") == "Twin")
+    assert not isinstance(twin.key, str)
+    diagram = session.create_diagram("Model::p2", "D").guid
+    session.place(diagram, "Model::core::message::Twin", rect=(10, 10, 100, 80))
+    session.place(diagram, "Model::core::message::Twin", rect=(10, 100, 100, 170))
+    result = session.layout(diagram, {"pattern": "suggest"})
+    # like every other warning on a row without a GUID: no target, never the internal key
+    assert [(w.code, w.target) for w in result.warnings if w.code == "layout-skipped"] == [("layout-skipped", None)]
+
+
 def test_unmarked_aggregation_puts_target_above(nafv4_path, qea_copy):
     # eaedit's connect marks neither end (SourceIsAggregate = DestIsAggregate = 0): the target is the whole.
     assert _edge({"attr_connector_type": "Composition"}, "part", "whole") == Edge("whole", "part")

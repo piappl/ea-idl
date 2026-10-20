@@ -292,12 +292,9 @@ def _page(plan: _Plan, spec: dict) -> tuple[int, int]:
 
 def _padding(spec: dict) -> int:
     padding = spec.get("padding", 20)
-    try:
-        if isinstance(padding, bool):
-            raise TypeError
-        return int(padding)
-    except (TypeError, ValueError, OverflowError):
-        raise InvalidOperationError(f"padding is a number of pixels, not {padding!r}") from None
+    if isinstance(padding, bool) or not isinstance(padding, int):
+        raise InvalidOperationError(f"padding is a whole number of pixels, not {padding!r}")
+    return padding
 
 
 def _overlap(a: Rect, b: Rect) -> bool:
@@ -426,7 +423,9 @@ def layout(session, diagram: str, spec: dict) -> str:
         if element is not None:
             shown[element.key] = obj
     for key in report.skipped:
-        session.warn("layout-skipped", f"{_name(session, key)!r} is on the diagram more than once: not moved", key)
+        element = session.working.get("t_object", key)
+        message = f"{_name(session, key)!r} is on the diagram more than once: not moved"
+        session.warn("layout-skipped", message, guid_of(element))
     # Owners come before their Parts in ``report.rects``, so each Part is set inside its owner's new rectangle.
     for key, rect in report.rects.items():
         obj = shown.get(key)
