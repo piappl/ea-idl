@@ -391,7 +391,10 @@ def remove_from_diagram(session, diagram: str, element: str) -> str:
         if gone:
             lost = gone in link_ends(link.values.get("attr_style"))
         else:
-            connector = session.working.resolve(link.values.get("attr_connectorid"))
+            ref = link.values.get("attr_connectorid")
+            connector = session.working.resolve(ref) if isinstance(ref, Ref) else None
+            if connector is None:
+                continue  # a dangling link row (its connector is gone) is carried through untouched
             ends = (connector.values.get("attr_start_object_id"), connector.values.get("attr_end_object_id"))
             lost = shown in ends and not still
         if lost:

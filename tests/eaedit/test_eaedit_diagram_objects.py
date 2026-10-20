@@ -169,6 +169,36 @@ def test_remove_and_hide(nafv4_path, qea_copy):
     assert hidden() == 0
 
 
+def test_remove_object_without_duid_leaves_dangling_link_row(nafv4_path, qea_copy):
+    import sqlite3
+
+    model = qea_copy(nafv4_path)
+    with sqlite3.connect(model) as conn:
+        diagram_id, object_id = conn.execute(
+            "SELECT d.Diagram_ID, o.Object_ID FROM t_diagram d, t_object o WHERE d.ea_guid = ? AND o.ea_guid = ?",
+            (L7, MESSAGE),
+        ).fetchone()
+        # Message's object loses its DUID, and a link row not at Message names a connector that is gone.
+        conn.execute(
+            "UPDATE t_diagramobjects SET ObjectStyle = 'NSL=0;' WHERE Diagram_ID = ? AND Object_ID = ?",
+            (diagram_id, object_id),
+        )
+        conn.execute(
+            "UPDATE t_diagramlinks SET ConnectorID = 999999 WHERE Instance_ID = (SELECT min(l.Instance_ID)"
+            " FROM t_diagramlinks l JOIN t_connector c ON c.Connector_ID = l.ConnectorID WHERE l.DiagramID = ?"
+            " AND ? NOT IN (c.Start_Object_ID, c.End_Object_ID))",
+            (diagram_id, object_id),
+        )
+    session = _open(model)
+    dangling = [r for r in _links(session, L7) if not isinstance(r.values["attr_connectorid"], Ref)]
+    assert len(dangling) == 1
+    session.remove_from_diagram(L7, MESSAGE)
+    assert _on(session, L7, MESSAGE) == []
+    remaining = _links(session, L7)
+    assert len(remaining) == 2  # the two links at Message went; the dangling row and the other one stay
+    assert session.working.get("t_diagramlinks", dangling[0].key) == dangling[0]
+
+
 def test_show_connector_writes_missing_row(nafv4_path, qea_copy):
     session = _open(qea_copy(nafv4_path))
     link = _links(session, L7)[0]
