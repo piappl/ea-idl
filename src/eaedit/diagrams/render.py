@@ -14,7 +14,7 @@ from eacore.backends.sql import SqlBackend
 from eacore.catalogue import CatalogueSet
 from eaidl.config import NativeDiagramStyleConfig
 from eaidl.native_diagram_extractor import NativeDiagramExtractor
-from eaidl.native_diagram_svg import render_svg
+from eaidl.native_diagram_svg import ea_text_width, render_svg
 
 
 @dataclass
@@ -118,3 +118,8 @@ def render_working(session, diagrams: Iterable[str] | None = None, png: bool = F
             if extractor is not None:
                 extractor.close()
     return result
+
+
+def text_width(text: str, font_size: float = 10) -> float:
+    """Width of ``text`` as the renderer measures it, so layout boxes fit the labels drawn in them."""
+    return ea_text_width(text, font_size)

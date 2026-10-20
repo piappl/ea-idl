@@ -222,8 +222,8 @@ def _plain_note_lines(raw: str) -> List[str]:
     return emitter.lines
 
 
-def _ea_text_width(text: str, font_size: float) -> float:
-    """Approximate EA/Carlito glyph widths without a platform font dependency."""
+def ea_text_width(text: str, font_size: float) -> float:
+    """Approximate EA/Carlito glyph widths without a platform font dependency (also sizes eaedit's layout boxes)."""
     width = 0.0
     for char in text:
         if char in "ilI.,:;!|'`":
@@ -245,6 +245,10 @@ def _ea_text_width(text: str, font_size: float) -> float:
         else:
             width += 4.5
     return width * font_size / 10
+
+
+#: The name the renderer's own callers use.
+_ea_text_width = ea_text_width
 
 
 def _wrap_ea_text(paragraph: str, max_width: float, font_size: float) -> List[str]:
