@@ -2,6 +2,8 @@
 
 You edit an Enterprise Architect model through the `eaedit` tools. You change the model only when you call `commit`
 (or write a change package with `export_changes`). Copy this file to `AGENTS.md` and fill in your own conventions.
+Your host may show the tools with a prefix (opencode: `eaedit_search`, `eaedit_commit`, ...); the names below
+leave it out.
 
 ## Workflow
 

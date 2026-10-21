@@ -266,6 +266,15 @@ def test_main_help(capsys):
     assert "EAEDIT_MCP_MODEL" in out and "--idl-config" in out
 
 
+def test_python_dash_m_entry_point():
+    # For hosts where console-script launchers break: `python -m eaedit.mcp` must start the same CLI.
+    import subprocess
+    import sys
+
+    done = subprocess.run([sys.executable, "-m", "eaedit.mcp", "--help"], capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0 and "EAEDIT_MCP_MODEL" in done.stdout
+
+
 def test_parse_config(tmp_path):
     model = tmp_path / "m.qea"
     model.write_bytes(b"")

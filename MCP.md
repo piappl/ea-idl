@@ -20,12 +20,20 @@ The MCP SDK is an optional extra, so eaidl and eaedit work without it.
 ## Run
 
 ```bash
-eaedit-mcp MODEL.qea [options]      # also: eaedit mcp MODEL.qea [options]
+eaedit-mcp MODEL.qea [options]      # also: eaedit mcp ...   or   python -m eaedit.mcp ...
 ```
 
-An agent host starts this as a subprocess. For opencode in a container, see
-[docs/examples/opencode.json](./docs/examples/opencode.json). That file is opencode's configuration format, not
-ours: it may change, so check opencode's documentation. Paths in it are placeholders.
+`python -m eaedit.mcp` needs only the interpreter, so it also works where console-script launchers do not (for
+example a virtual environment copied into a container).
+
+An agent host starts this as a subprocess and talks to it over stdio. For opencode running in the same container as
+the model, see [docs/examples/opencode.json](./docs/examples/opencode.json): an entry under `mcp` with
+`"type": "local"` and the command as a list (opencode also accepts `environment` for the `EAEDIT_MCP_*` variables,
+`cwd`, and `timeout` in milliseconds for listing tools, default 5000; the server lists its tools in about a second).
+opencode shows the tools with the server name as a prefix (`eaedit_search`, `eaedit_open_session`, ...), and its
+`tools` / `agent.<name>.tools` settings can enable them for one agent only. The file follows opencode's
+configuration format, not ours; check [opencode's MCP documentation](https://opencode.ai/docs/mcp-servers/) if it
+changes. Paths in it are placeholders.
 
 | Option | Environment variable | Meaning |
 |--------|----------------------|---------|
