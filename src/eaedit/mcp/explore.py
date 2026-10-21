@@ -208,6 +208,64 @@ def _matcher(text: str) -> Callable[[str], bool]:
     return lambda name: needle in name.casefold()
 
 
+#: What ``search`` looks in.
+FIELDS = ("name", "notes", "tags", "any")
+#: Notes column of each kind (a package's notes may also sit on its element row).
+_NOTES = {
+    "t_package": "attr_notes",
+    "t_object": "attr_note",
+    "t_attribute": "attr_notes",
+    "t_connector": "attr_notes",
+    "t_diagram": "attr_notes",
+}
+#: Tag table and owner column per owner table.
+_TAG_TABLES = (
+    ("t_objectproperties", "attr_object_id"),
+    ("t_attributetag", "attr_elementid"),
+    ("t_connectortag", "attr_elementid"),
+)
+
+
+def _plain_text(text: str) -> str:
+    """Notes without EA's markup, on one line."""
+    return " ".join(re.sub(r"<[^>]+>", " ", text).split())
+
+
+def _tag_index(rs) -> dict[tuple[str, object], list[tuple[str, str]]]:
+    """(owner table, owner key) -> [(tag name, value)]; a package's tags (on its element row) count as its own."""
+    index: dict[tuple[str, object], list[tuple[str, str]]] = {}
+    for table, column in _TAG_TABLES:
+        for tag in rs.records(table):
+            owner = tag.values.get(column)
+            if not isinstance(owner, Ref):
+                continue
+            key = (owner.table, owner.key)
+            record = rs.resolve(owner)
+            if record is not None and is_package_twin(record):
+                key = ("t_package", record.values["attr_pdata1"].key)
+            value = tag.values.get("attr_value")
+            if value == "<memo>":
+                value = tag.values.get("attr_notes")
+            index.setdefault(key, []).append(
+                (tag.values.get("attr_property") or "", "" if value is None else str(value))
+            )
+    return index
+
+
+def _snippet(text: str, query: str, width: int = 60) -> str:
+    """``text`` on one line, cut to ``width`` around the first match of ``query`` (substring or ``/regex/``)."""
+    text = _plain_text(text)
+    if len(text) <= width:
+        return text
+    if len(query) >= 2 and query.startswith("/") and query.endswith("/"):
+        found = re.search(query[1:-1], text, re.IGNORECASE)
+        at = found.start() if found else 0
+    else:
+        at = max(text.casefold().find(query.casefold()), 0)
+    start = max(0, min(at - width // 4, len(text) - width))
+    return ("…" if start else "") + text[start : start + width] + ("…" if start + width < len(text) else "")
+
+
 @_replies
 def search(
     session,
@@ -215,30 +273,61 @@ def search(
     kind: str | None = None,
     stereotype: str | None = None,
     package: str | None = None,
+    field: str = "name",
     page: int = 1,
     page_size: int = 40,
 ) -> str:
-    """Things whose name matches ``text`` (substring, or ``/regex/``), case-insensitively."""
+    """Things whose ``field`` matches ``text`` (substring, or ``/regex/``), case-insensitively.
+
+    ``field``: ``name`` (default), ``notes``, ``tags`` (tag names and values) or ``any``. A match outside the name
+    adds what matched to the line (``notes: "…"`` or ``tag name = value``).
+    """
     if kind is not None and kind not in KINDS:
         return f"unknown kind {kind!r}: use one of {', '.join(KINDS)}"
+    if field not in FIELDS:
+        raise InvalidOperationError(f"unknown field {field!r}: use one of {', '.join(FIELDS)}")
     match = _matcher(text)
     prefix = _qname(session, _resolve(session, package, ("package",))) if package else None
     rs = session.working
-    rows: list[tuple[str, str, Record]] = []
+    tags = _tag_index(rs) if field in ("tags", "any") else {}
+    rows: list[tuple[str, str, Record, str]] = []
     for table in ("t_package", "t_object", "t_attribute", "t_connector", "t_diagram"):
         if kind is not None and _KIND_OF[table] != kind:
             continue
         for rec in rs.records(table):
-            if is_package_twin(rec) or not match(rec.values.get("attr_name") or ""):
+            if is_package_twin(rec):
+                continue
+            hit = _hit(session, rec, field, match, text, tags)
+            if hit is None:
                 continue
             qn = _qname(session, rec)
             if prefix is not None and not (qn == prefix or qn.startswith(prefix + "::")):
                 continue
             if stereotype is not None and not any(stereotype in (n, fq) for n, fq in _names(session, rec)):
                 continue
-            rows.append((qn, _guid(rec), rec))
+            rows.append((qn, _guid(rec), rec, hit))
     rows.sort(key=lambda r: (r[0], r[1]))
-    return page_lines([_line(session, rec) for _, _, rec in rows] or ["no matches"], page, page_size)
+    lines = [_line(session, rec) + (f"  {hit}" if hit else "") for _, _, rec, hit in rows]
+    return page_lines(lines or ["no matches"], page, page_size)
+
+
+def _hit(session, record: Record, field: str, match, query: str, tags) -> str | None:
+    """What of ``record`` matches: "" for its name, a short note or tag text, or None when nothing does."""
+    if field in ("name", "any") and match(record.values.get("attr_name") or ""):
+        return ""
+    if field in ("notes", "any"):
+        notes = [record.values.get(_NOTES[record.table])]
+        if record.table == "t_package":
+            twin = _package_object(session, record)
+            notes.append(None if twin is None else twin.values.get("attr_note"))
+        for note in notes:
+            if note and match(_plain_text(note)):
+                return f'notes: "{_snippet(note, query)}"'
+    if field in ("tags", "any"):
+        for name, value in tags.get((record.table, record.key), []):
+            if match(name) or match(value):
+                return f"tag {name} = {_snippet(value, query, 40)}"
+    return None
 
 
 def _names(session, record: Record) -> list[tuple[str, str | None]]:

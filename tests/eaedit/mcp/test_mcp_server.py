@@ -562,3 +562,34 @@ def test_session_status_names_an_unreadable_working_file(qea_copy, nafv4_path, t
     assert not err and status.startswith("no session open; ")
     assert "unreadable" in status and "discard() it" in status
     assert "unreadable" in opened and "discard() it" in opened
+
+
+@pytest.mark.parametrize(
+    "policy, edit, line",
+    [
+        # A connector from outside into the focus belongs to the outside package; connected accepts it.
+        (
+            "connected",
+            {
+                "op": "connect",
+                "args": {
+                    "source": "Model::core::data::Measurement",
+                    "target": "Model::core::message::Message",
+                    "type": "Dependency",
+                },
+            },
+            "outside the focus, allowed under connected: Model::core::data",
+        ),
+        # Under advisory an edit outside the focus is staged with a warning; connected would refuse it.
+        (
+            "advisory",
+            {"op": "update_element", "args": {"el": "Model::core::data::Measurement", "notes": "x"}},
+            "outside the focus, would be refused under connected: Model::core::data",
+        ),
+    ],
+)
+def test_preview_splits_outside_the_focus(qea_copy, nafv4_path, tmp_path, policy, edit, line):
+    calls = [("open_session", {"focus": ["Model::core::message"], "policy": policy}), ("edit", edit), ("preview", {})]
+    replies = _run(_workspace(qea_copy, nafv4_path, tmp_path), calls)
+    assert not any(err for err, _ in replies), replies
+    assert line in replies[-1][1]

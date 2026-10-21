@@ -59,6 +59,11 @@ class Preview:
     outside_focus: list[str]
     #: Rendered SVG per diagram (by GUID) the session created or changed, as it will look after commit.
     diagrams: dict[str, RenderedDiagram] = field(default_factory=dict)
+    #: Packages of ``outside_focus`` whose changes ``judged_by`` would refuse (staged only because the policy is
+    #: advisory or off); the others are outside the focus but allowed, e.g. a connector reaching out of it.
+    refused_outside: list[str] = field(default_factory=list)
+    #: The policy ``refused_outside`` is judged by: the session's when it refuses (package, connected), else connected.
+    judged_by: str = "connected"
 
 
 @dataclass
@@ -143,6 +148,15 @@ def _local_clock(timezone: str | None) -> Callable[[], datetime]:
             f"unknown timezone {timezone!r} (expected an IANA name like Europe/Warsaw)"
         ) from None
     return lambda: datetime.now(zone).replace(tzinfo=None)
+
+
+def _one(change: Insert | Update | Delete) -> ChangeSet:
+    """A change set of just ``change``, to judge it on its own."""
+    if isinstance(change, Insert):
+        return ChangeSet(inserts=[change])
+    if isinstance(change, Update):
+        return ChangeSet(updates=[change])
+    return ChangeSet(deletes=[change])
 
 
 class Session:
@@ -446,7 +460,10 @@ class Session:
         changes = self.changes()
         touched: dict[str, int] = {}
         outside: dict[str, None] = {}
+        refused: dict[str, None] = {}
         inside = self.scope.focus_packages(self.original, self.working) if self.scope.focus else None
+        judged_by = self.scope.policy if self.scope.policy in ("package", "connected") else "connected"
+        judge = Scope(self.scope.focus, judged_by)
         for change in [*changes.inserts, *changes.updates, *changes.deletes]:
             if isinstance(change, Insert):
                 rs, ref = self.working, Ref(change.record.table, change.record.key)
@@ -458,6 +475,8 @@ class Session:
             package = rs.owner_package(ref)
             if inside is not None and (package is None or package.key not in inside):
                 outside[name] = None
+                if name not in refused and judge.violations(_one(change), self.original, self.working):
+                    refused[name] = None
         changed = self.changed_diagrams(changes) if render is not False else []
         diagrams = {}
         if changed and render is not False:
@@ -472,6 +491,8 @@ class Session:
             touched,
             list(outside),
             diagrams,
+            list(refused),
+            judged_by,
         )
 
     def commit(self) -> ChangeSet:

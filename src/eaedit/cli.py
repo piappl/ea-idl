@@ -118,8 +118,13 @@ def _session_options(fn):
 def _report(session: Session, out: str | None = None, render: bool | None = None) -> None:
     preview = session.preview(render=render)
     click.echo(preview.report)
-    if preview.outside_focus:
-        click.echo(f"outside the focus: {', '.join(preview.outside_focus)}")
+    allowed = [name for name in preview.outside_focus if name not in preview.refused_outside]
+    if allowed:
+        click.echo(f"outside the focus, allowed under {preview.judged_by}: {', '.join(allowed)}")
+    if preview.refused_outside:
+        click.echo(
+            f"outside the focus, would be refused under {preview.judged_by}: {', '.join(preview.refused_outside)}"
+        )
     for issue in preview.new_issues:
         click.echo(f"new issue: {issue.severity} {issue.rule} {issue.message}")
     for warning in preview.warnings:

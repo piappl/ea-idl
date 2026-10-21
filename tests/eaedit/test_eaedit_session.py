@@ -148,8 +148,20 @@ def test_advisory_scope_warns(path):
     preview = session.preview()
     assert preview.warnings == result.warnings
     assert preview.outside_focus == ["Model::core::data"]
+    # Accepted only because the policy is advisory: connected would refuse it.
+    assert preview.refused_outside == ["Model::core::data"] and preview.judged_by == "connected"
     session.undo()
     assert session.warnings == []
+
+
+def test_connector_reaching_out_is_outside_but_allowed(path):
+    # A connector from an element outside the focus to one inside belongs to the outside package, yet connected
+    # accepts it: preview lists it as outside the focus but not as refused.
+    session = _open(path, focus=[MESSAGE], policy="connected")
+    session.connect(IN_DATA, IN_MESSAGE, type="Dependency")
+    preview = session.preview(render=False)
+    assert preview.outside_focus == ["Model::core::data"]
+    assert preview.refused_outside == [] and preview.judged_by == "connected"
 
 
 def test_commit_refused_on_new_integrity_error(path):

@@ -56,8 +56,9 @@ Every reply is plain text. A failure is a reply starting with `error:` that says
 Explore (whole model, no session needed; with a session open they read its working copy, so staged edits show):
 
 - `overview`: the package tree to a depth, with element counts.
-- `search`: packages, elements, attributes, connectors and diagrams by name (substring or `/regex/`), kind,
-  stereotype and package subtree.
+- `search`: packages, elements, attributes, connectors and diagrams by name, notes, tags or any of them
+  (`field`; substring or `/regex/`), kind, stereotype and package subtree; a match outside the name shows what
+  matched.
 - `describe`: one thing in compact detail.
 - `usages`: where an element is used (attribute types, connectors, diagrams).
 - `stereotype`: a stereotype's definition from the catalogues.
@@ -70,7 +71,9 @@ Session:
 - `undo`: take back the last edit. `discard`: drop the session.
 - `preview`: what would change per package, warnings and new integrity issues; optionally changed diagrams as text
   (each diagram's first page; its `… N more` line names the `diagram(id=..., page=2)` call for the rest) and the IDL
-  diff. Paged like the lists.
+  diff. Paged like the lists. Packages touched outside the focus are listed in two lines: "allowed under
+  connected" (accepted by the policy, e.g. a connector reaching out of the focus) and "would be refused under
+  connected" (staged only because the policy is advisory or off); with policy package both say package.
 - `commit`: write the model and return the change report, paged: `commit(page=2)` shows the next page of the last
   commit's report and commits nothing.
 - `export_changes`: write a change package, leaving the model alone. The reply names the directory and gives one line

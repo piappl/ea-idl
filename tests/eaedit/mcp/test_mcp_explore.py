@@ -190,3 +190,17 @@ def test_orphan_diagram_object_does_not_break_describe_or_usages(nafv4_path, qea
     used = explore.usages(session, f"{MSG}::MessageHeader")
     assert "Error" not in described and "Error" not in used
     assert "diagrams:" in described
+
+
+def test_search_notes_and_tags(nafv4_path, tmp_path):
+    session = _snapshot(nafv4_path, tmp_path)
+    notes = explore.search(session, "3 letter ISO", field="notes")
+    assert "Nationality" in notes and 'notes: "' in notes
+    assert explore.search(session, "3 letter ISO") == "no matches"  # names only by default
+    tags = explore.search(session, "ecma262", field="tags")  # a tag's name matches as well as its value
+    assert "Identifier" in tags and "tag pattern_ecma262 = " in tags
+    assert "Identifier" in explore.search(session, "a-fA-F0-9", field="tags")
+    anywhere = explore.search(session, "ISO", field="any")
+    assert "Nationality" in anywhere and "Time" in anywhere
+    with pytest.raises(InvalidOperationError, match="field"):
+        explore.search(session, "x", field="body")

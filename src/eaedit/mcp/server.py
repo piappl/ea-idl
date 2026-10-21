@@ -229,12 +229,23 @@ def _paged(text: str, page: int, stale: bool) -> str:
     return paged + "\n\n" + STALE if stale else paged
 
 
+def focus_lines(preview) -> list[str]:
+    """What the preview touches outside the focus: allowed by the policy, or accepted only by advisory/off."""
+    allowed = [name for name in preview.outside_focus if name not in preview.refused_outside]
+    lines = []
+    if allowed:
+        lines.append(f"outside the focus, allowed under {preview.judged_by}: " + ", ".join(allowed))
+    if preview.refused_outside:
+        lines.append(
+            f"outside the focus, would be refused under {preview.judged_by}: " + ", ".join(preview.refused_outside)
+        )
+    return lines
+
+
 def _preview_text(workspace: Workspace, diagrams: bool = False, idl: bool = False, page: int = 1) -> str:
     session = workspace.require_session()
     parts = [change_report(session, title="Preview").rstrip("\n")]
-    outside = session.preview(render=False).outside_focus
-    if outside:
-        parts.append("outside the focus: " + ", ".join(outside))
+    parts += focus_lines(session.preview(render=False))
     if diagrams:
         changed = session.changed_diagrams()
         parts += [_diagram_part(session, guid) for guid in changed] or ["no diagrams changed"]
@@ -281,14 +292,17 @@ def build_server(workspace: Workspace) -> MCPServer:
         kind: str | None = None,
         stereotype: str | None = None,
         package: str | None = None,
+        field: str = "name",
         page: int = 1,
     ) -> str:
-        """Find packages, elements, attributes, connectors and diagrams by name: `text` is a case-insensitive
-        substring, or a regular expression written as `/regex/` ("" matches everything). `kind` is one of package,
-        element, attribute, connector, diagram; `stereotype` keeps only things with that stereotype; `package`
-        keeps only things inside that package's subtree. One line per match: kind, qualified name, stereotypes,
-        type, GUID. Paged (`page`). Example: search(text="Header", kind="element", package="Model::Logical")"""
-        return explore.search(view(), text, kind, stereotype, package, page)
+        """Find packages, elements, attributes, connectors and diagrams: `text` is a case-insensitive substring, or
+        a regular expression written as `/regex/` ("" matches everything). `field` says where to look: "name"
+        (default), "notes", "tags" (tag names and values) or "any". `kind` is one of package, element, attribute,
+        connector, diagram; `stereotype` keeps only things with that stereotype; `package` keeps only things inside
+        that package's subtree. One line per match: kind, qualified name, stereotypes, type, GUID, and for a match
+        outside the name what matched (`notes: "…"` or `tag name = value`). Paged (`page`).
+        Example: search(text="timestamp", field="notes", kind="element", package="Model::Logical")"""
+        return explore.search(view(), text, kind, stereotype, package, field, page)
 
     @tool
     def describe(id: str, page: int = 1) -> str:
