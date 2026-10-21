@@ -897,10 +897,11 @@ class ModelParser:
             TPackage = base.classes.t_package
             package = self.session.query(TPackage).filter(TPackage.attr_package_id == current_package_id).scalar()
             current_package_id = package.attr_parent_id
-            namespace.append(package.attr_name)
             if package.attr_ea_guid in self.root_package_guids:
-                # We got to our configured top package
+                # We got to our configured top package, named as package_parse names it
+                namespace.append(self.config.root_package_name or package.attr_name)
                 break
+            namespace.append(package.attr_name)
             if current_package_id in [0, None]:
                 # We got to top package, this is not normal, as it is outside
                 # of root we are using.

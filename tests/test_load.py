@@ -390,3 +390,19 @@ class TestLoadEdgeCases:
                     break
             if found_values:
                 break
+
+
+def test_root_package_name_renames_type_references(test_config):
+    """Attribute types are named under the renamed root, so they resolve to the renamed classes (and the recursive
+    Node/Children pair is still recognised as recursion, not reported as a circular dependency)."""
+    test_config.root_package_name = "renamedRoot"
+    model = ModelParser(test_config).load()
+    root = next(p for p in model if p.name == "renamedRoot")
+    namespaces = [
+        attr.namespace
+        for pkg in [root, *root.packages]
+        for cls in pkg.classes
+        for attr in cls.attributes
+        if attr.namespace
+    ]
+    assert namespaces and all(ns[0] == "renamedRoot" for ns in namespaces)
