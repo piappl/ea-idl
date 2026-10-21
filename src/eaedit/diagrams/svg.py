@@ -16,7 +16,7 @@ from eacore.records import Record, Ref, TextRefs
 from eaedit.diagrams.geometry import Rect, check_rect, from_ea
 from eaedit.diagrams.render import Ids, render_working
 from eaedit.errors import EditWarning, InvalidOperationError, NotFoundError
-from eaedit.ops.diagrams import _link_key, _objects, shown_element
+from eaedit.ops.diagrams import _link_key, diagram_objects, shown_element
 from eaedit.resolve import guid_of
 from eaedit.session import OpResult
 
@@ -47,12 +47,12 @@ def diagram_type(record: Record) -> str:
     return found.group(1) if found else record.values.get("attr_diagram_type") or ""
 
 
-def _offset(pdata5: str | None) -> str:
+def message_offset(pdata5: str | None) -> str:
     found = _OFFSET.search(pdata5 or "")
     return found.group(1) if found else ""
 
 
-def _kind(element: Record) -> str:
+def object_kind(element: Record) -> str:
     kind = element.values.get("attr_object_type")
     if kind == "Note":
         return "note"
@@ -66,7 +66,7 @@ def _markup(session, diagram: Record) -> tuple[list[tuple[str | None, dict]], li
     working = session.working
     objects: list[tuple[str | None, dict]] = []
     shown: set[Ref] = set()
-    for row in sorted(_objects(session, this), key=lambda r: (r.values.get("attr_sequence") or 0, str(r.key))):
+    for row in sorted(diagram_objects(session, this), key=lambda r: (r.values.get("attr_sequence") or 0, str(r.key))):
         element = shown_element(session, row)
         values = {} if element is None else {"data-ea-guid": guid_of(element)}
         if element is not None:
@@ -80,7 +80,7 @@ def _markup(session, diagram: Record) -> tuple[list[tuple[str | None, dict]], li
             # Sequence 0 or unset is no stacking order ``set_stacking`` can write: the file leaves it out.
             values["data-ea-z"] = row.values["attr_sequence"]
         # A dangling object (its element is gone) is named by its DUID alone and carried through read-only.
-        values["data-ea-kind"] = "readonly" if element is None else _kind(element)
+        values["data-ea-kind"] = "readonly" if element is None else object_kind(element)
         if values["data-ea-kind"] == "note":
             values["data-ea-text"] = element.values.get("attr_note") or ""
         objects.append((None if element is None else guid_of(element), values))
@@ -112,11 +112,11 @@ def _markup(session, diagram: Record) -> tuple[list[tuple[str | None, dict]], li
             "data-ea-hidden": "0",
             "data-ea-kind": "message",
             "data-ea-seq": message.values.get("attr_seqno") or 0,
-            "data-ea-offset": _offset(message.values.get("attr_pdata5")),
+            "data-ea-offset": message_offset(message.values.get("attr_pdata5")),
         }
         lines.append((guid_of(message), values))
     listed = {Ref("t_connector", working.resolve(session.find(g, kinds=("connector",))).key) for g, _ in lines}
-    for row in _objects(session, this):
+    for row in diagram_objects(session, this):
         note = shown_element(session, row)
         if note is None or note.values.get("attr_object_type") != "Note":
             continue
@@ -302,7 +302,7 @@ def _inside(rect: Rect, outer: Rect) -> bool:
 
 
 def _rows(session, diagram: str) -> list[Record]:
-    return sorted(_objects(session, Ref("t_diagram", diagram)), key=lambda r: str(r.key))
+    return sorted(diagram_objects(session, Ref("t_diagram", diagram)), key=lambda r: str(r.key))
 
 
 def _match(session, rows: list[Record], shapes: list[_Shape]) -> dict[int, Record]:
@@ -463,9 +463,9 @@ class _Importer:
                     self.warn("readonly-kept", f"dangling object {label} is not in the file; kept", None)
                 continue
             label = duid(row.values.get("attr_objectstyle")) or guid_of(element)
-            if _kind(element) == "readonly":
+            if object_kind(element) == "readonly":
                 self.warn("readonly-kept", f"read-only object {label} is not in the file; kept", guid_of(element))
-            elif _kind(element) == "note" and self._only_here(element, used):
+            elif object_kind(element) == "note" and self._only_here(element, used):
                 # A note shown nowhere else goes with its last diagram object, as delete_diagram treats notes.
                 self.run("delete_element", el=guid_of(element))
             else:
@@ -492,11 +492,11 @@ class _Importer:
             note = self.run("add_note", diagram=self.diagram, text=shape.text or "", rect=list(shape.rect))
             self.notes[shape.local] = note
             ref = Ref("t_object", self.session.find(note, kinds=("element",)).key)
-            row = next(o for o in _objects(self.session, self.this) if o.values.get("attr_object_id") == ref)
+            row = next(o for o in diagram_objects(self.session, self.this) if o.values.get("attr_object_id") == ref)
             self._stack(shape, row, duid(row.values.get("attr_objectstyle")) or note)
             return
         guid = guid_of(shape.element)
-        if _kind(shape.element) == "readonly":
+        if object_kind(shape.element) == "readonly":
             if row is None:
                 self.warn("readonly-kept", f"{shape.label}: read-only objects cannot be placed; skipped", guid)
             elif from_ea(row.values) != shape.rect or shape.z not in (None, row.values.get("attr_sequence") or 0):
@@ -510,7 +510,7 @@ class _Importer:
                 self.run("set_bounds", diagram=self.diagram, element=target, rect=list(shape.rect))
         # Read after the moves: place stacks a new object (and an owner behind its Parts) itself.
         self._stack(shape, self.session.working.get("t_diagramobjects", (self.this, target)), target)
-        if _kind(shape.element) == "note" and shape.text is not None:
+        if object_kind(shape.element) == "note" and shape.text is not None:
             current = self.session.working.get("t_object", shape.element.key)
             if (current.values.get("attr_note") or "") != shape.text:
                 self.run("set_note_text", note=guid, text=shape.text)
@@ -531,7 +531,7 @@ class _Importer:
             connector = working.get("t_connector", line.connector.key)
             if connector.values.get("attr_connector_type") == "Sequence":
                 on_here = connector.values.get("attr_diagramid") == self.this
-                offset = _offset(connector.values.get("attr_pdata5"))
+                offset = message_offset(connector.values.get("attr_pdata5"))
                 if not on_here or (line.offset is not None and str(line.offset) != offset):
                     self.run("show_message", diagram=self.diagram, connector=guid, offset=line.offset)
                 if line.seq is not None:

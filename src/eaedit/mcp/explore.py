@@ -311,8 +311,9 @@ def describe(session, identifier: str, page: int = 1, page_size: int = 40) -> st
     header = _line(session, record)
     lines = [header]
     if record.table == "t_diagram":
-        lines += [f"view: {record.values.get('attr_diagram_type') or '?'}", "use the diagram tool for its contents"]
-        return page_lines(lines, page, page_size)
+        from eaedit.mcp.diagram_text import diagram_text  # imported late: diagram_text builds on this module
+
+        return diagram_text(session, _braced(record), page, page_size)
     info = session.get(_braced(record))
     lines += _common(session, info)
     if record.table == "t_attribute":

@@ -121,7 +121,7 @@ _SIZE = (90, 70)
 _GAP = 30
 
 
-def _objects(session, diagram: Ref) -> list[Record]:
+def diagram_objects(session, diagram: Ref) -> list[Record]:
     return [r for r in session.working.records("t_diagramobjects") if r.values.get("attr_diagram_id") == diagram]
 
 
@@ -140,7 +140,7 @@ def _element(session, identifier: str) -> Record:
 
 def _object(session, diagram: Ref, identifier: str) -> Record:
     """The diagram object named by a DUID, or the only object showing the element."""
-    objects = _objects(session, diagram)
+    objects = diagram_objects(session, diagram)
     if re.fullmatch(r"[0-9A-Fa-f]{8}", identifier):
         for obj in objects:
             if duid(obj.values.get("attr_objectstyle")) == identifier.upper():
@@ -175,7 +175,7 @@ def _style_kind(element: Record, diagram_type: str | None) -> str:
 def _free_rect(session, diagram: Ref, kind: str | None) -> Rect:
     """The first free spot to the right of the diagram's objects, at the top of the topmost."""
     width, height = _SIZES.get(kind, _SIZE)
-    rects = [from_ea(o.values) for o in _objects(session, diagram)]
+    rects = [from_ea(o.values) for o in diagram_objects(session, diagram)]
     left = max((r[2] for r in rects), default=0) + _GAP
     top = min((r[1] for r in rects), default=_GAP)
     return left, top, left + width, top + height
@@ -184,7 +184,7 @@ def _free_rect(session, diagram: Ref, kind: str | None) -> Rect:
 def _free_slot(session, diagram: Ref, outer: Rect) -> Rect | None:
     """A Part-sized spot inside ``outer`` clear of every object, left to right then wrapping; None if full."""
     width, height = _SIZES["Part"]
-    taken = [from_ea(o.values) for o in _objects(session, diagram)]
+    taken = [from_ea(o.values) for o in diagram_objects(session, diagram)]
     top = outer[1] + 30  # below the owner's name compartment
     while top + height <= outer[3] - _GAP // 3:
         left = outer[0] + 20
@@ -219,7 +219,7 @@ def _owner_object(session, diagram: Ref, element: Record) -> Record | None:
     parent = element.values.get("attr_parentid")
     if not isinstance(parent, Ref):
         return None
-    for obj in _objects(session, diagram):
+    for obj in diagram_objects(session, diagram):
         if obj.values.get("attr_object_id") == parent:
             return obj
     return None
@@ -266,7 +266,7 @@ def _link_row(session, diagram: Ref, connector: Record) -> Record | None:
     values = connector.values
     ends = []
     for column in ("attr_start_object_id", "attr_end_object_id"):
-        shown = [o for o in _objects(session, diagram) if o.values.get("attr_object_id") == values.get(column)]
+        shown = [o for o in diagram_objects(session, diagram) if o.values.get("attr_object_id") == values.get(column)]
         if not shown or not duid(shown[0].values.get("attr_objectstyle")):
             return None
         ends.append(shown[0])
@@ -307,7 +307,7 @@ def place(session, diagram: str, element: str, rect: Sequence[int] | None = None
     this = Ref("t_diagram", record.key)
     target = _element(session, element)
     ref = Ref("t_object", target.key)
-    objects = _objects(session, this)
+    objects = diagram_objects(session, this)
     kind = _style_kind(target, record.values.get("attr_diagram_type"))
     owner = _owner_object(session, this, target)
     slot = _free_slot(session, this, from_ea(owner.values)) if rect is None and owner is not None else None
@@ -384,7 +384,7 @@ def remove_from_diagram(session, diagram: str, element: str) -> str:
             return gone or ""
     session.drop("t_diagramobjects", obj.key)
     shown = obj.values.get("attr_object_id")
-    still = any(o.values.get("attr_object_id") == shown for o in _objects(session, this))
+    still = any(o.values.get("attr_object_id") == shown for o in diagram_objects(session, this))
     for link in list(session.working.records("t_diagramlinks")):
         if link.values.get("attr_diagramid") != this:
             continue
@@ -464,7 +464,7 @@ def show_message(session, diagram: str, connector: str, order: int | None = None
     if record.values.get("attr_diagram_type") != "Sequence":
         raise InvalidOperationError("messages are shown on Sequence diagrams only")
     message = _message(session, this, connector)
-    shown = {o.values.get("attr_object_id") for o in _objects(session, this)}
+    shown = {o.values.get("attr_object_id") for o in diagram_objects(session, this)}
     for column in ("attr_start_object_id", "attr_end_object_id"):
         if message.values.get(column) not in shown:
             raise InvalidOperationError("both ends of the message must be lifelines on the diagram")

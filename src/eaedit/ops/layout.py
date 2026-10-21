@@ -23,7 +23,7 @@ from eaedit.layout.engine import (
     suggest,
 )
 from eaedit.ops import operation
-from eaedit.ops.diagrams import _SIZE, _SIZES, _diagram, _objects, place, set_bounds, shown_element
+from eaedit.ops.diagrams import _SIZE, _SIZES, _diagram, diagram_objects, place, set_bounds, shown_element
 from eaedit.resolve import guid_of
 
 #: Spec keys each pattern takes, besides ``pattern`` and ``page``.
@@ -113,7 +113,7 @@ class _Plan:
         self.shown: dict[str, list[Record]] = {}
         #: Rectangles of dangling objects (their element is gone): never moved, but the layout keeps clear of them.
         self.dangling: list[Rect] = []
-        for obj in _objects(session, Ref("t_diagram", self.record.key)):
+        for obj in diagram_objects(session, Ref("t_diagram", self.record.key)):
             element = shown_element(session, obj)
             if element is None:
                 self.dangling.append(from_ea(obj.values))
@@ -418,7 +418,7 @@ def layout(session, diagram: str, spec: dict) -> str:
     record = _diagram(session, diagram)
     this = Ref("t_diagram", record.key)
     shown = {}
-    for obj in _objects(session, this):
+    for obj in diagram_objects(session, this):
         element = shown_element(session, obj)
         if element is not None:
             shown[element.key] = obj

@@ -9,7 +9,7 @@ from eaedit.defaults import timestamp
 from eaedit.errors import InvalidOperationError
 from eaedit.ops import operation
 from eaedit.ops.connectors import connect
-from eaedit.ops.diagrams import _diagram, _link_key, _link_row, _objects, place
+from eaedit.ops.diagrams import _diagram, _link_key, _link_row, diagram_objects, place
 from eaedit.ops.elements import create_element
 from eaedit.resolve import guid_of
 
@@ -93,7 +93,7 @@ def link_note(session, note: str, target: str) -> str:
             )
         return guid_of(found)
     end = Ref("t_object", found.key)
-    common = [d for d in diagrams if any(o.values.get("attr_object_id") == end for o in _objects(session, d))]
+    common = [d for d in diagrams if any(o.values.get("attr_object_id") == end for o in diagram_objects(session, d))]
     if not common:
         raise InvalidOperationError("the element is not on the note's diagram")
     for existing in session.working.records("t_connector"):

@@ -73,7 +73,7 @@ def test_describe_connector_and_diagram(nafv4_path, tmp_path):
 
     text = explore.describe(session, guid_of(diagram))
     assert text.splitlines()[0].startswith("diagram")
-    assert "use the diagram tool for its contents" in text
+    assert "obj " in text
 
 
 def test_usages(nafv4_path, tmp_path):
