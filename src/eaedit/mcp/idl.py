@@ -72,38 +72,59 @@ def _under(rs: RecordSet, package: Ref, roots: set[str]) -> bool:
     return False
 
 
+REPOSITORY_WIDE = "(repository-wide)"
+
+
 def _outside_roots(session, changes, roots: list[str]) -> list[str]:
     keys = _root_keys(session.working, roots) | _root_keys(session.original, roots)
     outside: dict[str, None] = {}
+    repository_wide = False
     for change in [*changes.inserts, *changes.updates, *changes.deletes]:
         if isinstance(change, Insert):
-            rs, ref = session.working, Ref(change.record.table, change.record.key)
+            rs, table, key = session.working, change.record.table, change.record.key
         elif isinstance(change, Delete):
-            rs, ref = session.original, Ref(change.table, change.key)
+            rs, table, key = session.original, change.table, change.key
         else:
-            rs, ref = session.working, Ref(change.table, change.key)
-        package = rs.owner_package(ref)
-        if package is not None and not _under(rs, package, keys):
+            rs, table, key = session.working, change.table, change.key
+        row = rs.get(table, key)
+        if table == "t_object" and row is not None and row.values.get("attr_object_type") == "Package":
+            continue  # a package's element row: its t_package row says the same, and it sits in the parent
+        package = rs.owner_package(Ref(table, key))
+        if package is None:
+            repository_wide = True
+        elif not _under(rs, package, keys):
             outside[resolve.qualified_name(rs, package)] = None
-    return sorted(outside)
+    return [*sorted(outside), *([REPOSITORY_WIDE] if repository_wide else [])]
+
+
+def _copy_model(path: Path, directory: str) -> Path:
+    copy = Path(directory) / path.name
+    shutil.copyfile(path, copy)
+    # A model EA has open may be in WAL mode: its latest pages are in the -wal file.
+    for suffix in ("-wal", "-shm"):
+        side = path.with_name(path.name + suffix)
+        if side.exists():
+            shutil.copyfile(side, copy.with_name(copy.name + suffix))
+    return copy
 
 
 def idl_diff(session, config_path: Path) -> IdlDiff:
-    """Unified diff of the IDL for ``config_path`` before and after the session's staged changes."""
-    config = load_config(config_path)
+    """Unified diff of the IDL for ``config_path`` before and after the session's staged changes.
+
+    Never raises: every failure comes back as ``error``. The model file is only copied, never opened by eaidl.
+    """
     name = Path(session.path).stem
-    changes = session.changes()
-    result = IdlDiff(name, outside_roots=_outside_roots(session, changes, list(config.root_packages)))
+    result = IdlDiff(name)
     try:
-        before = _generate(config, session.path)
-        with tempfile.TemporaryDirectory(prefix="eaedit-idl-") as tmp:
-            copy = Path(tmp) / session.path.name
-            shutil.copyfile(session.path, copy)
-            # A model EA has open may be in WAL mode: its latest pages are in the -wal file.
-            for suffix in ("-wal", "-shm"):
-                side = session.path.with_name(session.path.name + suffix)
-                if side.exists():
-                    shutil.copyfile(side, copy.with_name(copy.name + suffix))
+        config = load_config(config_path)
+        changes = session.changes()
+        result.outside_roots = _outside_roots(session, changes, list(config.root_packages))
+        with (
+            tempfile.TemporaryDirectory(prefix="eaedit-idl-") as before_dir,
+            tempfile.TemporaryDirectory(prefix="eaedit-idl-") as after_dir,
+        ):
+            before = _generate(config, _copy_model(session.path, before_dir))
+            copy = _copy_model(session.path, after_dir)
             if not changes.is_empty():
                 backend = SqlBackend.for_file(copy)
                 try:
