@@ -51,7 +51,9 @@ def create_diagram(session, owner: str, name: str, type: str = "Class", guid: st
     if ref.table == "t_object":
         # A diagram of an element sits in the element's package (ParentID names the element), as EA stores it.
         parent = ref
-        ref = session.working.resolve(ref).values["attr_package_id"]
+        ref = session.working.resolve(ref).values.get("attr_package_id")
+        if not isinstance(ref, Ref):
+            raise InvalidOperationError(f"element {owner!r} belongs to no existing package; its diagrams need one")
     _unique_name(session, ref, name)
     guid = primary_guid(session, guid)
     now = timestamp(session.now())

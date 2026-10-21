@@ -70,3 +70,22 @@ def test_large_diagram_pages(nafv4_path, tmp_path):
 def test_describe_of_a_diagram_is_its_text(nafv4_path, tmp_path):
     session = _session(nafv4_path, tmp_path)
     assert explore.describe(session, L7) == diagram_text.diagram_text(session, L7)
+
+
+def test_dangling_link_row_is_left_out(nafv4_path, qea_copy, tmp_path):
+    # A diagram link whose connector no longer exists stays a raw ID; the diagram text skips it instead of failing.
+    import sqlite3
+
+    path = qea_copy(nafv4_path)
+    with sqlite3.connect(path) as con:
+        count = con.execute(
+            "select count(*) from t_diagramlinks where DiagramID=(select Diagram_ID from t_diagram where ea_guid=?)",
+            (L7,),
+        ).fetchone()[0]
+        con.execute(
+            "update t_diagramlinks set ConnectorID=999999 where Instance_ID=(select min(Instance_ID) from t_diagramlinks"
+            " where DiagramID=(select Diagram_ID from t_diagram where ea_guid=?))",
+            (L7,),
+        )
+    text = diagram_text.diagram_text(_session(path, tmp_path), L7)
+    assert len([line for line in text.splitlines() if line.startswith("link ")]) == count - 1

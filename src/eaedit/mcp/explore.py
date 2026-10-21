@@ -266,7 +266,9 @@ def _diagrams_showing(session, element: Record) -> list[str]:
     seen: dict[str, str] = {}
     for obj in session.working.records("t_diagramobjects"):
         shown = shown_element(session, obj)
-        diagram = session.working.resolve(obj.values.get("attr_diagram_id"))
+        # An orphan row (its diagram deleted, which EA leaves behind) keeps a raw ID instead of a reference.
+        ref = obj.values.get("attr_diagram_id")
+        diagram = session.working.resolve(ref) if isinstance(ref, Ref) else None
         if shown is not None and shown.key == target and diagram is not None:
             seen[_guid(diagram)] = f"  {_qname(session, diagram)}  {_braced(diagram)}"
     return [seen[g] for g in sorted(seen, key=lambda g: seen[g])]

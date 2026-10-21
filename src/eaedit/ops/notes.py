@@ -33,7 +33,10 @@ def _shown_on(session, element: Ref) -> list[Ref]:
 @operation("add_note")
 def add_note(session, diagram: str, text: str, rect: Sequence[int] | None = None, guid: str | None = None) -> str:
     record = _diagram(session, diagram)
-    package = session.working.resolve(record.values["attr_package_id"])
+    ref = record.values.get("attr_package_id")
+    package = session.working.resolve(ref) if isinstance(ref, Ref) else None
+    if package is None:
+        raise InvalidOperationError(f"diagram {diagram!r} belongs to no existing package; notes need one")
     # Hand-made Notes in nafv4.qea have no Name; the text is in Note.
     note = create_element(session, package=guid_of(package), name="Note", type="Note", notes=text, guid=guid)
     stored = session.working.get("t_object", note)

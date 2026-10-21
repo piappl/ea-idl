@@ -48,7 +48,9 @@ def _link_lines(session, diagram: Ref) -> list[str]:
     for link in working.records("t_diagramlinks"):
         if link.values.get("attr_diagramid") != diagram:
             continue
-        connector = working.resolve(link.values.get("attr_connectorid"))
+        # A link row whose connector was deleted keeps a raw ID instead of a reference.
+        ref = link.values.get("attr_connectorid")
+        connector = working.resolve(ref) if isinstance(ref, Ref) else None
         if connector is None:
             continue
         kind = connector.values.get("attr_connector_type") or "?"

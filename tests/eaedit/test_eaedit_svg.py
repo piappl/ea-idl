@@ -454,3 +454,21 @@ def test_import_message_order_and_offset(nafv4_path, qea_copy):
     assert rows[first.get("data-ea-guid")].values["attr_seqno"] == 2
     assert rows[second.get("data-ea-guid")].values["attr_seqno"] == 1
     assert "SY=-60;" in rows[second.get("data-ea-guid")].values["attr_pdata5"]
+
+
+def test_export_and_round_trip_with_a_dangling_link_row(nafv4_path, qea_copy):
+    # A diagram link whose connector was deleted (EA leaves such rows) keeps a raw ID: export skips it, and an
+    # unedited round trip still stages nothing.
+    import sqlite3
+
+    path = qea_copy(nafv4_path)
+    with sqlite3.connect(path) as con:
+        con.execute(
+            "update t_diagramlinks set ConnectorID=999999 where Instance_ID=(select min(Instance_ID) from t_diagramlinks"
+            " where DiagramID=(select Diagram_ID from t_diagram where ea_guid=?))",
+            (L7,),
+        )
+    session = _open(path)
+    svg = export_svg(session, L7)
+    import_svg(session, svg)
+    assert session.changes().is_empty()

@@ -88,7 +88,9 @@ def _markup(session, diagram: Record) -> tuple[list[tuple[str | None, dict]], li
     for link in working.records("t_diagramlinks"):
         if link.values.get("attr_diagramid") != this:
             continue
-        connector = working.resolve(link.values.get("attr_connectorid"))
+        # A link row whose connector was deleted keeps a raw ID instead of a reference.
+        ref = link.values.get("attr_connectorid")
+        connector = working.resolve(ref) if isinstance(ref, Ref) else None
         if connector is None:
             continue
         ends = [connector.values.get(c) for c in ("attr_start_object_id", "attr_end_object_id")]

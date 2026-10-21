@@ -84,9 +84,10 @@ def _stereotype_closure(session, element: Record) -> set[str]:
 def check_ends(session, connector: Record) -> None:
     """Warn ``connector-end`` for each end whose stereotypes satisfy none of the catalogue's targets for a role."""
     values = connector.values
+    # An end whose element was deleted keeps a raw ID; it has no stereotypes to check.
     ends = {
-        "source": session.working.resolve(values.get("attr_start_object_id")),
-        "target": session.working.resolve(values.get("attr_end_object_id")),
+        name: session.working.resolve(ref) if isinstance(ref, Ref) else None
+        for name, ref in (("source", values.get("attr_start_object_id")), ("target", values.get("attr_end_object_id")))
     }
     closures: dict[str, set[str]] = {}
     for name, fqname in stereotype_names(session, connector):

@@ -173,3 +173,20 @@ def test_root_package_without_element_row(nafv4_path, tmp_path):
     described = explore.describe(session, "Model")
     assert described.startswith("package  Model  ") and "contents:" in described
     assert explore.usages(session, "Model").startswith("package  Model  ")
+
+
+def test_orphan_diagram_object_does_not_break_describe_or_usages(nafv4_path, qea_copy, tmp_path):
+    # EA models keep diagram-object rows whose diagram was deleted (an "orphan"); its diagram reference stays a raw
+    # ID. One such row used to make describe and usages fail for every element.
+    import sqlite3
+
+    path = qea_copy(nafv4_path)
+    with sqlite3.connect(path) as con:
+        con.execute(
+            "update t_diagramobjects set Diagram_ID=999999 where Instance_ID=(select min(Instance_ID) from t_diagramobjects)"
+        )
+    session = _snapshot(path, tmp_path)
+    described = explore.describe(session, f"{MSG}::Message")
+    used = explore.usages(session, f"{MSG}::MessageHeader")
+    assert "Error" not in described and "Error" not in used
+    assert "diagrams:" in described
