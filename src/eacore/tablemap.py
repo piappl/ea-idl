@@ -153,6 +153,10 @@ def is_connector_type(*types: str) -> Predicate:
     return lambda row: row.get("attr_connector_type") in types
 
 
+def is_doc_type(*types: str) -> Predicate:
+    return lambda row: row.get("attr_doctype") in types
+
+
 GUID = r"(\{[0-9A-Fa-f-]{36}\})"
 ALL_GUID_TABLES = (
     "t_package",
@@ -254,6 +258,8 @@ EA_TABLEMAP = TableMap(
                 ),
                 # Sequence messages keep their synchronisation kind here ("Asynchronous").
                 LiteralRule("attr_pdata1", when=is_connector_type("Sequence")),
+                # State transitions keep text here (100 StateFlow connectors in a real EA model, none a reference).
+                LiteralRule("attr_pdata1", when=is_connector_type("StateFlow")),
                 EmbeddedGuidRule("attr_styleex", r"(?:LFSP|LFEP)=" + GUID, ("t_attribute", "t_operation")),
                 EmbeddedGuidRule("attr_styleex", r"DCBMGUID=" + GUID, ("t_connector",)),
             ),
@@ -387,7 +393,12 @@ EA_TABLEMAP = TableMap(
         TableSpec(
             "t_document",
             GuidKey("attr_docid"),
-            rules=(GuidRefRule("attr_elementid", ALL_GUID_TABLES),),
+            rules=(
+                # Model templates, document styles and technologies are repository documents: ElementID holds a
+                # short name, not an element (101 such rows in a real EA model).
+                LiteralRule("attr_elementid", when=is_doc_type("MODELTEMPLATE", "SSDOCSTYLE", "TECHNOLOGY")),
+                GuidRefRule("attr_elementid", ALL_GUID_TABLES),
+            ),
             owner="attr_elementid",
             owner_is_guid=True,
         ),
@@ -407,6 +418,8 @@ EA_TABLEMAP = TableMap(
         "t_ecf",
         "t_efforttypes",
         "t_genopt",
+        # Images (alternate element images) are repository-wide; they hold no references.
+        "t_image",
         "t_implement",
         "t_lists",
         "t_metrictypes",

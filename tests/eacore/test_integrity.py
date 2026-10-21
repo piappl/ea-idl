@@ -121,3 +121,42 @@ def test_classifier_guid_may_name_an_element(tmp_path):
     assert [(i.severity, i.rule, i.message) for i in issues] == [
         ("error", "dangling-reference", f"attr_classifier_guid -> unknown GUID {NEW_GUID.strip(chr(39))}")
     ]
+
+
+def _copy(tmp_path):
+    path = tmp_path / "copy.qea"
+    path.write_bytes(NAFV4.read_bytes())
+    return path
+
+
+def test_template_documents_hold_names_not_references(tmp_path):
+    # Seen on a real EA model: t_document rows of DocType MODELTEMPLATE, SSDOCSTYLE and TECHNOLOGY keep a short name
+    # in ElementID, not an element GUID.
+    path = _copy(tmp_path)
+    with sqlite3.connect(path) as con:
+        for i, doctype in enumerate(("MODELTEMPLATE", "SSDOCSTYLE", "TECHNOLOGY")):
+            con.execute(
+                "insert into t_document (DocID, DocName, ElementID, ElementType, DocType) values (?, ?, ?, ?, ?)",
+                (f"{{0000AAAA-0000-0000-0000-00000000000{i}}}", "T", f"Template {i}", "ModelDocument", doctype),
+            )
+    issues = [i for i in check(load_file(path)) if "attr_elementid" in i.message]
+    assert issues == []
+
+
+def test_state_transition_pdata1_is_a_value(tmp_path):
+    # Seen on a real EA model: StateFlow connectors keep text in PDATA1.
+    path = _copy(tmp_path)
+    with sqlite3.connect(path) as con:
+        con.execute(
+            "update t_connector set Connector_Type='StateFlow', PDATA1='when ready' where Connector_ID=("
+            "select min(Connector_ID) from t_connector)"
+        )
+    issues = [i for i in check(load_file(path)) if "attr_pdata1" in i.message]
+    assert issues == []
+
+
+def test_images_are_repository_data(tmp_path):
+    path = _copy(tmp_path)
+    with sqlite3.connect(path) as con:
+        con.execute("insert into t_image (ImageID, Name, Type, Image) values (1, 'logo', 'Bitmap', x'00')")
+    assert not [i for i in check(load_file(path)) if i.rule == "unmapped-table"]
