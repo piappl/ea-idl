@@ -15,6 +15,7 @@ from eaedit.mcp.workspace import Config, Workspace  # noqa: E402
 CORE = "Model::core"
 MSG = "Model::core::message"
 L7 = "Model::L7"
+L7_DIAGRAM = "{0BA44FD3-F22C-4f9a-AC35-3BDB736B3C80}"
 #: What the agent must never read: table names, column keys, raw key tuples.
 LEAK = re.compile(r"\bt_[a-z]+|attr_|\(t_|, [0-9A-Fa-f]{8}\)")
 TOOLS = {
@@ -240,7 +241,7 @@ def test_export_and_apply(qea_copy, nafv4_path, tmp_path):
         ],
     )
     (_, _), (_, _), (_, exported), (again, again_text), (_, _), (apply_err, applied), (_, status) = results
-    assert str(tmp_path / "out" / "cp1") in exported and "Pkg" in exported
+    assert str(tmp_path / "out" / "cp1") in exported and f"{MSG}: 1 added" in exported
     assert again and again_text.startswith("error:") and "overwrite" in again_text
     assert not apply_err and "replayed 1 of 1" in applied and "Pkg" in applied
     assert "1 operations" in status
@@ -462,3 +463,93 @@ def test_model_names_that_look_like_tables_stay_as_they_are(qea_copy, nafv4_path
     ws.open_session(focus=[CORE], policy="off")
     ((edit_err, unknown),) = _run(ws, [("edit", {"op": "update_element", "args": {"el": "t_package", "name": "x"}})])
     assert edit_err and "'t_package'" in unknown, unknown
+
+
+def _many(ws, count, diagram=None):
+    ws.open_session(focus=[CORE], policy="off")
+    for n in range(count):
+        ws.run("create_element", {"package": MSG, "name": f"Many{n:02}"})
+        if diagram:
+            ws.run("place", {"diagram": diagram, "element": f"{MSG}::Many{n:02}"})
+
+
+def test_preview_and_commit_are_paged(qea_copy, nafv4_path, tmp_path):
+    ws = _workspace(qea_copy, nafv4_path, tmp_path)
+    _many(ws, 45)
+    results = _run(
+        ws,
+        [
+            ("preview", {}),
+            ("preview", {"page": 2}),
+            ("commit", {}),
+            ("commit", {"page": 2}),
+            ("commit", {"page": 2}),
+        ],
+    )
+    (_, one), (_, two), (c_err, committed), (p_err, paged), (_, again) = results
+    assert re.search(r"\n… \d+ more \(page=2\)$", one) and "Many00" in one and "Many44" not in one
+    assert "Many44" in two and "Many00" not in two
+    assert not c_err and re.search(r"\n… \d+ more \(page=2\)$", committed)
+    assert not p_err and "Many44" in paged  # the last commit's report, not a second commit
+    assert again == paged and ws.session is None
+
+
+def test_preview_diagram_hint_names_the_diagram_tool(qea_copy, nafv4_path, tmp_path):
+    ws = _workspace(qea_copy, nafv4_path, tmp_path)
+    _many(ws, 45, diagram=L7_DIAGRAM)
+    texts = []
+    for page in range(1, 10):
+        ((_, text),) = _run(ws, [("preview", {"diagrams": True, "page": page})])
+        texts.append(text)
+        if not re.search(r"\(page=\d+\)$", text):
+            break
+    joined = "\n".join(texts)
+    guid = re.search(r"diagram\(id=(\{[0-9A-Fa-f-]+\}), page=2\)", joined)
+    assert guid, joined
+    assert re.search(r"^… \d+ more \(diagram\(id=\{[0-9A-Fa-f-]+\}, page=2\)\)$", joined, re.M)
+
+
+def test_export_replies_with_a_summary(qea_copy, nafv4_path, tmp_path):
+    ws = _workspace(qea_copy, nafv4_path, tmp_path)
+    _many(ws, 3)
+    ((err, text),) = _run(ws, [("export_changes", {"name": "cp"})])
+    assert not err
+    assert text.splitlines() == [f"wrote {tmp_path / 'out' / 'cp'}", f"{MSG}: 3 added"]
+
+
+def test_bad_parameter_reply_is_in_agent_words(qea_copy, nafv4_path, tmp_path, monkeypatch):
+    ws = _workspace(qea_copy, nafv4_path, tmp_path)
+    ws.open_session(focus=[CORE])
+
+    def bad(op, args):
+        raise ValueError("t_object row has no attr_note")
+
+    monkeypatch.setattr(ws, "run", bad)
+    ((err, text),) = _run(ws, [("edit", {"op": "update_element", "args": {"el": "x"}})])
+    assert err and text.startswith("error: update_element: ") and not LEAK.search(text), text
+
+
+def test_bad_search_pattern_is_an_error(qea_copy, nafv4_path, tmp_path):
+    ((err, text),) = _run(_workspace(qea_copy, nafv4_path, tmp_path), [("search", {"text": "/(/"})])
+    assert err and text.startswith("error: bad pattern /(/")
+
+
+def test_undo_and_import_svg_carry_the_stale_note(qea_copy, nafv4_path, tmp_path, monkeypatch):
+    ws = _workspace(qea_copy, nafv4_path, tmp_path)
+    _many(ws, 1)
+    ((_, svg),) = _run(ws, [("diagram_svg", {"id": L7_DIAGRAM})])
+    monkeypatch.setattr(ws, "stale", lambda: True)
+    (_, undone), (_, imported) = _run(ws, [("undo", {}), ("import_svg", {"svg": svg})])
+    hint = "the model changed on disk: open_session(resume=True) replays your edits onto it, or discard()"
+    assert undone.startswith("undid ") and undone.endswith(hint)
+    assert imported.startswith("ok: ") and imported.endswith(hint)
+
+
+def test_session_status_names_an_unreadable_working_file(qea_copy, nafv4_path, tmp_path):
+    ws = _workspace(qea_copy, nafv4_path, tmp_path)
+    ws.config.out_dir.mkdir()
+    ws.working_file.write_text("not: [an eaedit file")
+    ((err, status), (_, opened)) = _run(ws, [("session_status", {}), ("open_session", {"resume": True})])
+    assert not err and status.startswith("no session open; ")
+    assert "unreadable" in status and "discard() it" in status
+    assert "unreadable" in opened and "discard() it" in opened

@@ -119,3 +119,20 @@ def test_alias_only_change_outside_roots_is_listed(nafv4_path, qea_copy, config)
     twin_only = ChangeSet(updates=[u for u in changes.updates if u.table == "t_object"])
     assert twin_only.updates
     assert _outside_roots(session, twin_only, ["core"]) == ["Model::L7"]
+
+
+def test_deleted_package_outside_roots_is_named_itself(nafv4_path, qea_copy, config):
+    session = _open(qea_copy(nafv4_path))
+    session.delete_package("Model::p2", recursive=True)
+    result = idl_diff(session, config)
+    assert "Model::p2" in result.outside_roots and "Model" not in result.outside_roots
+
+
+def test_generation_warnings_are_silenced(nafv4_path, qea_copy, config, recwarn):
+    import warnings
+
+    session = _open(qea_copy(nafv4_path))
+    session.add_attribute(MESSAGE, name="zazolcMember", type="int")
+    warnings.simplefilter("always")
+    idl_diff(session, config)
+    assert not [w for w in recwarn if "sqlalchemy" in type(w.message).__module__.lower()], [str(w) for w in recwarn]

@@ -1,3 +1,4 @@
+import re
 import shutil
 
 import pytest
@@ -75,13 +76,22 @@ def test_resume_replays_and_stops_at_failing_op(qea_copy, nafv4_path, tmp_path):
     data = yaml.safe_load(ws2.working_file.read_text())
     data["ops"][1]["args"]["package"] = "Model::core::nope"
     ws2.working_file.write_text(yaml.safe_dump(data))
+    original = ws2.working_file.read_text()
     result = ws2.open_session(resume=True)
     assert "resumed 1 of 3" in result.message and "op 2" in result.message
+    assert re.search(
+        r"op 2 create_element\(guid='\{[0-9A-Fa-f-]+\}', name='B', package='Model::core::nope'\) failed", result.message
+    )
+    assert "1 later operation" in result.message
+    rejected = config.out_dir / "working.rejected.yaml"
+    assert str(rejected) in result.message
+    assert rejected.read_text() == original  # the full log, failing op and its tail included
     assert (result.resumed, result.total) == (1, 3)
     assert len(ws2.session.log) == 1
     _create(ws2, "D")
     assert len(ws2.session.log) == 2
     assert len(yaml.safe_load(ws2.working_file.read_text())["ops"]) == 2
+    assert len(yaml.safe_load(rejected.read_text())["ops"]) == 3
 
 
 def test_open_without_resume_refuses_saved_session(qea_copy, nafv4_path, tmp_path):
@@ -129,3 +139,32 @@ def test_resume_on_stale_session_rebases_onto_the_new_file(qea_copy, nafv4_path,
     ws.commit()
     snapshot = ws.snapshot()
     assert snapshot.find(f"{MSG}::Mine") and snapshot.find(f"{MSG}::Theirs")
+
+
+def test_focus_and_policy_survive_restart_and_rebase(qea_copy, nafv4_path, tmp_path):
+    path, config = _make(qea_copy, nafv4_path, tmp_path)
+    other = qea_copy(nafv4_path, "other.qea")
+    ws = Workspace(config)
+    ws.open_session(focus=[MSG], policy="advisory")
+    _create(ws, "Mine")
+    saved = yaml.safe_load(ws.working_file.read_text())
+    assert saved["policy"] == "advisory" and len(saved["focus"]) == 1
+
+    def focus(w):
+        return [w.session.working.resolve(r).values["attr_name"] for r in w.session.scope.focus]
+
+    restarted = Workspace(config)  # the config's focus is Model::core, its policy "connected"
+    restarted.open_session(resume=True)
+    assert focus(restarted) == ["message"] and restarted.session.scope.policy == "advisory"
+    changed = Workspace(Config(other, focus=[CORE], out_dir=tmp_path / "o2"))
+    changed.open_session()
+    changed.run("create_element", {"package": MSG, "name": "Theirs"})
+    changed.commit()
+    shutil.copyfile(other, path)
+    assert restarted.stale()
+    restarted.open_session(resume=True)  # rebase
+    assert focus(restarted) == ["message"] and restarted.session.scope.policy == "advisory"
+    restarted._close(keep_working_file=True)
+    restarted.open_session(focus=[CORE], policy="package", resume=True)  # new ones win
+    assert focus(restarted) == ["core"] and restarted.session.scope.policy == "package"
+    assert yaml.safe_load(restarted.working_file.read_text())["policy"] == "package"

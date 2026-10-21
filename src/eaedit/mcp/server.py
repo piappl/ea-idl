@@ -9,6 +9,7 @@ import functools
 import inspect
 import json
 import os
+import re
 import sys
 import threading
 from collections.abc import Callable, Mapping, Sequence
@@ -24,13 +25,13 @@ from mcp_types import CallToolResult, TextContent
 from eacore.backends.sql import ConcurrentModificationError, NotAnEaRepositoryError, RepositoryLockedError
 from eacore.catalogue import AmbiguousStereotype
 from eacore.integrity import check as integrity_check
-from eaedit import changefile, resolve
+from eaedit import resolve
 from eaedit.defaults import FIELDS
 from eaedit.diagrams import svg as svg_io
 from eaedit.errors import AmbiguousNameError, CommitRefusedError, EaeditError, NotFoundError
 from eaedit.mcp import diagram_text, explore, idl, package
 from eaedit.mcp import workspace as workspace_module
-from eaedit.mcp.report import change_report
+from eaedit.mcp.report import change_report, change_summary
 from eaedit.mcp.words import agent_words
 from eaedit.mcp.workspace import Config, Workspace
 from eaedit.ops import OPERATIONS, load_all
@@ -65,6 +66,8 @@ _EXPECTED = (
 )
 
 STALE = f"note: commit will refuse, {workspace_module.STALE}"
+#: Lines per page of a paged reply.
+PAGE_SIZE = 40
 
 
 class _Reply(Exception):
@@ -208,7 +211,25 @@ def _idl_texts(workspace: Workspace, session) -> list[str]:
     return [f"IDL diff ({path.name}):\n{idl.idl_diff(session, path).text()}" for path in configs]
 
 
-def _preview_text(workspace: Workspace, diagrams: bool = False, idl: bool = False) -> str:
+_MORE = re.compile(r"^… (\d+) more \(page=(\d+)\)$")
+
+
+def _diagram_part(session, guid: str) -> str:
+    """A changed diagram's first page; its own ``… N more`` line names the diagram tool, as the preview is paged."""
+    lines = diagram_text.diagram_text(session, guid).split("\n")
+    more = _MORE.match(lines[-1])
+    if more:
+        lines[-1] = f"… {more.group(1)} more (diagram(id={guid}, page={more.group(2)}))"
+    return "\n".join(lines)
+
+
+def _paged(text: str, page: int, stale: bool) -> str:
+    """One page of a report (lines are model data: never clipped), the stale note after it."""
+    paged = explore.page_lines(text.split("\n"), page, PAGE_SIZE, clip=False)
+    return paged + "\n\n" + STALE if stale else paged
+
+
+def _preview_text(workspace: Workspace, diagrams: bool = False, idl: bool = False, page: int = 1) -> str:
     session = workspace.require_session()
     parts = [change_report(session, title="Preview").rstrip("\n")]
     outside = session.preview(render=False).outside_focus
@@ -216,12 +237,10 @@ def _preview_text(workspace: Workspace, diagrams: bool = False, idl: bool = Fals
         parts.append("outside the focus: " + ", ".join(outside))
     if diagrams:
         changed = session.changed_diagrams()
-        parts += [diagram_text.diagram_text(session, guid) for guid in changed] or ["no diagrams changed"]
+        parts += [_diagram_part(session, guid) for guid in changed] or ["no diagrams changed"]
     if idl:
         parts += _idl_texts(workspace, session)
-    if workspace.stale():
-        parts.append(STALE)
-    return "\n\n".join(parts)
+    return _paged("\n\n".join(parts), page, workspace.stale())
 
 
 # --- the server -----------------------------------------------------------------------------------------------
@@ -242,6 +261,8 @@ def build_server(workspace: Workspace) -> MCPServer:
         return agent_words(text, session.working, session.original)
 
     tool = _register(server, threading.Lock(), words)
+    #: The last commit's report, so commit(page=K) can page it after the session is gone.
+    committed: list[str] = []
 
     # --- explore ---
 
@@ -300,7 +321,8 @@ def build_server(workspace: Workspace) -> MCPServer:
         "package" (refused outside the focus), "connected" (also allows connectors and diagram changes reaching
         out of it), "advisory" (allowed, with a warning) or "off". Every edit is saved to a working file at once;
         after a restart, `resume=true` replays it, and when the model changed on disk under an open session,
-        `resume=true` replays its edits onto the new model. Example: open_session(focus=["Model::Logical"])"""
+        `resume=true` replays its edits onto the new model; a resumed session keeps its saved focus and policy unless
+        new ones are given. Example: open_session(focus=["Model::Logical"])"""
         result = workspace.open_session([focus] if isinstance(focus, str) else focus, policy, resume)
         session = workspace.require_session()
         names = [resolve.qualified_name(session.working, ref) for ref in session.scope.focus]
@@ -315,9 +337,9 @@ def build_server(workspace: Workspace) -> MCPServer:
             saved = workspace.working_file
             if saved.is_file():
                 try:
-                    count = len(changefile.load(saved))
-                except Exception:
-                    count = 0
+                    count = len(workspace.saved_ops())
+                except EaeditError as exc:
+                    return f"no session open; {words(_line(exc))}"
                 if count:
                     return f"no session open; a saved one with {count} operations exists: open_session(resume=true) or discard()"
             return "no session open"
@@ -373,7 +395,7 @@ def build_server(workspace: Workspace) -> MCPServer:
         except (TypeError, ValueError, KeyError) as exc:
             if isinstance(exc, EaeditError):
                 raise
-            raise _Reply(f"error: {op}: {_line(exc)}; parameters: {_signature(op)}") from None
+            raise _Reply(f"error: {op}: {words(_line(exc))}; parameters: {_signature(op)}") from None
         lines = [f"ok {result.guid}" if result.guid else "ok"]
         lines += [f"warning {words(str(w))}" for w in result.warnings]
         if workspace.stale():
@@ -383,7 +405,8 @@ def build_server(workspace: Workspace) -> MCPServer:
     @tool
     def undo() -> str:
         """Take back the last edit of the open session. Example: undo()"""
-        return f"undid {workspace.undo()}"
+        text = f"undid {workspace.undo()}"
+        return text + "\n" + STALE if workspace.stale() else text
 
     @tool
     def discard() -> str:
@@ -394,27 +417,35 @@ def build_server(workspace: Workspace) -> MCPServer:
         return "session discarded" if had else "no session to discard"
 
     @tool
-    def preview(diagrams: bool = False, idl: bool = False) -> str:
+    def preview(diagrams: bool = False, idl: bool = False, page: int = 1) -> str:
         """What the open session would change, per package (added, changed, removed), with warnings and new
-        integrity issues. `diagrams=true` adds the text form of each changed diagram; `idl=true` adds the IDL diff
-        (when the server has an eaidl config). Example: preview(diagrams=true)"""
-        return _preview_text(workspace, diagrams, idl)
+        integrity issues. `diagrams=true` adds the text form of each changed diagram (its first page; the
+        `… N more` line names the diagram call for the rest); `idl=true` adds the IDL diff (when the server has an
+        eaidl config). Paged (`page`). Example: preview(diagrams=true)"""
+        return _preview_text(workspace, diagrams, idl, page)
 
     @tool
-    def commit() -> str:
+    def commit(page: int = 1) -> str:
         """Write the open session's edits to the model file and close the session. Refused (with the reasons) when
         it would add integrity errors, leave the focus, or when the file changed since the session opened. Replies
-        with the change report, which is also saved in the output directory. Example: commit()"""
-        return package.commit_with_report(workspace)
+        with the change report, which is also saved in the output directory. The report is paged: `page` above 1
+        shows that page of the last commit's report and commits nothing. Example: commit()"""
+        if page > 1:
+            if not committed:
+                raise _Reply("error: no commit report yet; commit() first")
+            return _paged(committed[-1], page, False)
+        report = package.commit_with_report(workspace)
+        committed[:] = [report.rstrip("\n")]
+        return _paged(committed[-1], 1, False)
 
     @tool
     def export_changes(name: str, overwrite: bool = False) -> str:
         """Write the open session's edits as a change package (change file, report, changed diagrams, IDL diff,
         check results) to the directory `name` under the output directory, without touching the model; the session
-        stays open. `overwrite=true` replaces an existing package of that name. Replies with the directory and the
-        report. Example: export_changes(name="add-header-size")"""
+        stays open. `overwrite=true` replaces an existing package of that name. Replies with the directory and one
+        line per changed package (preview shows the details). Example: export_changes(name="add-header-size")"""
         target = package.export_changes(workspace, name, overwrite)
-        return f"wrote {target}\n\n" + (target / "report.md").read_text(encoding="utf-8")
+        return "\n".join([f"wrote {target}", *change_summary(workspace.require_session())])
 
     @tool
     def apply_changes(path: str) -> str:
@@ -456,6 +487,8 @@ def build_server(workspace: Workspace) -> MCPServer:
         lines = [f"ok: {len(session.log) - start} operations"]
         lines += [f"ok {r.guid}" for r in results if r.guid]
         lines += [f"warning {words(str(w))}" for r in results for w in r.warnings]
+        if workspace.stale():
+            lines.append(STALE)
         return "\n".join(lines)
 
     # --- checks ---
@@ -474,7 +507,7 @@ def build_server(workspace: Workspace) -> MCPServer:
             empty = "no integrity errors in the model"
         if not issues:
             return empty
-        return explore.page_lines([_issue_line(session.working, i, words) for i in issues], page, 40)
+        return explore.page_lines([_issue_line(session.working, i, words) for i in issues], page, PAGE_SIZE)
 
     @tool
     def idl_diff() -> str:

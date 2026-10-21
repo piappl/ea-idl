@@ -31,6 +31,16 @@ _LAYOUT = ("t_diagramobjects", "t_diagramlinks")
 #: Column -> friendly field name, per table (the reverse of ``FIELDS``); anything else is not shown.
 _FRIENDLY = {table: {column: name for name, column in fields.items()} for table, fields in FIELDS.items()}
 _FRIENDLY["t_operation"] = {"attr_name": "name", "attr_notes": "notes", "attr_type": "type"}
+#: Columns that point at another item, shown by its qualified name: a move, a reconnect, a new classifier.
+_REFERENCES = {
+    "t_object": {"attr_package_id": "package", "attr_parentid": "parent", "attr_classifier": "classifier"},
+    "t_package": {"attr_parent_id": "package"},
+    "t_attribute": {"attr_classifier": "classifier"},
+    "t_connector": {"attr_start_object_id": "source", "attr_end_object_id": "target"},
+    "t_diagram": {"attr_package_id": "package", "attr_parentid": "parent"},
+}
+#: Bookkeeping columns: an update changing only these is not a change of its own.
+_QUIET = {"attr_modifieddate", "attr_classifier_guid"}
 
 
 #: Order of items within a list: packages, elements, diagrams, attributes, operations, connectors, tags.
@@ -129,13 +139,27 @@ def _stereotypes(record: Record) -> str:
     return ", ".join(names) if names else "(none)"
 
 
-def _fields(table: str, changes: dict) -> list[str]:
+def _reference(rs: RecordSet, value: Any) -> str:
+    """The qualified name of the item a reference column points at; ``(none)`` when it is unset."""
+    if not isinstance(value, Ref) or rs.resolve(value) is None:
+        return "(none)"
+    try:
+        return qualified_name(rs, value)
+    except Exception:
+        return _name(rs, value)
+
+
+def _fields(table: str, changes: dict, original: RecordSet, working: RecordSet, twin: bool = False) -> list[str]:
     friendly = _FRIENDLY.get(table, {})
+    # A t_object twin of a package is shown through the package: its parent is the package's parent.
+    references = {"attr_package_id": "package"} if twin else _REFERENCES.get(table, {})
     lines = []
     for column, (old, new) in changes.items():
         # A t_object twin of a package is shown through the package: its columns follow t_object's names.
         name = friendly.get(column) or (_FRIENDLY["t_object"].get(column) if table == "t_package" else None)
-        if name is not None:
+        if column in references:
+            lines.append(f"{references[column]}: {_reference(original, old)} {_ARROW} {_reference(working, new)}")
+        elif name is not None:
             lines.append(f"{name}: {_text(old)} {_ARROW} {_text(new)}")
     return lines
 
@@ -165,13 +189,71 @@ def change_report(
 ) -> str:
     """The staged changes as Markdown. ``idl_files`` points at ``idl-<name>.diff`` instead of embedding each diff."""
     preview = session.preview(render=False)
+    sections = _sections(session, preview, diagrams_dir)
+    working, original = session.working, session.original
+    out = [f"# {title or TITLE}", ""]
+    if not sections:
+        out += ["No changes.", ""]
+    for name in sorted(sections, key=lambda n: (n == _REPOSITORY, n)):
+        section = sections[name]
+        out += [f"## {name}", ""]
+        for heading, items in (("Added", section.added), ("Changed", section.changed), ("Removed", section.removed)):
+            if items:
+                out += [f"### {heading}", ""]
+                out += [f"- {line}" if not line.startswith("  ") else line for line in _fold(items)]
+                out.append("")
+    if preview.warnings:
+        out += (
+            ["## Warnings", ""]
+            + [f"- {w.code}: {agent_words(w.message, working, original)}" for w in preview.warnings]
+            + [""]
+        )
+    if preview.new_issues:
+        out += ["## Integrity", ""]
+        out += [f"- {i.severity}: {agent_words(i.message, working, original)}" for i in preview.new_issues] + [""]
+    if idl_diffs:
+        out += ["## IDL", ""]
+        for name, diff in idl_diffs.items():
+            if idl_files:
+                out += [f"- {name}: see idl-{name}.diff", ""]
+                continue
+            fence = _fence(diff)
+            out += [f"### {name}", "", f"{fence}diff", diff.rstrip("\n"), fence, ""]
+    return "\n".join(out).rstrip("\n") + "\n"
+
+
+def change_summary(session) -> list[str]:
+    """One line per package of the staged changes (counts of added, changed, removed items), then warnings and new
+    integrity issues as counts."""
+    preview = session.preview(render=False)
+    sections = _sections(session, preview, None)
+    lines = []
+    for name in sorted(sections, key=lambda n: (n == _REPOSITORY, n)):
+        section = sections[name]
+        counts = [
+            f"{len({ident for _, _, ident in items})} {kind}"
+            for kind, items in (("added", section.added), ("changed", section.changed), ("removed", section.removed))
+            if items
+        ]
+        lines.append(f"{name}: {', '.join(counts)}")
+    if preview.warnings:
+        lines.append(f"{len(preview.warnings)} warning(s)")
+    if preview.new_issues:
+        lines.append(f"{len(preview.new_issues)} new integrity issue(s)")
+    return lines or ["no changes"]
+
+
+def _sections(session, preview, diagrams_dir: str | None) -> dict[str, _Section]:
+    """The staged changes per package (qualified name, or the repository) as added, changed and removed lines."""
     original, working = session.original, session.working
     sections: dict[str, _Section] = {}
 
     def add(rs: RecordSet, record: Record, kind: str, lines: list[str], package: Ref | None = None) -> None:
         owner = package if package is not None else rs.owner_package(Ref(record.table, record.key))
         name = qualified_name(rs, owner) if owner is not None else _REPOSITORY
-        item = (_RANK.get(record.table, 9), "\n".join(lines), (record.table, record.key))
+        # A package and its t_object twin are one item: their changes share one head line.
+        ident = ("t_package", package.key) if package is not None and _twin(record) else (record.table, record.key)
+        item = (_RANK.get(record.table, 9), "\n".join(lines), ident)
         getattr(sections.setdefault(name, _Section()), kind).append(item)
 
     def item_package(rs: RecordSet, record: Record) -> Ref | None:
@@ -257,7 +339,9 @@ def change_report(
         if record is None:
             continue
         if update.table in _ITEMS or (update.table == "t_object" and is_package_twin(record)):
-            lines = _fields(update.table, update.changes)
+            lines = _fields(update.table, update.changes, original, working, _twin(record))
+            if not lines and set(update.changes) - _QUIET:
+                other += 1
             if lines:
                 add(
                     working,
@@ -300,36 +384,7 @@ def change_report(
         sections.setdefault(_REPOSITORY, _Section()).changed.append(
             (9, f"{other} other change(s) to model data", ("other", 0))
         )
-
-    out = [f"# {title or TITLE}", ""]
-    if not sections:
-        out += ["No changes.", ""]
-    for name in sorted(sections, key=lambda n: (n == _REPOSITORY, n)):
-        section = sections[name]
-        out += [f"## {name}", ""]
-        for heading, items in (("Added", section.added), ("Changed", section.changed), ("Removed", section.removed)):
-            if items:
-                out += [f"### {heading}", ""]
-                out += [f"- {line}" if not line.startswith("  ") else line for line in _fold(items)]
-                out.append("")
-    if preview.warnings:
-        out += (
-            ["## Warnings", ""]
-            + [f"- {w.code}: {agent_words(w.message, working, original)}" for w in preview.warnings]
-            + [""]
-        )
-    if preview.new_issues:
-        out += ["## Integrity", ""]
-        out += [f"- {i.severity}: {agent_words(i.message, working, original)}" for i in preview.new_issues] + [""]
-    if idl_diffs:
-        out += ["## IDL", ""]
-        for name, diff in idl_diffs.items():
-            if idl_files:
-                out += [f"- {name}: see idl-{name}.diff", ""]
-                continue
-            fence = _fence(diff)
-            out += [f"### {name}", "", f"{fence}diff", diff.rstrip("\n"), fence, ""]
-    return "\n".join(out).rstrip("\n") + "\n"
+    return sections
 
 
 def _default_tags(session, changes, inserted: set) -> dict:

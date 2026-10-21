@@ -197,3 +197,36 @@ def test_commit_reports_even_when_report_file_cannot_be_written(qea_copy, nafv4_
     report = commit_with_report(ws)
     assert "PkgThing" in report and "could not be written" in report
     assert ws.session is None
+
+
+@pytest.mark.parametrize("name", ["working.yaml", "working.rejected.yaml", "reports", "REPORTS", ".hidden", "..x"])
+def test_export_refuses_reserved_names(qea_copy, nafv4_path, tmp_path, name):
+    _, ws = _workspace(qea_copy, nafv4_path, tmp_path)
+    _edit(ws)
+    saved = ws.working_file.read_text()
+    with pytest.raises(EaeditError, match="reserved"):
+        export_changes(ws, name)
+    assert ws.working_file.read_text() == saved and not (ws.config.out_dir / "reports").exists()
+
+
+def test_apply_keeps_the_change_files_author(qea_copy, nafv4_path, tmp_path):
+    _, ws1 = _workspace(qea_copy, nafv4_path, tmp_path, "src.qea", author="alice")
+    _edit(ws1)
+    package = export_changes(ws1, "pkg")
+    _, ws = _workspace(qea_copy, nafv4_path, tmp_path, "dst.qea", author="bob")
+    apply_changes(ws, package)
+    assert ws.session.get(f"{MSG}::PkgThing")["author"] == "alice"
+
+
+def test_check_text_is_in_agent_words(qea_copy, nafv4_path, tmp_path, monkeypatch):
+    from eacore.integrity import Issue
+    from eaedit import Session
+
+    _, ws = _workspace(qea_copy, nafv4_path, tmp_path)
+    _edit(ws)
+    guid = ws.session.get(f"{MSG}::PkgThing")["guid"]
+    key = ws.session.find(guid).key
+    message = f"t_object {key} has a bad attr_note"
+    monkeypatch.setattr(Session, "_new_issues", lambda self: [Issue("error", "rule-x", None, message)])
+    text = (export_changes(ws, "cp") / "check.txt").read_text()
+    assert "rule-x" in text and "t_object" not in text and "attr_" not in text

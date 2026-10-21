@@ -375,4 +375,5 @@ change package. See [MCP.md](./MCP.md).
 ## Package boundaries
 
 `eaedit` depends on `eacore`. It does not import `eaidl`, except `eaedit.diagrams.render`, which renders diagrams
-with eaidl's native diagram extractor and SVG renderer; `eaidl` does not import `eaedit`.
+with eaidl's native diagram extractor and SVG renderer, and `eaedit.mcp.idl`, which generates IDL with eaidl for the
+MCP server's IDL diffs; `eaidl` does not import `eaedit`.

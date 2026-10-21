@@ -8,7 +8,7 @@ from typing import Callable
 
 from eacore.catalogue import AmbiguousStereotype
 from eacore.records import Record, Ref
-from eaedit.errors import AmbiguousNameError
+from eaedit.errors import AmbiguousNameError, InvalidOperationError, NotFoundError
 from eaedit.ops.common import package_twin, stereotype_names
 from eaedit.ops.diagrams import shown_element
 from eaedit.resolve import find, guid_of, is_package_twin, qualified_name
@@ -41,13 +41,13 @@ def _clip(text: str, limit: int = MAX_LINE) -> str:
     return head[:room] + "…" + tail
 
 
-def page_lines(lines: list[str], page: int, page_size: int) -> str:
-    """One page of ``lines``; a truncated page ends with ``… N more (page=K)``."""
+def page_lines(lines: list[str], page: int, page_size: int, clip: bool = True) -> str:
+    """One page of ``lines``; a truncated page ends with ``… N more (page=K)``. ``clip`` cuts long lines."""
     page, page_size = max(page, 1), max(page_size, 1)
     start = (page - 1) * page_size
     if start >= len(lines) and lines:
         return f"no page {page}: {len(lines)} lines in all (page_size={page_size})"
-    out = [_clip(line) for line in lines[start : start + page_size]]
+    out = [_clip(line) if clip else line for line in lines[start : start + page_size]]
     left = len(lines) - start - len(out)
     if left > 0:
         out.append(f"… {left} more (page={page + 1})")
@@ -69,7 +69,25 @@ def _guid(record: Record) -> str:
 def _stereos(session, record: Record) -> list[str]:
     if record.table == "t_diagram":
         return []
+    if record.table == "t_package" and _package_object(session, record) is None:
+        return []
     return [name for name, _ in stereotype_names(session, record)]
+
+
+def _package_object(session, package: Record) -> Record | None:
+    """A package's element row; a package without one (the model root) has no stereotypes, tags or connectors."""
+    try:
+        return package_twin(session, package)
+    except NotFoundError:
+        return None
+
+
+def _element_key(session, record: Record):
+    """The ``t_object`` key standing for ``record`` (a package: its element row), None when there is none."""
+    if record.table != "t_package":
+        return record.key
+    twin = _package_object(session, record)
+    return twin.key if twin is not None else None
 
 
 def _type(record: Record) -> str:
@@ -184,7 +202,7 @@ def _matcher(text: str) -> Callable[[str], bool]:
         try:
             pattern = re.compile(text[1:-1], re.IGNORECASE)
         except re.error as exc:
-            raise _Reply(f"bad pattern {text}: {exc}") from exc
+            raise InvalidOperationError(f"bad pattern {text}: {exc}") from exc
         return lambda name: pattern.search(name) is not None
     needle = text.casefold()
     return lambda name: needle in name.casefold()
@@ -242,7 +260,9 @@ def _short(qualified: str) -> str:
 
 
 def _diagrams_showing(session, element: Record) -> list[str]:
-    target = package_twin(session, element).key if element.table == "t_package" else element.key
+    target = _element_key(session, element)
+    if target is None:
+        return []
     seen: dict[str, str] = {}
     for obj in session.working.records("t_diagramobjects"):
         shown = shown_element(session, obj)
@@ -254,7 +274,9 @@ def _diagrams_showing(session, element: Record) -> list[str]:
 
 def _connectors_of(session, element: Record) -> list[tuple[Record, bool]]:
     """Connectors touching ``element`` (a package: its twin), with True when the element is the source."""
-    key = package_twin(session, element).key if element.table == "t_package" else element.key
+    key = _element_key(session, element)
+    if key is None:
+        return []
     this = Ref("t_object", key)
     found = []
     for conn in session.working.records("t_connector"):
@@ -314,7 +336,10 @@ def describe(session, identifier: str, page: int = 1, page_size: int = 40) -> st
         from eaedit.mcp.diagram_text import diagram_text  # imported late: diagram_text builds on this module
 
         return diagram_text(session, _braced(record), page, page_size)
-    info = session.get(_braced(record))
+    if record.table == "t_package" and _package_object(session, record) is None:
+        info = {"notes": record.values.get("attr_notes")}
+    else:
+        info = session.get(_braced(record))
     lines += _common(session, info)
     if record.table == "t_attribute":
         lines.append(f"owner: {info['owner']}")
@@ -378,11 +403,12 @@ def usages(session, identifier: str, page: int = 1, page_size: int = 40) -> str:
     """Where an element (or package) is used: typed attributes, connectors, diagrams, specialisations."""
     rs = session.working
     record = _resolve(session, identifier, ("package", "element"))
-    this = Ref("t_object", package_twin(session, record).key if record.table == "t_package" else record.key)
+    key = _element_key(session, record)
+    this = Ref("t_object", key) if key is not None else None
     typed = sorted(
         _attribute_line(session, a, with_owner=True)
         for a in rs.records("t_attribute")
-        if a.values.get("attr_classifier") == this
+        if this is not None and a.values.get("attr_classifier") == this
     )
     links, children = [], []
     for conn, outgoing in _connectors_of(session, record):

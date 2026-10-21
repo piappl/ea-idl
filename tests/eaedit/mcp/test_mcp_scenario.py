@@ -1,6 +1,7 @@
 """A change proposal's worth of work, driven through the MCP client the way an agent would."""
 
 import asyncio
+import re
 
 import pytest
 
@@ -38,6 +39,18 @@ def _call(workspace, calls):
         return out
 
     return asyncio.run(go())
+
+
+def _all_pages(workspace, name, args):
+    """Every page of a paged reply, joined (each page's own `… N more (page=K)` line dropped)."""
+    pages, page = [], 1
+    while True:
+        (text,) = _call(workspace, [(name, {**args, "page": page})])
+        last = text.rsplit("\n", 1)[-1]
+        if not re.fullmatch(r"… \d+ more \(page=\d+\)", last):
+            return "\n".join(pages + [text])
+        pages.append(text.rsplit("\n", 1)[0])
+        page += 1
 
 
 def _edit(op, **args):
@@ -83,10 +96,9 @@ def test_change_proposal_scenario(qea_copy, nafv4_path, tmp_path):
     assert f"{MSG}::Message" in found_base and f"{MSG}::AbstractMessageHeader" in found_type
 
     before = file_hash(agent_path)
-    preview, status, exported = _call(
-        ws,
-        [("preview", {"diagrams": True, "idl": True}), ("session_status", {}), ("export_changes", {"name": "cp-demo"})],
-    )
+    preview = _all_pages(ws, "preview", {"diagrams": True, "idl": True})
+    status, exported = _call(ws, [("session_status", {}), ("export_changes", {"name": "cp-demo"})])
+    assert "cp-demo" in exported and f"{MSG}: " in exported
     assert "Scenario" in preview and "ScenarioP" in preview and "ScenarioView" in preview
     idl_part = preview.split("IDL diff", 1)[1]
     assert any(line.startswith("+") and "ScenarioP" in line for line in idl_part.splitlines()), idl_part

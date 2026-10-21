@@ -2,11 +2,14 @@
 
 The snapshot serves exploration. It is keyed by the file's SHA-256 (database plus ``-wal``, as eacore hashes it),
 so it reloads whenever EA, git or a commit changes the file. The editing session saves its whole operation log to
-``<out_dir>/working.yaml`` after every operation, so a restart can resume it with ``open_session(resume=True)``.
+``<out_dir>/working.yaml`` after every operation, with its focus (package GUIDs) and policy, so a restart can resume
+it with ``open_session(resume=True)``. A resume that stops at a failing operation keeps the full log beside it in
+``working.rejected.yaml``.
 """
 
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -15,10 +18,15 @@ import yaml
 from eacore.backends.sql import file_hash
 from eacore.changes import ChangeSet
 from eaedit import changefile
-from eaedit.errors import EaeditError
-from eaedit.session import OpResult, Session
+from eaedit.errors import EaeditError, InvalidOperationError
+from eaedit.resolve import guid_of
+from eaedit.session import LoggedOp, OpResult, Session
 
 WORKING_FILE = "working.yaml"
+#: The full log of a resume that stopped at a failing operation (working.yaml then holds the replayed prefix).
+REJECTED_FILE = "working.rejected.yaml"
+#: Longest shown call of a failing operation.
+_CALL_LIMIT = 300
 #: Why a stale session cannot commit, and the two ways on.
 STALE = "the model changed on disk: open_session(resume=True) replays your edits onto it, or discard()"
 
@@ -67,6 +75,10 @@ class Workspace:
         return self.config.out_dir / WORKING_FILE
 
     @property
+    def rejected_file(self) -> Path:
+        return self.config.out_dir / REJECTED_FILE
+
+    @property
     def session(self) -> Session | None:
         return self._session
 
@@ -94,11 +106,14 @@ class Workspace:
                 raise EaeditError("a session is already open; discard or commit first")
             # rebase: the working file already holds every operation, so close and replay it onto the new file
             self._close(keep_working_file=True)
-        focus = self.config.focus if focus is None else focus
-        policy = policy or self.config.policy
         saved = self.working_file.is_file()
-        if saved and not resume and self._saved_ops():
+        if saved and not resume and self.saved_ops():
             raise EaeditError("a saved session exists: open_session(resume=True) or discard() first")
+        # A resumed session keeps the focus and policy it was saved with, unless new ones are given.
+        stored = self._saved_header() if resume and saved else {}
+        if focus is None:
+            focus = stored["focus"] if isinstance(stored.get("focus"), list) else self.config.focus
+        policy = policy or stored.get("policy") or self.config.policy
         digest = file_hash(self.config.model)
         session = self._open(focus, policy)
         result = OpenResult("session opened")
@@ -113,20 +128,32 @@ class Workspace:
             self.save()
         return result
 
-    def _saved_ops(self) -> list:
+    def saved_ops(self) -> list:
+        """The operations in the working file; an unreadable file is an error that says to discard it."""
         try:
             return changefile.load(self.working_file)
-        except yaml.YAMLError as exc:
-            raise EaeditError(f"{self.working_file} is unreadable ({exc}); discard() it") from None
+        except (yaml.YAMLError, InvalidOperationError) as exc:
+            raise _unreadable(self.working_file, exc) from None
+
+    def _saved_header(self) -> dict:
+        try:
+            return changefile.header(self.working_file)
+        except (yaml.YAMLError, InvalidOperationError) as exc:
+            raise _unreadable(self.working_file, exc) from None
 
     def _resume(self, session: Session) -> OpenResult:
-        ops = self._saved_ops()
+        ops = self.saved_ops()
         for index, op in enumerate(ops, 1):
             try:
                 changefile.replay(session, [op])
             except Exception as exc:
-                # run() rolled the failing operation back; it and the later ones are dropped
-                msg = f"resumed {index - 1} of {len(ops)}; op {index} ({op.name}) failed: {exc}"
+                # run() rolled the failing operation back; the session keeps the prefix, the full log is kept aside
+                shutil.copyfile(self.working_file, self.rejected_file)
+                later = len(ops) - index
+                msg = (
+                    f"resumed {index - 1} of {len(ops)}; op {index} {_call(op)} failed: {exc}; "
+                    f"{later} later operation(s) not replayed; the full log is kept in {self.rejected_file}"
+                )
                 return OpenResult(msg, index - 1, len(ops))
         return OpenResult(f"resumed {len(ops)} of {len(ops)}", len(ops), len(ops))
 
@@ -136,8 +163,14 @@ class Workspace:
         return self._session
 
     def save(self) -> None:
+        session = self.require_session()
         self.config.out_dir.mkdir(parents=True, exist_ok=True)
-        changefile.save(self.require_session(), self.working_file)
+        focus = []
+        for ref in session.scope.focus:
+            record = session.original.resolve(ref) or session.working.resolve(ref)
+            if record is not None and guid_of(record):
+                focus.append(guid_of(record))
+        changefile.save(session, self.working_file, extra={"focus": focus, "policy": session.scope.policy})
 
     def run(self, op: str, args: dict) -> OpResult:
         result = self.require_session().run(op, **args)
@@ -170,3 +203,14 @@ class Workspace:
         changes = session.commit()
         self._close()
         return changes
+
+
+def _call(op: LoggedOp) -> str:
+    """``name(arg=value, ...)`` of a logged operation, cut to a readable length."""
+    text = f"{op.name}({', '.join(f'{k}={v!r}' for k, v in op.args.items())})"
+    return text if len(text) <= _CALL_LIMIT else text[: _CALL_LIMIT - 2] + "…)"
+
+
+def _unreadable(path: Path, exc: Exception) -> EaeditError:
+    reason = " ".join(str(exc).split())  # one line: YAML errors span several
+    return EaeditError(f"{path} is unreadable ({reason}); discard() it")

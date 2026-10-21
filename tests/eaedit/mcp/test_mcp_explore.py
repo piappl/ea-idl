@@ -1,5 +1,8 @@
 import re
 
+import pytest
+
+from eaedit.errors import InvalidOperationError
 from eaedit.mcp import explore
 from eaedit.mcp.workspace import Config, Workspace
 
@@ -146,7 +149,8 @@ def test_search_filters_and_errors(nafv4_path, tmp_path):
     assert f"{MSG}::MessageTypeEnum" in by_stereo and f"{MSG}::Message  " not in by_stereo
     in_p2 = explore.search(session, "", kind="element", package="Model::p2")
     assert in_p2 != "no matches" and all("Model::p2" in x for x in in_p2.splitlines())
-    assert explore.search(session, "/(/").startswith("bad pattern")
+    with pytest.raises(InvalidOperationError, match="bad pattern"):
+        explore.search(session, "/(/")
     assert explore.search(session, "x", kind="nope").startswith("unknown kind")
     assert explore.search(session, "e", kind="element", page=999).startswith("no page 999")
 
@@ -156,3 +160,16 @@ def test_missing_bounds_are_not_invented():
 
     assert explore._bounds(Record("t_attribute", 1, {})) == ""
     assert explore._bounds(Record("t_attribute", 1, {"attr_lowerbound": "0", "attr_upperbound": "*"})) == "[0..*]"
+
+
+def test_root_package_without_element_row(nafv4_path, tmp_path):
+    session = _snapshot(nafv4_path, tmp_path)
+    for text in (
+        explore.search(session, ""),
+        explore.search(session, "", kind="package"),
+        explore.search(session, "Model"),
+    ):
+        assert any(line.startswith("package  Model  ") for line in text.splitlines()), text
+    described = explore.describe(session, "Model")
+    assert described.startswith("package  Model  ") and "contents:" in described
+    assert explore.usages(session, "Model").startswith("package  Model  ")

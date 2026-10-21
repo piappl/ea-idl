@@ -16,21 +16,30 @@ from eaedit.diagrams.svg import export_svg
 from eaedit.errors import EaeditError
 from eaedit.mcp.idl import idl_diff
 from eaedit.mcp.report import change_report, diagram_file_stems
-from eaedit.mcp.workspace import OpenResult, Workspace
+from eaedit.mcp.words import agent_words
+from eaedit.mcp.workspace import REJECTED_FILE, WORKING_FILE, OpenResult, Workspace
 
 CHANGES_FILE = "changes.yaml"
+REPORTS_DIR = "reports"
+#: The server's own files in the output directory: no change package may take their place.
+_RESERVED = {WORKING_FILE, REJECTED_FILE, REPORTS_DIR}
 
 
 def _safe_name(name: str) -> str:
+    if name.strip().startswith(".") or name.strip().lower() in _RESERVED:
+        raise EaeditError(f"{name!r} is reserved for the server's own files; pick another name")
     safe = re.sub(r"[^A-Za-z0-9._-]", "_", name).strip(".")
     if not safe:
         raise EaeditError("give the change package a name")
+    if safe.lower() in _RESERVED:
+        raise EaeditError(f"{name!r} is reserved for the server's own files; pick another name")
     return safe
 
 
-def _check_text(preview) -> str:
-    lines = [f"{i.severity} {i.rule}: {i.message}" for i in preview.new_issues]
-    lines += [f"warning {w}" for w in preview.warnings]
+def _check_text(session, preview) -> str:
+    rs = (session.working, session.original)
+    lines = [f"{i.severity} {i.rule}: {agent_words(i.message, *rs)}" for i in preview.new_issues]
+    lines += [f"warning {agent_words(str(w), *rs)}" for w in preview.warnings]
     return "\n".join(lines) + "\n" if lines else "no new issues\n"
 
 
@@ -63,7 +72,7 @@ def export_changes(workspace: Workspace, name: str, overwrite: bool = False) -> 
     try:
         changefile.save(session, staging / CHANGES_FILE)
         (staging / "report.md").write_text(report, encoding="utf-8")
-        (staging / "check.txt").write_text(_check_text(preview), encoding="utf-8")
+        (staging / "check.txt").write_text(_check_text(session, preview), encoding="utf-8")
         if stems:
             (staging / "diagrams").mkdir()
             for guid, stem in stems.items():
@@ -89,11 +98,13 @@ def apply_changes(workspace: Workspace, path: Path) -> OpenResult:
     if not source.is_file():
         raise EaeditError(f"no change file at {source}")
     ops = changefile.load(source)
+    # Rows record the change file's author, as ``eaedit apply`` replays it.
+    author = changefile.header(source).get("author")
     workspace.open_session()  # refuses when a session is open or a saved one exists
     try:
         for index, op in enumerate(ops, 1):
             try:
-                changefile.replay(workspace.require_session(), [op])
+                changefile.replay(workspace.require_session(), [op], author=author)
             except Exception as exc:
                 raise EaeditError(f"op {index} ({op.name}) of {source.name} failed: {exc}") from None
         workspace.save()
@@ -109,7 +120,7 @@ def commit_with_report(workspace: Workspace) -> str:
     stamp = session.clock().strftime("%Y-%m-%dT%H-%M-%S")
     workspace.commit()
     try:
-        reports = workspace.config.out_dir / "reports"
+        reports = workspace.config.out_dir / REPORTS_DIR
         reports.mkdir(parents=True, exist_ok=True)
         (reports / f"{stamp}.md").write_text(report, encoding="utf-8")
     except OSError as exc:  # the model is already committed: hand the report back anyway

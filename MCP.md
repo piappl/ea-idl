@@ -35,7 +35,7 @@ ours: it may change, so check opencode's documentation. Paths in it are placehol
 | `--author` | `EAEDIT_MCP_AUTHOR` | Author written on new items. |
 | `--timezone` | `EAEDIT_MCP_TIMEZONE` | IANA timezone for timestamps. |
 | `--focus` (repeatable) | `EAEDIT_MCP_FOCUS` | Default focus of a session. |
-| `--policy` | `EAEDIT_MCP_POLICY` | Default focus policy: `package`, `connected` (default), `advisory`, `off`. |
+| `--policy` | `EAEDIT_MCP_POLICY` | Default focus policy, how changes outside the focus are treated: `package` (refused outside the focus), `connected` (default; also allows connectors and diagram changes reaching out of it), `advisory` (allowed, with a warning) or `off`. |
 | `--out` | `EAEDIT_MCP_OUT` | Output directory, default `eaedit-out` next to the model. |
 
 An option given on the command line wins over its environment variable. In the environment, list values are separated
@@ -61,9 +61,12 @@ Session:
 - `operations`: the edit operations with their parameters. `edit(op, args)` runs one.
 - `undo`: take back the last edit. `discard`: drop the session.
 - `preview`: what would change per package, warnings and new integrity issues; optionally changed diagrams as text
-  and the IDL diff.
-- `commit`: write the model and return the change report.
-- `export_changes`: write a change package, leaving the model alone.
+  (each diagram's first page; its `… N more` line names the `diagram(id=..., page=2)` call for the rest) and the IDL
+  diff. Paged like the lists.
+- `commit`: write the model and return the change report, paged: `commit(page=2)` shows the next page of the last
+  commit's report and commits nothing.
+- `export_changes`: write a change package, leaving the model alone. The reply names the directory and gives one line
+  per changed package with counts; `preview` shows the details.
 - `apply_changes`: replay a change package onto the model in a new session and preview it.
 
 Diagrams:
@@ -87,12 +90,14 @@ Nothing is written to the model except by `commit` and by the commit that follow
 - `idl.diff`: with one `--idl-config`; with several, `idl-<config name>.diff` per config.
 - `check.txt`: new integrity issues and catalogue warnings.
 
-A name that exists is refused unless `overwrite=true`. `commit` also saves its report as
+A name that exists is refused unless `overwrite=true`, and so are the names of the server's own files
+(`working.yaml`, `working.rejected.yaml`, `reports`) and names starting with `.`. `commit` also saves its report as
 `<out>/reports/<timestamp>.md`.
 
 `apply_changes(path)` takes the package directory (relative paths are under the output directory) or a change file.
-It is all or nothing: if one operation fails, no session is left open and the error names the operation. The package
-can be applied to a newer copy of the model; then `preview` and `commit`. Outside the server,
+It is all or nothing: if one operation fails, no session is left open and the error names the operation. New rows
+carry the change file's author, as with `eaedit apply`. The package can be applied to a newer copy of the model; then
+`preview` and `commit`. Outside the server,
 `eaedit apply MODEL.qea changes.yaml` does the same.
 
 ## When the model changes underneath
@@ -101,16 +106,26 @@ EA, a git checkout or the server's own commit may change the file while the agen
 (VM or container mounts) SQLite locking is not reliable, so the server compares the file's hash instead:
 
 - Explore tools reload their snapshot when the file changed.
-- An open session reports the change as stale in `session_status` and in every edit reply. `commit` refuses.
-  `open_session(resume=true)` replays the session's edits onto the new model (and stops with a message naming the
-  first operation that no longer applies), or `discard`.
+- An open session reports the change as stale in `session_status` and in every edit reply (`edit`, `undo`,
+  `import_svg`) and in `preview`. `commit` refuses. `open_session(resume=true)` replays the session's edits onto the
+  new model, keeping its focus and policy (see below), or `discard`.
 - Close the model in EA, or at least do not save in EA, while the agent commits.
 
 ## Working change file and resume
 
-Every edit saves the whole operation log to `<out>/working.yaml`, so a crash or restart loses nothing. While it holds
-operations, `open_session` without `resume=true` refuses: use `resume=true` to continue, or `discard` to drop it.
-`session_status` shows a saved session left by a restart. `commit` and `discard` remove the file.
+Every edit saves the whole operation log to `<out>/working.yaml`, with the session's focus and policy, so a crash or
+restart loses nothing. While it holds operations, `open_session` without `resume=true` refuses: use `resume=true` to
+continue, or `discard` to drop it. `session_status` shows a saved session left by a restart, or says the file is
+unreadable and should be discarded. `commit` and `discard` remove the file.
+
+`open_session(resume=true)` resumes when there is something to resume: a saved working file (after a restart), or an
+open session that is stale (the model changed on disk). With neither it opens a fresh session; with an open session
+that is not stale it refuses. The resumed session keeps the saved focus and policy unless `open_session` is given new
+ones.
+
+A resume replays the operations in order. If one no longer applies, it stops there: the session keeps the operations
+before it, the full original log is copied to `<out>/working.rejected.yaml`, and the reply names that file, the failing
+operation with its arguments, and how many operations followed it.
 
 ## IDL diff
 

@@ -6,7 +6,7 @@ import yaml
 
 from eacore.report import to_json
 from eaedit import InvalidOperationError, LoggedOp, Session
-from eaedit.changefile import load, replay, save
+from eaedit.changefile import header, load, replay, save
 
 FIXED = datetime(2026, 1, 2, 3, 4, 5)
 PKG = "Model::core::message::Gadgets"
@@ -222,3 +222,18 @@ def test_python_arguments_logged_as_plain_values(nafv4_path, qea_copy, tmp_path)
         assert len(session.log) == 1
     finally:
         OPERATIONS.pop("_test_plain_args", None)
+
+
+def test_extra_keys_are_kept_beside_the_log(nafv4_path, qea_copy, tmp_path):
+    session = Session.open(qea_copy(nafv4_path), author="tester", clock=lambda: FIXED)
+    session.create_element(package="Model::core::message", name="Thing1")
+    path = tmp_path / "changes.yaml"
+    save(session, path, extra={"focus": ["{X}"], "policy": "advisory"})
+    assert header(path) == {
+        "eaedit": 1,
+        "source": session.path.name,
+        "author": "tester",
+        "focus": ["{X}"],
+        "policy": "advisory",
+    }
+    assert [op.name for op in load(path)] == ["create_element"]

@@ -155,3 +155,53 @@ def test_integrity_and_warnings_sections(nafv4_path, qea_copy, monkeypatch):
     assert "- unknown-tag: 'madeup' is not a tag" in warnings
     assert "- unverified-default: no EA-verified defaults for diagram Class" in warnings
     assert "t_diagram" not in text
+
+
+def test_move_element_shows_package(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    session.move_element(HEADER, "Model::core::data")
+    text = change_report(session)
+    assert "MessageHeader (Class)\n  - package: Model::core::message → Model::core::data" in text
+    assert "No changes." not in text
+    _no_internals(text)
+
+
+def test_move_package_shows_parent_once(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    session.move_package(PACKAGE, "Model::core::data")
+    text = change_report(session)
+    assert text.count("- Package Model::core::data::message\n  - package: Model::core → Model::core::data\n") == 1
+    assert text.count("Package Model::core::data::message") == 1
+    _no_internals(text)
+
+
+def test_package_rename_is_listed_once(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    session.update_package(PACKAGE, name="msg")
+    assert change_report(session).count("- Package Model::core::msg\n") == 1
+
+
+def test_reconnect_shows_end(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    [link] = session.find_connectors(source=MESSAGE, target=HEADER)
+    session.reconnect(link["guid"], target=f"{PACKAGE}::GUID")
+    text = change_report(session)
+    assert f"  - target: {HEADER} → {PACKAGE}::GUID" in text
+    _no_internals(text)
+
+
+def test_set_classifier_shows_classifier(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    session.set_classifier(f"{MESSAGE}.header", f"{PACKAGE}::GUID")
+    text = change_report(session)
+    assert f"  - classifier: {HEADER} → {PACKAGE}::GUID" in text
+    assert "  - type: MessageHeader → GUID" in text
+    _no_internals(text)
+
+
+def test_unlisted_update_is_counted(nafv4_path, qea_copy):
+    session = _open(qea_copy(nafv4_path))
+    session.move_attribute(f"{MESSAGE}.header", 2)
+    text = change_report(session)
+    assert "No changes." not in text
+    assert re.search(r"- \d+ other change\(s\) to model data", text)

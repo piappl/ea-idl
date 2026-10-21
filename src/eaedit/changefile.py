@@ -18,11 +18,13 @@ VERSION = 1
 AT_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
-def save(session: Session, path: str | Path) -> None:
+def save(session: Session, path: str | Path, extra: dict | None = None) -> None:
+    """Write the session's log; ``extra`` adds top-level keys of the caller's own (readers ignore them)."""
     data = {
         "eaedit": VERSION,
         "source": session.path.name,
         "author": session.author,
+        **(extra or {}),
         "ops": [
             {"op": op.name, "at": timestamp(op.at), "args": dict(op.args), "created": list(op.created)}
             for op in session.log
@@ -36,12 +38,23 @@ def load(path: str | Path) -> list[LoggedOp]:
     return _read(path)[1]
 
 
-def _read(path: str | Path) -> tuple[str | None, list[LoggedOp]]:
+def header(path: str | Path) -> dict:
+    """The change file's top-level keys other than its operations (``author``, ``source``, any ``extra``)."""
+    data = _data(path)
+    return {key: value for key, value in data.items() if key != "ops"}
+
+
+def _data(path: str | Path) -> dict:
     with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
     if not isinstance(data, dict) or data.get("eaedit") != VERSION:
         found = data.get("eaedit") if isinstance(data, dict) else None
         raise InvalidOperationError(f"{path}: not an eaedit change file of version {VERSION} (found {found!r})")
+    return data
+
+
+def _read(path: str | Path) -> tuple[str | None, list[LoggedOp]]:
+    data = _data(path)
     ops = []
     for index, entry in enumerate(data.get("ops") or [], 1):
         try:

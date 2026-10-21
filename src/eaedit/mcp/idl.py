@@ -6,6 +6,7 @@ import difflib
 import logging
 import shutil
 import tempfile
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -41,11 +42,13 @@ class IdlDiff:
 
 def _generate(config: Configuration, path: Path) -> str:
     config = config.model_copy(update={"database_url": f"sqlite:///{path.as_posix()}"})
-    # eaidl logs progress and warnings; keep them out of the caller's output.
+    # eaidl logs progress and warnings, and SQLAlchemy warns about the EA schema; keep them out of the caller's output.
     previous = logging.root.manager.disable
     logging.disable(logging.CRITICAL)
     try:
-        return generate(config, ModelParser(config).load())
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return generate(config, ModelParser(config).load())
     finally:
         logging.disable(previous)
 
