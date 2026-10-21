@@ -137,21 +137,19 @@ def _argument_error(fn: Callable[..., str], exc: ValidationError) -> str:
 
 
 def _register(server: _Server, lock: threading.Lock, words: Callable[[str], str]) -> Callable:
-    """Register ``fn`` (returning text) as a tool whose failures come back as ``error:`` text, every reply in
-    agent words (``raw=True`` for replies that must reach the agent unchanged, such as an SVG file)."""
+    """Register ``fn`` (returning text) as a tool whose failures come back as ``error:`` text in agent words.
+    Replies are model data and stay as the tool wrote them; tools put their warnings in agent words themselves."""
 
-    def register(fn: Callable[..., str] | None = None, *, raw: bool = False) -> Callable:
-        if fn is None:
-            return functools.partial(register, raw=raw)
-
+    def register(fn: Callable[..., str]) -> Callable[..., str]:
         @functools.wraps(fn)
         def tool(*args, **kwargs) -> CallToolResult:
             with lock:
                 try:
-                    text = fn(*args, **kwargs)
-                    return _text(text if raw else words(text))
+                    return _text(fn(*args, **kwargs))
                 except Exception as exc:
-                    return _text(words(error_text(exc)), is_error=True)
+                    # A _Reply is finished text (it may list model names); eaedit and eacore messages get agent words.
+                    text = error_text(exc)
+                    return _text(text if isinstance(exc, _Reply) else words(text), is_error=True)
 
         # The SDK would validate a ``str`` return as structured output; a CallToolResult is passed through.
         tool.__signature__ = inspect.signature(fn).replace(return_annotation=CallToolResult)
@@ -193,14 +191,14 @@ def _unknown_op(name: str) -> _Reply:
     return _Reply(f"error: unknown operation {name!r}; {hint}")
 
 
-def _issue_line(rs, issue) -> str:
+def _issue_line(rs, issue, words: Callable[[str], str]) -> str:
     where = ""
     if issue.ref is not None:
         try:
             where = f" [{resolve.qualified_name(rs, issue.ref)}]"
         except Exception:  # some rows (diagram objects, links) have no qualified name
             where = ""
-    return f"{issue.severity} {issue.rule}: {issue.message}{where}"
+    return f"{issue.severity} {issue.rule}: {words(issue.message)}{where}"
 
 
 def _idl_texts(workspace: Workspace, session) -> list[str]:
@@ -327,7 +325,7 @@ def build_server(workspace: Workspace) -> MCPServer:
         lines = [f"session open; focus: {', '.join(names) or '(none)'}; policy: {session.scope.policy}"]
         ops = [op.name for op in session.log]
         lines.append(f"{len(ops)} operations" + (": " + ", ".join(ops) if ops else ""))
-        lines += [f"warning {w}" for w in session.warnings]
+        lines += [f"warning {words(str(w))}" for w in session.warnings]
         if workspace.stale():
             lines.append(STALE)
         return "\n".join(lines)
@@ -377,7 +375,7 @@ def build_server(workspace: Workspace) -> MCPServer:
                 raise
             raise _Reply(f"error: {op}: {_line(exc)}; parameters: {_signature(op)}") from None
         lines = [f"ok {result.guid}" if result.guid else "ok"]
-        lines += [f"warning {w}" for w in result.warnings]
+        lines += [f"warning {words(str(w))}" for w in result.warnings]
         if workspace.stale():
             lines.append(STALE)
         return "\n".join(lines)
@@ -438,7 +436,7 @@ def build_server(workspace: Workspace) -> MCPServer:
         edit operations (place, set_bounds, layout, ...). Paged (`page`). Example: diagram(id="Model::Logical::Overview")"""
         return diagram_text.diagram_text(view(), id, page)
 
-    @tool(raw=True)
+    @tool
     def diagram_svg(id: str) -> str:
         """A diagram (qualified name or GUID) as eaedit SVG: the full drawing, several thousand tokens even for a
         medium diagram. Edit it and hand it back with import_svg, or prefer the diagram tool to read.
@@ -457,7 +455,7 @@ def build_server(workspace: Workspace) -> MCPServer:
         workspace.save()
         lines = [f"ok: {len(session.log) - start} operations"]
         lines += [f"ok {r.guid}" for r in results if r.guid]
-        lines += [f"warning {w}" for r in results for w in r.warnings]
+        lines += [f"warning {words(str(w))}" for r in results for w in r.warnings]
         return "\n".join(lines)
 
     # --- checks ---
@@ -476,7 +474,7 @@ def build_server(workspace: Workspace) -> MCPServer:
             empty = "no integrity errors in the model"
         if not issues:
             return empty
-        return explore.page_lines([_issue_line(session.working, i) for i in issues], page, 40)
+        return explore.page_lines([_issue_line(session.working, i, words) for i in issues], page, 40)
 
     @tool
     def idl_diff() -> str:

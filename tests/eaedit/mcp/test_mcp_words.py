@@ -23,3 +23,11 @@ def test_unresolved_keys_keep_their_guids():
 
 def test_plain_text_is_unchanged():
     assert agent_words("first_name of Model::Thing", RecordSet()) == "first_name of Model::Thing"
+
+
+def test_quoted_input_and_qualified_names_are_kept():
+    rs = RecordSet()
+    text = "nothing matches 't_object'; note \"see attr_name\" on Model::attr_x::t_user (t_object)"
+    assert (
+        agent_words(text, rs) == "nothing matches 't_object'; note \"see attr_name\" on Model::attr_x::t_user (element)"
+    )

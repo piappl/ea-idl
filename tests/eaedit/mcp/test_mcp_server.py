@@ -431,3 +431,34 @@ def test_stale_session_resumes_onto_the_changed_file(qea_copy, nafv4_path, tmp_p
     assert "resumed 1 of 1" in resumed
     assert not ok_err and "Mine" in report
     assert f"{MSG}::Mine" in found and ws.snapshot().find(f"{MSG}::Theirs")
+
+
+def test_model_names_that_look_like_tables_stay_as_they_are(qea_copy, nafv4_path, tmp_path):
+    ws = _workspace(qea_copy, nafv4_path, tmp_path)
+    pkg, el = f"{CORE}::attr_x", f"{CORE}::attr_x::t_object"
+    note = "see t_package and attr_name"
+    results = _run(
+        ws,
+        [
+            ("open_session", {"focus": CORE, "policy": "off"}),
+            ("edit", {"op": "create_package", "args": {"parent": CORE, "name": "attr_x"}}),
+            ("edit", {"op": "create_element", "args": {"package": pkg, "name": "t_object", "notes": note}}),
+            ("edit", {"op": "add_attribute", "args": {"el": el, "name": "attr_name", "type": "t_user"}}),
+            ("edit", {"op": "create_diagram", "args": {"owner": pkg, "name": "t_diagram"}}),
+            ("edit", {"op": "place", "args": {"diagram": f"{pkg}::t_diagram", "element": el}}),
+            ("commit", {}),
+            ("search", {"text": "t_object"}),
+            ("describe", {"id": el}),
+            ("diagram", {"id": f"{pkg}::t_diagram"}),
+            ("describe", {"id": f"{pkg}::t_user"}),
+        ],
+    )
+    assert not any(err for err, _ in results[:7]), results
+    (_, found), (_, described), (_, drawn), (missing_err, missing) = results[7:]
+    assert el in found
+    assert el in described and note in described and "attr_name" in described and "t_user" in described
+    assert el in drawn or "t_object" in drawn
+    assert missing_err and f"'{pkg}::t_user'" in missing, missing
+    ws.open_session(focus=[CORE], policy="off")
+    ((edit_err, unknown),) = _run(ws, [("edit", {"op": "update_element", "args": {"el": "t_package", "name": "x"}})])
+    assert edit_err and "'t_package'" in unknown, unknown

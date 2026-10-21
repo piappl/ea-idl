@@ -50,8 +50,20 @@ _REF = re.compile(rf"\b(t_[a-z]+):({_GUID})")
 _PLACED = re.compile(
     rf"(?:\bt_diagram(?:objects|links) )?\(t_diagram:({_GUID}), (t_object:{_GUID}|t_connector:{_GUID}|\w+)\)"
 )
-_TABLE = re.compile(r"\bt_[a-z]+\b")
-_COLUMN = re.compile(r"\battr_([a-z0-9_]+)\b")
+#: One pass over a message, so names put in are never scanned again. At each position the first alternative that
+#: matches wins: raw keys, then text that is left alone (quoted input or model text, qualified names), then table
+#: names and column keys.
+_TOKEN = re.compile(
+    "|".join(
+        [
+            rf"(?P<placed>{_PLACED.pattern})",
+            rf"(?P<ref>{_REF.pattern})",
+            r"(?P<kept>'[^'\n]*'|\"[^\"\n]*\"|[\w.{}-]*(?:::[\w.{}-]+)+)",
+            r"(?P<table>\bt_[a-z]+\b)",
+            r"(?P<column>\battr_[a-z0-9_]+\b)",
+        ]
+    )
+)
 
 
 def _name(record_sets: tuple[RecordSet, ...], ref: Ref) -> str | None:
@@ -90,10 +102,25 @@ def _placed(record_sets: tuple[RecordSet, ...], match: re.Match) -> str:
 
 
 def agent_words(text: str, *record_sets: RecordSet) -> str:
-    """``text`` with raw keys as names (or GUIDs), table names as kinds and column keys as field names."""
+    """Message ``text`` with raw keys as names (or GUIDs), table names as kinds and column keys as field names.
+
+    Only for messages (errors, warnings, integrity issues): quoted text and qualified names stay as they are, but
+    other model data (a reply listing names) would be rewritten wherever it looks like a table or column.
+    """
     if "t_" not in text and "attr_" not in text:
         return text
-    text = _PLACED.sub(lambda m: _placed(record_sets, m), text)
-    text = _REF.sub(lambda m: _ref(record_sets, m.group(1), m.group(2)), text)
-    text = _TABLE.sub(lambda m: KINDS.get(m.group(0), "model data"), text)
-    return _COLUMN.sub(lambda m: _COLUMNS.get(m.group(0), m.group(1).replace("_", " ")), text)
+
+    def replace(match: re.Match) -> str:
+        token = match.group(0)
+        if match.group("placed") is not None:
+            return _placed(record_sets, _PLACED.fullmatch(token))
+        if match.group("ref") is not None:
+            ref = _REF.fullmatch(token)
+            return _ref(record_sets, ref.group(1), ref.group(2))
+        if match.group("table") is not None:
+            return KINDS.get(token, "model data")
+        if match.group("column") is not None:
+            return _COLUMNS.get(token, token.removeprefix("attr_").replace("_", " "))
+        return token
+
+    return _TOKEN.sub(replace, text)
