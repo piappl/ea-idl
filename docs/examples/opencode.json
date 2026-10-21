@@ -1,0 +1,19 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "eaedit": {
+      "type": "local",
+      "command": [
+        "docker", "run", "--rm", "-i",
+        "-v", "/path/to/models:/work",
+        "your-image-with-ea-idl-mcp",
+        "eaedit-mcp", "/work/model.qea",
+        "--catalogue", "/work/catalogue.yaml",
+        "--idl-config", "/work/idl.yaml",
+        "--author", "Agent",
+        "--out", "/work/eaedit-out"
+      ],
+      "enabled": true
+    }
+  }
+}

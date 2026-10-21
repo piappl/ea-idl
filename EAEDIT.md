@@ -367,6 +367,11 @@ Automated tests cannot prove EA accepts the result. Check once by hand:
    Properties window.
 6. Confirm that the connector between them appears in the Relationships window.
 
+## For agents
+
+`eaedit-mcp` serves a model to an agent over MCP: exploration, focused sessions, previews, commit or a reviewable
+change package. See [MCP.md](./MCP.md).
+
 ## Package boundaries
 
 `eaedit` depends on `eacore`. It does not import `eaidl`, except `eaedit.diagrams.render`, which renders diagrams
