@@ -105,7 +105,7 @@ class Workspace:
                 raise
         self._session, self._session_hash = session, digest
         if resume and saved:
-            self._save()
+            self.save()
         return result
 
     def _saved_ops(self) -> list:
@@ -125,23 +125,23 @@ class Workspace:
                 return OpenResult(msg, index - 1, len(ops))
         return OpenResult(f"resumed {len(ops)} of {len(ops)}", len(ops), len(ops))
 
-    def _require(self) -> Session:
+    def require_session(self) -> Session:
         if self._session is None:
             raise EaeditError("no session is open; call open_session first")
         return self._session
 
-    def _save(self) -> None:
+    def save(self) -> None:
         self.config.out_dir.mkdir(parents=True, exist_ok=True)
-        changefile.save(self._require(), self.working_file)
+        changefile.save(self.require_session(), self.working_file)
 
     def run(self, op: str, args: dict) -> OpResult:
-        result = self._require().run(op, **args)
-        self._save()
+        result = self.require_session().run(op, **args)
+        self.save()
         return result
 
     def undo(self) -> str:
-        undone = self._require().undo()
-        self._save()
+        undone = self.require_session().undo()
+        self.save()
         return undone.name
 
     def stale(self) -> bool:
@@ -158,7 +158,7 @@ class Workspace:
         self._close()
 
     def commit(self) -> ChangeSet:
-        session = self._require()
+        session = self.require_session()
         if self.stale():
             raise EaeditError("the model changed since the session opened; discard or open_session(resume=True)")
         changes = session.commit()

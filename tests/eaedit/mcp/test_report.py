@@ -69,6 +69,7 @@ def test_place_on_diagram_is_layout_changed(nafv4_path, qea_copy):
     text = change_report(session)
     assert "L7: diagram layout changed" in text
     _no_internals(text)
+    assert "![L7](<diagrams/L7.svg>)" in change_report(session, diagrams_dir="diagrams")
 
 
 def test_new_diagram_image_and_idl(nafv4_path, qea_copy):

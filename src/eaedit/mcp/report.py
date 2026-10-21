@@ -307,7 +307,10 @@ def change_report(
                 item_package(rs, owner),
             )
     for rs, diagram, _ in layout.values():
-        add(rs, diagram, "changed", [f"{_label(rs, diagram, plain=True)}: diagram layout changed"])
+        line = f"{_label(rs, diagram, plain=True)}: diagram layout changed"
+        if diagram.key in stems:
+            line += f"\n  ![{_text(diagram.values.get('attr_name'))}](<{diagrams_dir}/{stems[diagram.key]}.svg>)"
+        add(rs, diagram, "changed", [line])
     if other:
         sections.setdefault(_REPOSITORY, _Section()).changed.append(
             (9, f"{other} other change(s) to model data", ("other", 0))

@@ -1,4 +1,5 @@
 import pytest
+import yaml
 
 from eacore.backends.sql import file_hash, load_file
 from eacore.diff import diff
@@ -38,6 +39,7 @@ def test_export_writes_package_without_touching_model(qea_copy, nafv4_path, tmp_
         assert (target / name).is_file()
     assert (target / "diagrams" / "Pkg_Diagram.svg").read_text().lstrip().startswith(("<svg", "<?xml"))
     assert "diagrams/Pkg_Diagram.svg" in (target / "report.md").read_text()
+    assert "![Pkg/Diagram](<diagrams/Pkg_Diagram.svg>)" in (target / "report.md").read_text()
     assert "PkgThing" in (target / "report.md").read_text()
     assert ws.session is not None
     with pytest.raises(EaeditError):
@@ -124,3 +126,74 @@ def test_export_idl_diff_files(qea_copy, nafv4_path, tmp_path):
     target = export_changes(ws, "p")
     assert (target / "idl-one.diff").is_file() and (target / "idl-two.diff").is_file()
     assert "see idl-one.diff" in (target / "report.md").read_text()
+
+
+def test_apply_refuses_when_session_open_and_keeps_it(qea_copy, nafv4_path, tmp_path):
+    _, ws1 = _workspace(qea_copy, nafv4_path, tmp_path, "src.qea")
+    _edit(ws1)
+    package = export_changes(ws1, "pkg")
+    _, ws = _workspace(qea_copy, nafv4_path, tmp_path, "open.qea")
+    ws.open_session()
+    ws.run("create_element", {"package": MSG, "name": "Keep"})
+    session, saved = ws.session, ws.working_file.read_text()
+    with pytest.raises(EaeditError, match="already open"):
+        apply_changes(ws, package)
+    assert ws.session is session and ws.working_file.read_text() == saved
+
+
+def test_apply_failing_op_is_all_or_nothing(qea_copy, nafv4_path, tmp_path):
+    _, ws1 = _workspace(qea_copy, nafv4_path, tmp_path, "src.qea")
+    _edit(ws1)
+    package = export_changes(ws1, "pkg")
+    (package / "changes.yaml").write_text(_break_second((package / "changes.yaml").read_text()))
+    _, ws = _workspace(qea_copy, nafv4_path, tmp_path, "fail.qea")
+    with pytest.raises(EaeditError, match="op 2"):
+        apply_changes(ws, package)
+    assert ws.session is None and not ws.working_file.exists()
+
+
+def _break_second(text):
+    data = yaml.safe_load(text)
+    data["ops"][1]["args"]["owner"] = "Model::nowhere"
+    return yaml.safe_dump(data)
+
+
+def test_apply_refuses_with_saved_working_file(qea_copy, nafv4_path, tmp_path):
+    _, ws1 = _workspace(qea_copy, nafv4_path, tmp_path, "src.qea")
+    _edit(ws1)
+    package = export_changes(ws1, "pkg")
+    _, ws = _workspace(qea_copy, nafv4_path, tmp_path, "saved.qea")
+    ws.open_session()
+    ws.run("create_element", {"package": MSG, "name": "Keep"})
+    saved = ws.working_file.read_text()
+    ws.session.backend.close()
+    ws._session = None
+    with pytest.raises(EaeditError, match="saved session"):
+        apply_changes(ws, package)
+    assert ws.session is None and ws.working_file.read_text() == saved
+
+
+def test_export_keeps_old_package_when_it_fails(qea_copy, nafv4_path, tmp_path, monkeypatch):
+    _, ws = _workspace(qea_copy, nafv4_path, tmp_path)
+    ws.open_session()
+    target = export_changes(ws, "p")
+    (target / "marker").write_text("old")
+    import eaedit.mcp.package as package
+
+    def boom(*a, **k):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(package, "change_report", boom)
+    with pytest.raises(RuntimeError):
+        export_changes(ws, "p", overwrite=True)
+    assert (target / "marker").read_text() == "old"
+
+
+def test_commit_reports_even_when_report_file_cannot_be_written(qea_copy, nafv4_path, tmp_path):
+    _, ws = _workspace(qea_copy, nafv4_path, tmp_path)
+    _edit(ws)
+    ws.config.out_dir.mkdir(parents=True, exist_ok=True)
+    (ws.config.out_dir / "reports").write_text("in the way")
+    report = commit_with_report(ws)
+    assert "PkgThing" in report and "could not be written" in report
+    assert ws.session is None
