@@ -9,11 +9,14 @@ pytest.importorskip("mcp")
 
 from mcp.client import Client  # noqa: E402
 
-from eaedit.mcp.server import build_server, main, parse_config  # noqa: E402
+from eaedit.mcp.server import _FIELD_TABLES, build_server, main, parse_config  # noqa: E402
 from eaedit.mcp.workspace import Config, Workspace  # noqa: E402
 
 CORE = "Model::core"
 MSG = "Model::core::message"
+L7 = "Model::L7"
+#: What the agent must never read: table names, column keys, raw key tuples.
+LEAK = re.compile(r"\bt_[a-z]+|attr_|\(t_|, [0-9A-Fa-f]{8}\)")
 TOOLS = {
     "overview",
     "search",
@@ -177,7 +180,7 @@ def test_checks_and_diagrams(qea_copy, nafv4_path, tmp_path):
         ],
     )
     (_, check), (idl_err, idl_text), (_, diagrams) = results
-    assert check.startswith("no integrity errors") or "error" in check
+    assert check == "no integrity errors in the model"
     assert idl_err and "open_session" in idl_text
     guid = re.search(r"\{[0-9A-Fa-f-]+\}$", diagrams.splitlines()[0]).group(0)
     (_, text), (_, svg), (_, _), (imp_err, imported), (_, check2) = _run(
@@ -326,3 +329,105 @@ def test_eaedit_mcp_passes_through():
     assert result.exit_code == 0 and "EAEDIT_MCP_MODEL" in result.output
     result = CliRunner().invoke(cli, ["mcp"])
     assert result.exit_code == 2 and "MODEL" in result.output
+
+
+def test_sdk_argument_errors_and_unknown_tool(qea_copy, nafv4_path, tmp_path):
+    ws = _workspace(qea_copy, nafv4_path, tmp_path)
+    (m_err, missing), (t_err, typed), (u_err, unknown) = _run(
+        ws, [("describe", {}), ("overview", {"depth": "deep"}), ("descrbe", {"id": "x"})]
+    )
+    assert m_err and missing == "error: describe: id is required; parameters: describe(id, page=1)"
+    assert t_err and typed.startswith("error: overview: depth must be int; parameters: overview(")
+    assert u_err and unknown.startswith("error: unknown tool 'descrbe'; did you mean describe")
+
+
+def test_every_fields_operation_lists_its_fields(qea_copy, nafv4_path, tmp_path):
+    import inspect
+
+    from eaedit.ops import OPERATIONS, load_all
+
+    load_all()
+    with_fields = {
+        name
+        for name, fn in OPERATIONS.items()
+        if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in inspect.signature(fn).parameters.values())
+    }
+    assert with_fields <= set(_FIELD_TABLES)
+    ((_, text),) = _run(_workspace(qea_copy, nafv4_path, tmp_path), [("operations", {"name": "connect"})])
+    assert "fields: " in text and "source_role" in text
+
+
+def test_messages_use_agent_words(qea_copy, nafv4_path, tmp_path):
+    ws = _workspace(qea_copy, nafv4_path, tmp_path)
+    results = _run(
+        ws,
+        [
+            ("open_session", {"focus": MSG, "policy": "package"}),
+            ("edit", {"op": "create_element", "args": {"package": L7, "name": "Out"}}),
+            ("edit", {"op": "delete_element", "args": {"el": f"{L7}::Message"}}),
+            ("edit", {"op": "update_element", "args": {"el": f"{MSG}::Message", "bogus": 1}}),
+            ("discard", {}),
+            ("open_session", {"focus": MSG, "policy": "advisory"}),
+            ("edit", {"op": "create_element", "args": {"package": L7, "name": "Out"}}),
+            ("session_status", {}),
+            ("preview", {}),
+        ],
+    )
+    texts = [t for _, t in results]
+    scope_error, diagram_error, field_error = texts[1:4]
+    warned, status, preview = texts[6:9]
+    assert scope_error.startswith("error: insert element") and f"owned by {L7}" in scope_error
+    assert "on diagram" in diagram_error
+    assert "unknown field 'bogus' for element" in field_error
+    assert "warning scope: insert element" in warned and "warning scope" in status and "outside the focus" in preview
+    for text in texts:
+        assert not LEAK.search(text), text
+
+
+def test_integrity_messages_use_agent_words(qea_copy, nafv4_path, tmp_path):
+    from eacore.records import Record, Ref
+
+    ws = _workspace(qea_copy, nafv4_path, tmp_path)
+    ws.open_session(focus=[CORE], policy="off")
+    ws.run("create_element", {"package": MSG, "name": "Broken"})
+    session = ws.session
+    record = session.working.resolve(session.find(f"{MSG}::Broken", kinds=("element",)))
+    values = dict(record.values, attr_classifier=Ref("t_object", "{00000000-0000-0000-0000-000000000000}"))
+    session.working.remove(record.table, record.key)
+    session.working.add(Record(record.table, record.key, values, record.rid))
+    (_, check), (c_err, commit) = _run(ws, [("check", {}), ("commit", {})])
+    assert check.startswith("error dangling-reference: classifier -> missing element")
+    assert c_err and commit.startswith("error: commit refused") and "dangling-reference" in commit
+    assert not LEAK.search(check) and not LEAK.search(commit), (check, commit)
+
+
+def test_stale_session_resumes_onto_the_changed_file(qea_copy, nafv4_path, tmp_path):
+    import shutil
+
+    ws = _workspace(qea_copy, nafv4_path, tmp_path, focus=[CORE])
+    other = qea_copy(nafv4_path, "other.qea")
+    first = _run(
+        ws, [("open_session", {}), ("edit", {"op": "create_element", "args": {"package": MSG, "name": "Mine"}})]
+    )
+    assert not any(err for err, _ in first)
+    changed = Workspace(Config(other, focus=[CORE], out_dir=tmp_path / "o2"))
+    changed.open_session()
+    changed.run("create_element", {"package": MSG, "name": "Theirs"})
+    changed.commit()
+    shutil.copyfile(other, ws.config.model)
+    hint = "the model changed on disk: open_session(resume=True) replays your edits onto it, or discard()"
+    (_, status), (refused, refusal), (_, resumed), (ok_err, report), (_, found) = _run(
+        ws,
+        [
+            ("session_status", {}),
+            ("commit", {}),
+            ("open_session", {"resume": True}),
+            ("commit", {}),
+            ("search", {"text": "Mine"}),
+        ],
+    )
+    assert hint in status
+    assert refused and hint in refusal
+    assert "resumed 1 of 1" in resumed
+    assert not ok_err and "Mine" in report
+    assert f"{MSG}::Mine" in found and ws.snapshot().find(f"{MSG}::Theirs")

@@ -106,3 +106,26 @@ def test_corrupt_working_file_leaves_no_session(qea_copy, nafv4_path, tmp_path):
     with pytest.raises(EaeditError):
         ws.open_session(resume=True)
     assert ws.session is None
+
+
+def test_resume_on_stale_session_rebases_onto_the_new_file(qea_copy, nafv4_path, tmp_path):
+    path, config = _make(qea_copy, nafv4_path, tmp_path)
+    other = qea_copy(nafv4_path, "other.qea")
+    ws = Workspace(config)
+    ws.open_session()
+    _create(ws, "Mine")
+    changed = Workspace(Config(other, focus=[CORE], out_dir=tmp_path / "o2"))
+    changed.open_session()
+    changed.run("create_element", {"package": MSG, "name": "Theirs"})
+    changed.commit()
+    shutil.copyfile(other, path)
+    with pytest.raises(EaeditError, match=r"open_session\(resume=True\) replays your edits onto it, or discard\(\)"):
+        ws.commit()
+    with pytest.raises(EaeditError, match="already open"):
+        ws.open_session()  # without resume an open session still refuses
+    result = ws.open_session(resume=True)
+    assert (result.resumed, result.total) == (1, 1)
+    assert not ws.stale() and ws.working_file.is_file()
+    ws.commit()
+    snapshot = ws.snapshot()
+    assert snapshot.find(f"{MSG}::Mine") and snapshot.find(f"{MSG}::Theirs")

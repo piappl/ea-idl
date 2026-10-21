@@ -10,6 +10,7 @@ from eacore.catalogue import AmbiguousStereotype
 from eacore.embedded import parse_stereotypes
 from eacore.records import Record, RecordSet, Ref
 from eaedit.defaults import FIELDS
+from eaedit.mcp.words import agent_words
 from eaedit.ops.common import stereotype_names
 from eaedit.resolve import is_package_twin, qualified_name
 
@@ -148,22 +149,6 @@ def diagram_file_stem(name: str, used: set[str]) -> str:
         unique = f"{stem} ({count})"
     used.add(unique.lower())
     return unique
-
-
-_TABLE_WORDS = {
-    "t_object": "element",
-    "t_package": "package",
-    "t_attribute": "attribute",
-    "t_operation": "operation",
-    "t_connector": "connector",
-    "t_diagram": "diagram",
-    "t_xref": "stereotype list",
-}
-
-
-def _plain_words(text: str) -> str:
-    """Warning text for people: table names (which operations put in some messages) as plain words."""
-    return re.sub(r"\bt_[a-z]+\b", lambda m: _TABLE_WORDS.get(m.group(0), "model data"), text)
 
 
 def _fence(text: str) -> str:
@@ -328,10 +313,14 @@ def change_report(
                 out += [f"- {line}" if not line.startswith("  ") else line for line in _fold(items)]
                 out.append("")
     if preview.warnings:
-        out += ["## Warnings", ""] + [f"- {w.code}: {_plain_words(w.message)}" for w in preview.warnings] + [""]
+        out += (
+            ["## Warnings", ""]
+            + [f"- {w.code}: {agent_words(w.message, working, original)}" for w in preview.warnings]
+            + [""]
+        )
     if preview.new_issues:
         out += ["## Integrity", ""]
-        out += [f"- {i.severity}: {i.message}" for i in preview.new_issues] + [""]
+        out += [f"- {i.severity}: {agent_words(i.message, working, original)}" for i in preview.new_issues] + [""]
     if idl_diffs:
         out += ["## IDL", ""]
         for name, diff in idl_diffs.items():

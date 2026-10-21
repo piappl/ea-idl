@@ -16,7 +16,9 @@ from pathlib import Path
 from typing import Any
 
 import click
+from pydantic import ValidationError
 from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import CallToolResult, TextContent
 
 from eacore.backends.sql import ConcurrentModificationError, NotAnEaRepositoryError, RepositoryLockedError
@@ -27,7 +29,9 @@ from eaedit.defaults import FIELDS
 from eaedit.diagrams import svg as svg_io
 from eaedit.errors import AmbiguousNameError, CommitRefusedError, EaeditError, NotFoundError
 from eaedit.mcp import diagram_text, explore, idl, package
+from eaedit.mcp import workspace as workspace_module
 from eaedit.mcp.report import change_report
+from eaedit.mcp.words import agent_words
 from eaedit.mcp.workspace import Config, Workspace
 from eaedit.ops import OPERATIONS, load_all
 from eaedit.scope import POLICIES
@@ -46,6 +50,7 @@ _FIELD_TABLES = {
     "update_element": ("t_object",),
     "update_package": ("t_package", "t_object"),
     "update_attribute": ("t_attribute",),
+    "connect": ("t_connector",),
     "update_connector": ("t_connector",),
     "update_diagram": ("t_diagram",),
 }
@@ -59,10 +64,7 @@ _EXPECTED = (
     OSError,
 )
 
-STALE = (
-    "note: the model file changed since this session opened, so commit will refuse; export_changes, discard and "
-    "apply_changes it to carry the edits over"
-)
+STALE = f"note: commit will refuse, {workspace_module.STALE}"
 
 
 class _Reply(Exception):
@@ -94,22 +96,68 @@ def _text(text: str, is_error: bool = False) -> CallToolResult:
     return CallToolResult(content=[TextContent(type="text", text=text)], is_error=is_error)
 
 
-def _register(server: MCPServer, lock: threading.Lock) -> Callable:
-    """Register ``fn`` (returning text) as a tool whose failures come back as ``error:`` text."""
+class _Server(MCPServer):
+    """MCPServer whose own refusals (unknown tool, arguments that fail the schema) read like the tools' errors."""
 
-    def register(fn: Callable[..., str]) -> Callable[..., str]:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.tool_functions: dict[str, Callable[..., str]] = {}
+
+    async def call_tool(self, name: str, arguments: dict[str, Any], context: Any = None) -> Any:
+        fn = self.tool_functions.get(name)
+        if fn is None:
+            near = difflib.get_close_matches(name, self.tool_functions, n=3, cutoff=0.5)
+            return _text(f"error: unknown tool {name!r}" + (f"; did you mean {', '.join(near)}?" if near else ""), True)
+        try:
+            return await super().call_tool(name, arguments, context)
+        except ToolError as exc:
+            if not isinstance(exc.__cause__, ValidationError):
+                raise
+            return _text(_argument_error(fn, exc.__cause__), is_error=True)
+
+
+def _argument_error(fn: Callable[..., str], exc: ValidationError) -> str:
+    """``error: <tool>: <param> is required|must be <type>; parameters: <tool>(<params>)``."""
+    params = inspect.signature(fn).parameters
+    problems: dict[str, str] = {}
+    for err in exc.errors():
+        param = str(err["loc"][0]) if err["loc"] else ""
+        if param in problems:
+            continue
+        if err["type"] == "missing":
+            problems[param] = f"{param} is required"
+        elif param in params:
+            problems[param] = f"{param} must be {inspect.formatannotation(params[param].annotation)}"
+        else:
+            problems[param] = f"{param}: {err['msg']}"
+    shown = ", ".join(
+        p.name if p.default is inspect.Parameter.empty else f"{p.name}={p.default!r}" for p in params.values()
+    )
+    return f"error: {fn.__name__}: {'; '.join(problems.values())}; parameters: {fn.__name__}({shown})"
+
+
+def _register(server: _Server, lock: threading.Lock, words: Callable[[str], str]) -> Callable:
+    """Register ``fn`` (returning text) as a tool whose failures come back as ``error:`` text, every reply in
+    agent words (``raw=True`` for replies that must reach the agent unchanged, such as an SVG file)."""
+
+    def register(fn: Callable[..., str] | None = None, *, raw: bool = False) -> Callable:
+        if fn is None:
+            return functools.partial(register, raw=raw)
+
         @functools.wraps(fn)
         def tool(*args, **kwargs) -> CallToolResult:
             with lock:
                 try:
-                    return _text(fn(*args, **kwargs))
+                    text = fn(*args, **kwargs)
+                    return _text(text if raw else words(text))
                 except Exception as exc:
-                    return _text(error_text(exc), is_error=True)
+                    return _text(words(error_text(exc)), is_error=True)
 
         # The SDK would validate a ``str`` return as structured output; a CallToolResult is passed through.
         tool.__signature__ = inspect.signature(fn).replace(return_annotation=CallToolResult)
         tool.__annotations__ = {**fn.__annotations__, "return": CallToolResult}
         server.add_tool(tool, name=fn.__name__, description=inspect.cleandoc(fn.__doc__ or ""))
+        server.tool_functions[fn.__name__] = fn
         return fn
 
     return register
@@ -183,12 +231,19 @@ def _preview_text(workspace: Workspace, diagrams: bool = False, idl: bool = Fals
 
 def build_server(workspace: Workspace) -> MCPServer:
     load_all()
-    server = MCPServer("eaedit", instructions=INSTRUCTIONS)
-    tool = _register(server, threading.Lock())
+    server = _Server("eaedit", instructions=INSTRUCTIONS)
 
     def view():
         """The open session's working copy (staged changes visible), else the model file as it is."""
         return workspace.session or workspace.snapshot()
+
+    def words(text: str) -> str:
+        if "t_" not in text and "attr_" not in text:
+            return text
+        session = view()
+        return agent_words(text, session.working, session.original)
+
+    tool = _register(server, threading.Lock(), words)
 
     # --- explore ---
 
@@ -246,7 +301,8 @@ def build_server(workspace: Workspace) -> MCPServer:
         GUID; the server's default focus when omitted. `policy` says how changes outside the focus are treated:
         "package" (refused outside the focus), "connected" (also allows connectors and diagram changes reaching
         out of it), "advisory" (allowed, with a warning) or "off". Every edit is saved to a working file at once;
-        after a restart, `resume=true` replays it. Example: open_session(focus=["Model::Logical"])"""
+        after a restart, `resume=true` replays it, and when the model changed on disk under an open session,
+        `resume=true` replays its edits onto the new model. Example: open_session(focus=["Model::Logical"])"""
         result = workspace.open_session([focus] if isinstance(focus, str) else focus, policy, resume)
         session = workspace.require_session()
         names = [resolve.qualified_name(session.working, ref) for ref in session.scope.focus]
@@ -382,7 +438,7 @@ def build_server(workspace: Workspace) -> MCPServer:
         edit operations (place, set_bounds, layout, ...). Paged (`page`). Example: diagram(id="Model::Logical::Overview")"""
         return diagram_text.diagram_text(view(), id, page)
 
-    @tool
+    @tool(raw=True)
     def diagram_svg(id: str) -> str:
         """A diagram (qualified name or GUID) as eaedit SVG: the full drawing, several thousand tokens even for a
         medium diagram. Edit it and hand it back with import_svg, or prefer the diagram tool to read.

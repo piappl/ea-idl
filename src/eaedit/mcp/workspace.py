@@ -19,6 +19,8 @@ from eaedit.errors import EaeditError
 from eaedit.session import OpResult, Session
 
 WORKING_FILE = "working.yaml"
+#: Why a stale session cannot commit, and the two ways on.
+STALE = "the model changed on disk: open_session(resume=True) replays your edits onto it, or discard()"
 
 
 @dataclass
@@ -88,7 +90,10 @@ class Workspace:
         self, focus: list[str] | None = None, policy: str | None = None, resume: bool = False
     ) -> OpenResult:
         if self._session is not None:
-            raise EaeditError("a session is already open; discard or commit first")
+            if not (resume and self.stale()):
+                raise EaeditError("a session is already open; discard or commit first")
+            # rebase: the working file already holds every operation, so close and replay it onto the new file
+            self._close(keep_working_file=True)
         focus = self.config.focus if focus is None else focus
         policy = policy or self.config.policy
         saved = self.working_file.is_file()
@@ -148,11 +153,12 @@ class Workspace:
         """The model file differs from what it was when the session opened."""
         return self._session is not None and file_hash(self.config.model) != self._session_hash
 
-    def _close(self) -> None:
+    def _close(self, keep_working_file: bool = False) -> None:
         if self._session is not None:
             self._session.backend.close()
         self._session = self._session_hash = None
-        self.working_file.unlink(missing_ok=True)
+        if not keep_working_file:
+            self.working_file.unlink(missing_ok=True)
 
     def discard(self) -> None:
         self._close()
@@ -160,7 +166,7 @@ class Workspace:
     def commit(self) -> ChangeSet:
         session = self.require_session()
         if self.stale():
-            raise EaeditError("the model changed since the session opened; discard or open_session(resume=True)")
+            raise EaeditError(STALE)
         changes = session.commit()
         self._close()
         return changes
