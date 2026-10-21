@@ -209,3 +209,20 @@ def diagram_import(model, svg, owner, apply_, out, policy, focus, catalogues, au
             committed = session.commit()
             total = len(committed.inserts) + len(committed.updates) + len(committed.deletes)
             click.echo(f"committed {total} change(s) to {model}")
+
+
+@cli.command(
+    "mcp",
+    context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []},
+    add_help_option=False,
+)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def mcp(args) -> None:
+    """Serve a model to an agent over MCP (stdio): the same as eaedit-mcp ARGS (see eaedit mcp --help)."""
+    try:
+        from eaedit.mcp.server import main
+    except ModuleNotFoundError as exc:
+        if exc.name != "mcp" and not (exc.name or "").startswith("mcp."):
+            raise
+        raise click.ClickException("the MCP server needs the mcp extra: pip install 'eaidl[mcp]'") from None
+    main(list(args))
