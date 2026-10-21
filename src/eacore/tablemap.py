@@ -197,15 +197,19 @@ EA_TABLEMAP = TableMap(
                 RefRule("attr_pdata1", "t_diagram", encoding="text", when=has_ntype(8)),
                 GuidRefRule("attr_pdata1", ("t_object",), when=is_type("Part", "Object", "Port")),
                 # Plain values: Requirement Status; Note feature name; Boundary flags (seen in history).
-                LiteralRule("attr_pdata1", when=is_type("Requirement", "Note", "Boundary")),
+                LiteralRule("attr_pdata1", when=is_type("Requirement", "Note", "Boundary", "Issue")),
                 RefRule("attr_pdata2", "t_object", encoding="text", when=is_type("Note")),
-                LiteralRule("attr_pdata2", when=is_type("Requirement", "Boundary")),
+                # Class PDATA2 holds a short word in a real EA model (322 rows; e.g. "C++", "<none>").
+                LiteralRule("attr_pdata2", when=is_type("Requirement", "Boundary", "Class", "Issue")),
                 RefRule("attr_pdata3", "t_diagram", encoding="text", when=is_type("State")),
-                GuidRefRule("attr_pdata3", ("t_object",), when=is_type("Port")),
-                LiteralRule("attr_pdata3", when=is_type("Requirement", "Note")),
+                # A Part's PDATA3 names an element by GUID too (4 of 5 rows in a real EA model matched one).
+                GuidRefRule("attr_pdata3", ("t_object",), when=is_type("Port", "Part")),
+                LiteralRule("attr_pdata3", when=is_type("Requirement", "Note", "Issue")),
                 RefRule(
                     "attr_pdata4", "t_connector", encoding="pattern", pattern=r"idref\d*=(\d+);", when=is_type("Note")
                 ),
+                # Otherwise a Note's PDATA4 is a word (17 rows in a real EA model).
+                LiteralRule("attr_pdata4", when=is_type("Note")),
                 # Association class: IEA reference map, "For elements: If > 0 this is the primary key of
                 # the connector for which this element is defined as association class". Association
                 # classes are Classes; nafv4.qea and its history have no non-Note PDATA4 > 0, so any

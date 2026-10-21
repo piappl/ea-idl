@@ -160,3 +160,40 @@ def test_images_are_repository_data(tmp_path):
     with sqlite3.connect(path) as con:
         con.execute("insert into t_image (ImageID, Name, Type, Image) values (1, 'logo', 'Bitmap', x'00')")
     assert not [i for i in check(load_file(path)) if i.rule == "unmapped-table"]
+
+
+@pytest.mark.parametrize(
+    "object_type, column, value",
+    [
+        # Seen on a real EA model: short words, not references.
+        ("Class", "PDATA2", "C++"),
+        ("Class", "PDATA2", "<none>"),
+        ("Note", "PDATA4", "Element"),
+        ("Issue", "PDATA1", "Open"),
+        ("Issue", "PDATA2", "High"),
+        ("Issue", "PDATA3", "Minor"),
+    ],
+)
+def test_words_in_pdata_are_values(tmp_path, object_type, column, value):
+    path = _copy(tmp_path)
+    with sqlite3.connect(path) as con:
+        con.execute(
+            f"update t_object set Object_Type=?, {column}=? where Object_ID=(select min(Object_ID) from t_object"
+            " where Object_Type='Class')",
+            (object_type, value),
+        )
+    issues = [i for i in check(load_file(path)) if f"attr_{column.lower()}" in i.message]
+    assert issues == []
+
+
+def test_part_pdata3_references_an_element(tmp_path):
+    # Seen on a real EA model: a Part's PDATA3 holds an element GUID (4 of 5 rows matched existing elements).
+    path = _copy(tmp_path)
+    with sqlite3.connect(path) as con:
+        target = con.execute("select ea_guid from t_object where Object_Type='Class' limit 1").fetchone()[0]
+        part = con.execute("select min(Object_ID) from t_object where Object_Type='Part'").fetchone()[0]
+        con.execute("update t_object set PDATA3=? where Object_ID=?", (target, part))
+        other = con.execute("select max(Object_ID) from t_object where Object_Type='Part'").fetchone()[0]
+        con.execute("update t_object set PDATA3=? where Object_ID=?", ("{0000AAAA-0000-0000-0000-00000000000F}", other))
+    issues = [(i.severity, i.rule) for i in check(load_file(path)) if "attr_pdata3" in i.message]
+    assert issues == [("error", "dangling-reference")]  # only the missing one
