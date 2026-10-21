@@ -22,12 +22,23 @@ _TYPE_COLUMN = {
     "t_connector": "attr_connector_type",
     "t_diagram": "attr_diagram_type",
 }
+KINDS_TABLES = {"package": ("t_package",), "element": ("t_object",), "attribute": ("t_attribute",)}
+KINDS_TABLES.update({"connector": ("t_connector",), "diagram": ("t_diagram",)})
 MAX_LINE = 200
 
 
+_TAIL = re.compile(r"(\s+\{[^{}]*\})?(\s+\[\+\d+ packages\])?$")
+
+
 def _clip(text: str, limit: int = MAX_LINE) -> str:
+    """One line of at most ``limit`` characters; the name part is cut, a trailing ``{guid}`` or suffix kept."""
     text = text.replace("\r", " ").replace("\n", " ")
-    return text if len(text) <= limit else text[: limit - 1] + "…"
+    if len(text) <= limit:
+        return text
+    tail = _TAIL.search(text).group(0)
+    head = text[: len(text) - len(tail)]
+    room = max(limit - len(tail) - 1, 1)
+    return head[:room] + "…" + tail
 
 
 def page_lines(lines: list[str], page: int, page_size: int) -> str:
@@ -81,15 +92,31 @@ class _Reply(Exception):
     """A finished reply to return instead of continuing (the ambiguity listing)."""
 
 
+def _matches(rs, identifier: str, kinds) -> list[Record]:
+    """Every record ``identifier`` names, as ``resolve.find`` counts them (a package's object twin excluded)."""
+    wanted = identifier.strip()
+    by_guid = wanted.startswith("{") and wanted.endswith("}")
+    tables = sorted({t for kind in kinds for t in KINDS_TABLES[kind]})
+    found = []
+    for table in tables:
+        for rec in rs.records(table):
+            if "package" in kinds and is_package_twin(rec):
+                continue
+            if by_guid:
+                if (guid_of(rec) or "").upper() == wanted.upper():
+                    found.append(rec)
+            elif qualified_name(rs, _ref(rec)) == wanted:
+                found.append(rec)
+    return found
+
+
 def _resolve(session, identifier: str, kinds=KINDS) -> Record:
     rs = session.working
     try:
         return rs.resolve(find(rs, identifier, kinds=kinds))
     except AmbiguousNameError as exc:
-        lines = [f"ambiguous: {identifier}"]
-        for guid in exc.candidates:
-            record = rs.resolve(find(rs, guid, kinds=kinds)) if guid.startswith("{") else None
-            lines.append(_line(session, record) if record is not None else f"  {guid}")
+        # Candidates are re-found as records: the exception's strings may be internal keys, which never print.
+        lines = [f"ambiguous: {identifier}"] + [_line(session, r) for r in _matches(rs, identifier, kinds)]
         raise _Reply("\n".join(lines)) from exc
 
 
@@ -238,9 +265,17 @@ def _connectors_of(session, element: Record) -> list[tuple[Record, bool]]:
     return found
 
 
+def _connector_line(session, conn: Record, outgoing: bool) -> str:
+    qn, _ = _end(session, conn.values.get("attr_end_object_id" if outgoing else "attr_start_object_id"))
+    stereo = ", ".join(_stereos(session, conn))
+    kind = conn.values.get("attr_connector_type") or "?"
+    arrow = "->" if outgoing else "<-"
+    return f"  {kind}{f' «{stereo}»' if stereo else ''} {arrow} {_short(qn)} ({qn}) {_braced(conn)}"
+
+
 def _bounds(rec: Record) -> str:
     lo, up = rec.values.get("attr_lowerbound"), rec.values.get("attr_upperbound")
-    return f"[{lo or '1'}..{up or '1'}]"
+    return f"[{lo or '?'}..{up or '?'}]" if lo or up else ""
 
 
 def _attribute_line(session, rec: Record, with_owner: bool = False) -> str:
@@ -248,7 +283,7 @@ def _attribute_line(session, rec: Record, with_owner: bool = False) -> str:
     cls = session.working.resolve(classifier) if isinstance(classifier, Ref) else None
     default = rec.values.get("attr_default")
     name = _qname(session, rec) if with_owner else rec.values.get("attr_name")
-    text = f"  {name}: {rec.values.get('attr_type') or '?'} {_bounds(rec)}"
+    text = f"  {name}: {rec.values.get('attr_type') or '?'}" + (f" {_bounds(rec)}" if _bounds(rec) else "")
     return text + (f" = {default}" if default else "") + f"  {_braced(cls) if cls is not None else '-'}"
 
 
@@ -314,10 +349,7 @@ def _element_sections(session, record: Record) -> list[str]:
             if outgoing:
                 parents.append(f"  -> {qn} {guid}")
             continue
-        stereo = ", ".join(_stereos(session, conn))
-        kind = conn.values.get("attr_connector_type") or "?"
-        arrow = "->" if outgoing else "<-"
-        others.append(f"  {kind}{f' «{stereo}»' if stereo else ''} {arrow} {_short(qn)} ({qn}) {_braced(conn)}")
+        others.append(_connector_line(session, conn, outgoing))
     lines += ["generalizations:"] + sorted(parents) if parents else ["generalizations: none"]
     lines += ["connectors:"] + sorted(others) if others else ["connectors: none"]
     return lines
@@ -358,9 +390,7 @@ def usages(session, identifier: str, page: int = 1, page_size: int = 40) -> str:
         if kind == "Generalization" and not outgoing:
             children.append(f"  {qn} {guid}")
             continue
-        stereo = ", ".join(_stereos(session, conn))
-        arrow = "->" if outgoing else "<-"
-        links.append(f"  {kind}{f' «{stereo}»' if stereo else ''} {arrow} {_short(qn)} ({qn}) {_braced(conn)}")
+        links.append(_connector_line(session, conn, outgoing))
     shown = _diagrams_showing(session, record)
 
     def section(title: str, rows: list[str]) -> list[str]:

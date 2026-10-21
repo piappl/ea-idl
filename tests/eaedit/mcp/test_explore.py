@@ -112,3 +112,47 @@ def test_non_ascii_name(qea_copy, nafv4_path, tmp_path):
     snap = ws.snapshot()
     assert f"{MSG}::Zażółć_gęślą" in explore.search(snap, "gęślą")
     assert "Zażółć_gęślą" in explore.describe(snap, f"{MSG}::Zażółć_gęślą")
+
+
+def test_ambiguity_lists_no_bare_keys(qea_copy, nafv4_path, tmp_path):
+    from eacore.records import Record
+
+    assert explore._braced(Record("t_object", 7, {"attr_name": "x"})) == "-"
+    path = qea_copy(nafv4_path)
+    ws = Workspace(Config(path, out_dir=tmp_path / "out"))
+    ws.open_session(focus=[MSG])
+    ws.run("create_package", {"parent": MSG, "name": "Dup"})
+    ws.run("create_element", {"package": MSG, "name": "Dup"})
+    ws.commit()
+    text = explore.usages(ws.snapshot(), f"{MSG}::Dup")
+    assert text.startswith("ambiguous:") and all(re.search(r"\{[0-9A-Fa-f-]+\}$", x) for x in text.splitlines()[1:])
+
+
+def test_long_names_keep_the_guid(nafv4_path, tmp_path):
+    out = explore.page_lines([f"element  {'N' * 300}  Class  {{ABC-1}}", "x" * 300 + "  [+3 packages]"], 1, 5)
+    first, second = out.splitlines()
+    assert len(first) <= 200 and first.endswith("…  {ABC-1}") and "…" in first
+    assert len(second) <= 200 and second.endswith("[+3 packages]")
+
+
+def test_stereotype_info_has_real_tag(nafv4_path, tmp_path):
+    text = explore.stereotype_info(_snapshot(nafv4_path, tmp_path), "DataElement")
+    assert "  min_items: - default=16" in text
+
+
+def test_search_filters_and_errors(nafv4_path, tmp_path):
+    session = _snapshot(nafv4_path, tmp_path)
+    by_stereo = explore.search(session, "", kind="element", stereotype="idlEnum")
+    assert f"{MSG}::MessageTypeEnum" in by_stereo and f"{MSG}::Message  " not in by_stereo
+    in_p2 = explore.search(session, "", kind="element", package="Model::p2")
+    assert in_p2 != "no matches" and all("Model::p2" in x for x in in_p2.splitlines())
+    assert explore.search(session, "/(/").startswith("bad pattern")
+    assert explore.search(session, "x", kind="nope").startswith("unknown kind")
+    assert explore.search(session, "e", kind="element", page=999).startswith("no page 999")
+
+
+def test_missing_bounds_are_not_invented():
+    from eacore.records import Record
+
+    assert explore._bounds(Record("t_attribute", 1, {})) == ""
+    assert explore._bounds(Record("t_attribute", 1, {"attr_lowerbound": "0", "attr_upperbound": "*"})) == "[0..*]"
