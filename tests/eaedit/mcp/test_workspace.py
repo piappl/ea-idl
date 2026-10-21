@@ -82,3 +82,27 @@ def test_resume_replays_and_stops_at_failing_op(qea_copy, nafv4_path, tmp_path):
     _create(ws2, "D")
     assert len(ws2.session.log) == 2
     assert len(yaml.safe_load(ws2.working_file.read_text())["ops"]) == 2
+
+
+def test_open_without_resume_refuses_saved_session(qea_copy, nafv4_path, tmp_path):
+    _, config = _make(qea_copy, nafv4_path, tmp_path)
+    ws = Workspace(config)
+    ws.open_session()
+    _create(ws, "A")
+    again = Workspace(config)  # a restart: the working file holds an operation
+    with pytest.raises(EaeditError, match="resume=True"):
+        again.open_session()
+    assert again.session is None and len(yaml.safe_load(again.working_file.read_text())["ops"]) == 1
+    again.discard()
+    assert not again.working_file.exists()
+    again.open_session()
+
+
+def test_corrupt_working_file_leaves_no_session(qea_copy, nafv4_path, tmp_path):
+    _, config = _make(qea_copy, nafv4_path, tmp_path)
+    config.out_dir.mkdir()
+    (config.out_dir / "working.yaml").write_text("not: [an eaedit file")
+    ws = Workspace(config)
+    with pytest.raises(EaeditError):
+        ws.open_session(resume=True)
+    assert ws.session is None

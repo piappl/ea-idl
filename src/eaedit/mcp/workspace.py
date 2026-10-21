@@ -10,7 +10,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from eacore.backends.sql import SqlBackend
+import yaml
+
+from eacore.backends.sql import file_hash
+from eacore.changes import ChangeSet
 from eaedit import changefile
 from eaedit.errors import EaeditError
 from eaedit.session import OpResult, Session
@@ -47,17 +50,6 @@ class OpenResult:
     message: str
     resumed: int = 0
     total: int = 0
-
-
-def file_hash(path: Path) -> str:
-    """eacore's hash of the model file (including its ``-wal``)."""
-    backend = SqlBackend.for_file(path)
-    try:
-        digest = backend._file_hash()
-    finally:
-        backend.close()
-    assert digest is not None
-    return digest
 
 
 class Workspace:
@@ -99,18 +91,31 @@ class Workspace:
             raise EaeditError("a session is already open; discard or commit first")
         focus = self.config.focus if focus is None else focus
         policy = policy or self.config.policy
+        saved = self.working_file.is_file()
+        if saved and not resume and self._saved_ops():
+            raise EaeditError("a saved session exists: open_session(resume=True) or discard() first")
         digest = file_hash(self.config.model)
         session = self._open(focus, policy)
         result = OpenResult("session opened")
-        if resume and self.working_file.is_file():
-            result = self._resume(session)
+        if resume and saved:
+            try:
+                result = self._resume(session)
+            except BaseException:
+                session.backend.close()
+                raise
         self._session, self._session_hash = session, digest
-        if session.log or self.working_file.is_file():
+        if resume and saved:
             self._save()
         return result
 
+    def _saved_ops(self) -> list:
+        try:
+            return changefile.load(self.working_file)
+        except yaml.YAMLError as exc:
+            raise EaeditError(f"{self.working_file} is unreadable ({exc}); discard() it") from None
+
     def _resume(self, session: Session) -> OpenResult:
-        ops = changefile.load(self.working_file)
+        ops = self._saved_ops()
         for index, op in enumerate(ops, 1):
             try:
                 changefile.replay(session, [op])
@@ -152,7 +157,7 @@ class Workspace:
     def discard(self) -> None:
         self._close()
 
-    def commit(self):
+    def commit(self) -> ChangeSet:
         session = self._require()
         if self.stale():
             raise EaeditError("the model changed since the session opened; discard or open_session(resume=True)")

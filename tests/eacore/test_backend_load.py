@@ -76,3 +76,21 @@ def test_columns_lists_column_keys(nafv4_path):
     columns = backend.columns("t_object")
     assert "attr_name" in columns
     assert "attr_object_id" not in columns
+
+
+def test_file_hash_covers_wal_and_matches_backend(tmp_path):
+    import shutil
+    from pathlib import Path
+
+    from eacore.backends.sql import SqlBackend, file_hash
+
+    path = tmp_path / "m.qea"
+    shutil.copyfile(Path(__file__).resolve().parents[1] / "data" / "empty.qea", path)
+    before = file_hash(path)
+    backend = SqlBackend.for_file(path)
+    assert backend._file_hash() == before
+    backend.close()
+    path.with_name("m.qea-wal").write_bytes(b"x")
+    assert file_hash(path) != before
+    path.with_name("m.qea-wal").write_bytes(b"")
+    assert file_hash(path) == before

@@ -58,6 +58,21 @@ def _write_engine(url: str) -> sa.Engine:
     return engine
 
 
+def file_hash(path: str | Path) -> str:
+    """Hash of a database file plus its ``-wal`` file, so commits still in the WAL count too.
+
+    An empty ``-wal`` hashes like a missing one: SQLite creates it empty when it opens a WAL-mode file.
+    """
+    path = Path(path)
+    digest = hashlib.sha256(path.read_bytes())
+    wal = path.with_name(path.name + "-wal")
+    wal_bytes = wal.read_bytes() if wal.is_file() else b""
+    if wal_bytes:
+        digest.update(b"\0-wal\0")
+        digest.update(wal_bytes)
+    return digest.hexdigest()
+
+
 class SqlBackend:
     def __init__(self, url: str, tablemap: TableMap = EA_TABLEMAP) -> None:
         self.url = url
@@ -87,19 +102,7 @@ class SqlBackend:
         return Path(self._sa_url.database)
 
     def _file_hash(self) -> str | None:
-        """Hash of the database file plus its ``-wal`` file, so commits still in the WAL count too.
-
-        An empty ``-wal`` hashes like a missing one: SQLite creates it empty when it opens a WAL-mode file.
-        """
-        if not self.path:
-            return None
-        digest = hashlib.sha256(self.path.read_bytes())
-        wal = self.path.with_name(self.path.name + "-wal")
-        wal_bytes = wal.read_bytes() if wal.is_file() else b""
-        if wal_bytes:
-            digest.update(b"\0-wal\0")
-            digest.update(wal_bytes)
-        return digest.hexdigest()
+        return file_hash(self.path) if self.path else None
 
     def _reflect(self) -> None:
         metadata = sa.MetaData()
