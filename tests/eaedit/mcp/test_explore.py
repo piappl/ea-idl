@@ -1,0 +1,114 @@
+import re
+
+from eaedit.mcp import explore
+from eaedit.mcp.workspace import Config, Workspace
+
+MSG = "Model::core::message"
+
+
+def _snapshot(path, tmp_path):
+    return Workspace(Config(path, out_dir=tmp_path / "out")).snapshot()
+
+
+def test_overview_lists_children_with_counts(nafv4_path, tmp_path):
+    text = explore.overview(_snapshot(nafv4_path, tmp_path), "Model")
+    first, *rest = text.splitlines()
+    assert first.startswith("Model")
+    names = {line.strip().split("  ")[0] for line in rest}
+    assert {"core", "L7", "p2", "p6"} <= names
+    assert re.search(r"\(\d+ elements: .*\)  \{[0-9A-Fa-f-]+\}", text)
+    # depth 1 shows only the package itself
+    assert len(explore.overview(_snapshot(nafv4_path, tmp_path), "Model", depth=1).splitlines()) == 1
+
+
+def test_search_finds_message_with_guid_and_short_lines(nafv4_path, tmp_path):
+    session = _snapshot(nafv4_path, tmp_path)
+    text = explore.search(session, "Message", kind="element")
+    line = next(x for x in text.splitlines() if x.split("  ")[1] == f"{MSG}::Message")
+    assert re.search(r"\{[0-9A-Fa-f-]+\}$", line)
+    assert line.startswith("element  ")
+    assert all(len(x) <= 200 for x in text.splitlines())
+    assert explore.search(session, "/^message$/", kind="element").count(f"{MSG}::Message") == 1
+    assert explore.search(session, "message", kind="package").startswith("package  ")
+
+
+def test_paging(nafv4_path, tmp_path):
+    session = _snapshot(nafv4_path, tmp_path)
+    one = explore.search(session, "e", kind="element", page_size=2).splitlines()
+    assert len(one) == 3 and re.fullmatch(r"… \d+ more \(page=2\)", one[-1])
+    two = explore.search(session, "e", kind="element", page=2, page_size=2).splitlines()
+    assert two[0] != one[0] and two[0] != one[1]
+    assert explore.page_lines(["a", "b", "c"], 2, 2) == "c"
+    assert explore.page_lines(["a", "b", "c"], 1, 2) == "a\nb\n… 1 more (page=2)"
+
+
+def test_describe_element(nafv4_path, tmp_path):
+    session = _snapshot(nafv4_path, tmp_path)
+    text = explore.describe(session, f"{MSG}::Message")
+    assert f"{MSG}::Message" in text.splitlines()[0]
+    assert re.search(r"header: MessageHeader .*\{[0-9A-Fa-f-]+\}", text)
+    assert "diagrams:" in text
+    assert all(len(x) <= 200 for x in text.splitlines())
+    # by GUID too
+    guid = re.search(r"\{[0-9A-Fa-f-]+\}", text.splitlines()[0]).group(0)
+    assert explore.describe(session, guid) == text
+
+
+def test_describe_package_and_attribute(nafv4_path, tmp_path):
+    session = _snapshot(nafv4_path, tmp_path)
+    pkg = explore.describe(session, MSG)
+    assert "contents:" in pkg and f"{MSG}::Message" in pkg
+    attr = explore.describe(session, f"{MSG}::Message.header")
+    assert "MessageHeader" in attr and "attribute" in attr.splitlines()[0]
+
+
+def test_describe_connector_and_diagram(nafv4_path, tmp_path):
+    session = _snapshot(nafv4_path, tmp_path)
+    conn = session.find_connectors(type="Generalization")[0]
+    text = explore.describe(session, conn["guid"])
+    assert "source:" in text and "target:" in text
+    rs = session.working
+    diagram = next(iter(rs.records("t_diagram")))
+    from eaedit.resolve import guid_of
+
+    text = explore.describe(session, guid_of(diagram))
+    assert text.splitlines()[0].startswith("diagram")
+    assert "use the diagram tool for its contents" in text
+
+
+def test_usages(nafv4_path, tmp_path):
+    session = _snapshot(nafv4_path, tmp_path)
+    text = explore.usages(session, f"{MSG}::MessageHeader")
+    assert f"{MSG}::Message.header" in text
+    assert "attributes typed by it:" in text
+
+
+def test_stereotype_info(nafv4_path, tmp_path):
+    text = explore.stereotype_info(_snapshot(nafv4_path, tmp_path), "DataElement")
+    assert "applies to:" in text and "tags:" in text
+    assert explore.stereotype_info(_snapshot(nafv4_path, tmp_path), "NoSuchThing").startswith("no stereotype")
+
+
+def test_ambiguity_reply(qea_copy, nafv4_path, tmp_path):
+    path = qea_copy(nafv4_path)
+    ws = Workspace(Config(path, out_dir=tmp_path / "out"))
+    ws.open_session(focus=[MSG])
+    ws.run("create_package", {"parent": MSG, "name": "Dup"})
+    ws.run("create_element", {"package": MSG, "name": "Dup"})
+    ws.commit()
+    text = explore.describe(ws.snapshot(), f"{MSG}::Dup")
+    lines = text.splitlines()
+    assert lines[0] == f"ambiguous: {MSG}::Dup"
+    assert len(lines) == 3 and all(re.search(r"\{[0-9A-Fa-f-]+\}$", x) for x in lines[1:])
+    assert {x.split("  ")[0] for x in lines[1:]} == {"package", "element"}
+
+
+def test_non_ascii_name(qea_copy, nafv4_path, tmp_path):
+    path = qea_copy(nafv4_path)
+    ws = Workspace(Config(path, out_dir=tmp_path / "out"))
+    ws.open_session(focus=[MSG])
+    ws.run("create_element", {"package": MSG, "name": "Zażółć_gęślą"})
+    ws.commit()
+    snap = ws.snapshot()
+    assert f"{MSG}::Zażółć_gęślą" in explore.search(snap, "gęślą")
+    assert "Zażółć_gęślą" in explore.describe(snap, f"{MSG}::Zażółć_gęślą")
