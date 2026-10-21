@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from eacore.backends.sql import SqlBackend
-from eacore.changes import Delete, Insert
+from eacore.changes import Delete, Insert, Update
 from eacore.records import RecordSet, Ref
 from eaedit import resolve
 from eaidl.config import Configuration
@@ -29,7 +29,7 @@ class IdlDiff:
     def text(self) -> str:
         parts = []
         if self.error:
-            parts.append(f"IDL generation failed: {self.error}")
+            parts.append(f"IDL diff unavailable: {self.error}")
         elif self.diff:
             parts.append(self.diff.rstrip("\n"))
         else:
@@ -87,9 +87,10 @@ def _outside_roots(session, changes, roots: list[str]) -> list[str]:
         else:
             rs, table, key = session.working, change.table, change.key
         row = rs.get(table, key)
-        if table == "t_object" and row is not None and row.values.get("attr_object_type") == "Package":
-            continue  # a package's element row: its t_package row says the same, and it sits in the parent
-        package = rs.owner_package(Ref(table, key))
+        twin = resolve.twin_package(row) if row is not None else None
+        if twin is not None and not isinstance(change, Update):
+            continue  # a child package added or removed touches its twin row, which sits in the parent
+        package = Ref("t_package", twin) if twin is not None else rs.owner_package(Ref(table, key))
         if package is None:
             repository_wide = True
         elif not _under(rs, package, keys):

@@ -64,13 +64,13 @@ def test_broken_generation_is_reported_not_raised(nafv4_path, qea_copy, config):
     result = idl_diff(session, config)
     assert result.error and result.diff == ""
     assert "\n" not in result.error
-    assert "IDL generation failed" in result.text()
+    assert "IDL diff unavailable" in result.text()
 
 
 def test_missing_config_is_text(nafv4_path, qea_copy, tmp_path):
     result = idl_diff(_open(qea_copy(nafv4_path)), tmp_path / "nope.yaml")
     assert result.error and result.diff == ""
-    assert "IDL generation failed" in result.text()
+    assert "IDL diff unavailable" in result.text()
 
 
 def test_invalid_config_is_text(nafv4_path, qea_copy, tmp_path):
@@ -108,3 +108,14 @@ def test_original_is_only_copied(nafv4_path, qea_copy, config, tmp_path, monkeyp
     assert path.read_bytes() == before
     assert not path.with_name(path.name + "-wal").exists()
     assert list(scratch.iterdir()) == []
+
+
+def test_alias_only_change_outside_roots_is_listed(nafv4_path, qea_copy, config):
+    session = _open(qea_copy(nafv4_path))
+    session.update_package("Model::L7", alias="other alias")
+    assert idl_diff(session, config).outside_roots == ["Model::L7"]
+    # The twin row alone (as when only EA-side fields change) is enough to name the package.
+    changes = session.changes()
+    twin_only = ChangeSet(updates=[u for u in changes.updates if u.table == "t_object"])
+    assert twin_only.updates
+    assert _outside_roots(session, twin_only, ["core"]) == ["Model::L7"]
