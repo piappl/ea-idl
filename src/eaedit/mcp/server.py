@@ -29,7 +29,8 @@ from eaedit import resolve
 from eaedit.defaults import FIELDS
 from eaedit.diagrams import svg as svg_io
 from eaedit.errors import AmbiguousNameError, CommitRefusedError, EaeditError, NotFoundError
-from eaedit.mcp import diagram_text, explore, idl, package
+from eaedit.mcp import diagram_text, explore, package
+from eaedit.mcp import idl as idl_gen
 from eaedit.mcp import workspace as workspace_module
 from eaedit.mcp.report import change_report, change_summary
 from eaedit.mcp.words import agent_words
@@ -68,6 +69,8 @@ _EXPECTED = (
 STALE = f"note: commit will refuse, {workspace_module.STALE}"
 #: Lines per page of a paged reply.
 PAGE_SIZE = 40
+#: Lines per page of generated IDL.
+IDL_PAGE_SIZE = 200
 
 
 class _Reply(Exception):
@@ -208,7 +211,38 @@ def _idl_texts(workspace: Workspace, session) -> list[str]:
     configs = workspace.config.idl_configs
     if not configs:
         return ["IDL diff: no eaidl config (start the server with --idl-config)"]
-    return [f"IDL diff ({path.name}):\n{idl.idl_diff(session, path).text()}" for path in configs]
+    return [f"IDL diff ({path.name}):\n{idl_gen.idl_diff(session, path).text()}" for path in configs]
+
+
+_NO_IDL_CONFIG = "error: no eaidl config: pass config=PATH or start the server with --idl-config"
+
+
+def _idl_configs(workspace: Workspace, config: str | None, overrides: dict[str, Any] | str | None) -> list:
+    """(file name, eaidl Configuration) per config: ``config`` (relative to the model's folder) or the server's own,
+    each with ``overrides`` set over it."""
+    if isinstance(overrides, str):
+        try:
+            overrides = json.loads(overrides) if overrides.strip() else None
+        except json.JSONDecodeError as exc:
+            raise _Reply(f"error: overrides is not a JSON object ({exc})") from None
+    if overrides is not None and not isinstance(overrides, dict):
+        raise _Reply("error: overrides must be a JSON object of eaidl options")
+    if config:
+        path = Path(config)
+        paths = [path if path.is_absolute() else Path(workspace.config.model).parent / path]
+    else:
+        paths = list(workspace.config.idl_configs)
+    if not paths:
+        raise _Reply(_NO_IDL_CONFIG)
+    loaded = []
+    for path in paths:
+        if not path.is_file():
+            raise _Reply(f"error: no eaidl config file {path}")
+        try:
+            loaded.append((path.name, idl_gen.load(path, overrides)))
+        except ValueError as exc:
+            raise _Reply(f"error: {path.name}: {exc}") from None
+    return loaded
 
 
 _MORE = re.compile(r"^… (\d+) more \(page=(\d+)\)$")
@@ -524,14 +558,33 @@ def build_server(workspace: Workspace) -> MCPServer:
         return explore.page_lines([_issue_line(session.working, i, words) for i in issues], page, PAGE_SIZE)
 
     @tool
-    def idl_diff() -> str:
-        """The IDL the open session's edits would change, as a unified diff per eaidl config the server was given;
-        it also names changed packages outside the IDL roots, so an empty diff is not mistaken for no effect.
-        Example: idl_diff()"""
+    def idl_diff(config: str | None = None, overrides: dict[str, Any] | str | None = None) -> str:
+        """The IDL the open session's edits would change, as a unified diff per eaidl config; it also names changed
+        packages outside the IDL roots, so an empty diff is not mistaken for no effect. `config` is an eaidl config
+        file (relative to the model's folder); without it, the configs the server was started with. `overrides` is a
+        JSON object of eaidl options set over the config for this call only.
+        Example: idl_diff(config="idl.yaml", overrides={"root_packages": ["Messages"]})"""
         session = workspace.require_session()
-        if not workspace.config.idl_configs:
-            raise _Reply("error: no eaidl config: start the server with --idl-config")
-        return "\n\n".join(_idl_texts(workspace, session))
+        return "\n\n".join(
+            f"IDL diff ({name}):\n{idl_gen.idl_diff(session, loaded).text()}"
+            for name, loaded in _idl_configs(workspace, config, overrides)
+        )
+
+    @tool
+    def idl(config: str | None = None, overrides: dict[str, Any] | str | None = None, page: int = 1) -> str:
+        """The IDL eaidl generates, from the open session's working copy (staged edits included) or, with no session,
+        from the model. `config` and `overrides` as for idl_diff. Paged (`page`).
+        Example: idl(config="idl.yaml", overrides={"template": "idl.jinja2"})"""
+        session = workspace.session or workspace.snapshot()
+        parts = []
+        for name, loaded in _idl_configs(workspace, config, overrides):
+            try:
+                text = idl_gen.idl_text(session, loaded)
+            except Exception as exc:  # eaidl raises whatever it likes on a model it cannot generate from
+                raise _Reply(f"error: {name}: eaidl failed: {type(exc).__name__}: {idl_gen.error_text(exc)}") from None
+            parts.append(f"IDL ({name}):\n{text.rstrip(chr(10))}")
+        paged = explore.page_lines("\n\n".join(parts).split("\n"), page, IDL_PAGE_SIZE, clip=False)
+        return paged + "\n\n" + STALE if workspace.session is not None and workspace.stale() else paged
 
     return server
 

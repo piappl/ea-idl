@@ -39,7 +39,7 @@ changes. Paths in it are placeholders.
 |--------|----------------------|---------|
 | `MODEL` | `EAEDIT_MCP_MODEL` | The `.qea` file. |
 | `-c`, `--catalogue` (repeatable) | `EAEDIT_MCP_CATALOGUES` | MDG XML, YAML or `.qea` stereotype catalogue. |
-| `--idl-config` (repeatable) | `EAEDIT_MCP_IDL_CONFIGS` | An eaidl config; enables IDL diffs, one per config. |
+| `--idl-config` (repeatable) | `EAEDIT_MCP_IDL_CONFIGS` | An eaidl config: the default for `idl` and `idl_diff`, and the configs `preview(idl=true)`, commit reports and change packages use. Optional. |
 | `--author` | `EAEDIT_MCP_AUTHOR` | Author written on new items. |
 | `--timezone` | `EAEDIT_MCP_TIMEZONE` | IANA timezone for timestamps. |
 | `--focus` (repeatable) | `EAEDIT_MCP_FOCUS` | Default focus of a session. |
@@ -86,7 +86,7 @@ Diagrams:
 - `diagram_svg`, `import_svg`: the full eaedit SVG, several thousand tokens even for a medium diagram, and staging
   an edited SVG back.
 
-Checks: `check` (integrity issues the session adds, or the model's errors) and `idl_diff`.
+Checks: `check` (integrity issues the session adds, or the model's errors), `idl_diff` and `idl` (see IDL below).
 
 Nothing is written to the model except by `commit` and by the commit that follows `apply_changes`.
 
@@ -138,11 +138,19 @@ A resume replays the operations in order. If one no longer applies, it stops the
 before it, the full original log is copied to `<out>/working.rejected.yaml`, and the reply names that file, the failing
 operation with its arguments, and how many operations followed it.
 
-## IDL diff
+## IDL
 
-With `--idl-config`, `preview(idl=true)`, `idl_diff`, `commit` reports and change packages show a unified diff of
-the IDL eaidl generates before and after the staged changes. Each config gets its own diff. The config's database URL
-is replaced by the server; its `root_packages` apply. eaidl only generates under those roots, so when changed
+`idl` returns the IDL eaidl generates, from the open session's working copy (staged edits included) or, with no
+session, from the model; paged. `idl_diff` returns a unified diff of the IDL before and after the staged changes.
+Both take `config`, an eaidl config file (a relative path is under the model's folder), and `overrides`, a JSON
+object of eaidl options set over that config's top-level options for this call only, for example
+`idl(config="idl.yaml", overrides={"root_packages": ["Messages"], "template": "idl.jinja2"})`. Without `config`
+they use the `--idl-config` files, one output per config; with neither, they reply with an error asking for `config`.
+An unknown option or a value of the wrong type in `overrides` is an error naming it. So the server needs no restart
+to generate with other options.
+
+`preview(idl=true)`, `commit` reports and change packages show the diff for the `--idl-config` files only, each
+config with its own diff. The config's database URL is replaced by the server; its `root_packages` apply. eaidl only generates under those roots, so when changed
 packages lie outside every root the diff says `changes outside the IDL roots: ...`: an empty diff then does not mean
 the change has no effect. An eaidl error is shown as text in place of the diff.
 

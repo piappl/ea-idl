@@ -5,7 +5,7 @@ import pytest
 from eacore.changes import ChangeSet, Insert
 from eacore.records import Record
 from eaedit import Session
-from eaedit.mcp.idl import _outside_roots, idl_diff
+from eaedit.mcp.idl import _outside_roots, idl_diff, idl_text, load
 
 FIXED = datetime(2026, 1, 2, 3, 4, 5)
 MESSAGE = "Model::core::message::Message"
@@ -136,3 +136,24 @@ def test_generation_warnings_are_silenced(nafv4_path, qea_copy, config, recwarn)
     warnings.simplefilter("always")
     idl_diff(session, config)
     assert not [w for w in recwarn if "sqlalchemy" in type(w.message).__module__.lower()], [str(w) for w in recwarn]
+
+
+def test_overrides_are_merged_over_the_config(nafv4_path, qea_copy, config):
+    session = _open(qea_copy(nafv4_path))
+    full = load(config, {"template": "idl.jinja2"})
+    assert load(config).template == "idl_just_defs.jinja2" and full.root_packages == load(config).root_packages
+    assert idl_text(session, full) != idl_text(session, load(config))
+    assert idl_diff(session, full).error is None
+    assert "module zazolcRoot" in idl_text(session, load(config, {"root_package_name": "zazolcRoot"}))
+
+
+@pytest.mark.parametrize("overrides", [{"no_such_option": 1}, {"root_packages": 5}])
+def test_bad_overrides_are_refused(config, overrides):
+    with pytest.raises(ValueError, match="root_packages|no_such_option"):
+        load(config, overrides)
+
+
+def test_idl_text_includes_staged_changes(nafv4_path, qea_copy, config):
+    session = _open(qea_copy(nafv4_path))
+    session.add_attribute(MESSAGE, name="zazolcMember", type="int")
+    assert "zazolcMember" in idl_text(session, load(config))

@@ -1,4 +1,5 @@
-"""IDL diff of a session's staged changes: eaidl's IDL generated from the model as it is and with the changes applied."""
+"""eaidl's IDL of a session's working state, and the diff its staged changes make: IDL generated from the model as it
+is and with the changes applied."""
 
 from __future__ import annotations
 
@@ -9,6 +10,9 @@ import tempfile
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
+
+from pydantic import ValidationError
 
 from eacore.backends.sql import SqlBackend
 from eacore.changes import Delete, Insert, Update
@@ -38,6 +42,32 @@ class IdlDiff:
         if self.outside_roots:
             parts.append("changes outside the IDL roots: " + ", ".join(self.outside_roots))
         return "\n".join(parts)
+
+
+def load(config_path: Path, overrides: dict[str, Any] | None = None) -> Configuration:
+    """The eaidl config at ``config_path`` with ``overrides`` set over its top-level options.
+
+    Raises ``ValueError`` naming what is wrong (an unreadable file, an unknown option, a value of the wrong type).
+    """
+    try:
+        config = load_config(config_path)
+    except ValueError as error:
+        raise ValueError(error_text(error)) from None
+    if not overrides:
+        return config
+    try:
+        return Configuration.model_validate({**config.model_dump(), **overrides})
+    except ValidationError as error:
+        problems = "; ".join(f"{'.'.join(map(str, e['loc'])) or 'overrides'}: {e['msg']}" for e in error.errors())
+        raise ValueError(f"bad overrides: {problems}") from None
+
+
+def error_text(error: BaseException) -> str:
+    message = " ".join(str(error).split()) or type(error).__name__
+    cause = error.__cause__
+    if cause is not None:
+        message += f" ({type(cause).__name__}: {' '.join(str(cause).split())})"
+    return message
 
 
 def _generate(config: Configuration, path: Path) -> str:
@@ -112,15 +142,39 @@ def _copy_model(path: Path, directory: str) -> Path:
     return copy
 
 
-def idl_diff(session, config_path: Path) -> IdlDiff:
-    """Unified diff of the IDL for ``config_path`` before and after the session's staged changes.
+def _apply(copy: Path, changes) -> None:
+    if changes.is_empty():
+        return
+    backend = SqlBackend.for_file(copy)
+    try:
+        backend.load()
+        backend.apply(changes)
+    finally:
+        backend.close()
+
+
+def idl_text(session, config: Configuration) -> str:
+    """The IDL eaidl generates for ``config`` from the session's working state (the model with its staged changes).
+
+    Raises what eaidl raises. The model file is only copied, never opened by eaidl.
+    """
+    with tempfile.TemporaryDirectory(prefix="eaedit-idl-") as directory:
+        copy = _copy_model(session.path, directory)
+        _apply(copy, session.changes())
+        return _generate(config, copy)
+
+
+def idl_diff(session, config: Configuration | Path) -> IdlDiff:
+    """Unified diff of the IDL for ``config`` (or the config file at that path) before and after the session's
+    staged changes.
 
     Never raises: every failure comes back as ``error``. The model file is only copied, never opened by eaidl.
     """
     name = Path(session.path).stem
     result = IdlDiff(name)
     try:
-        config = load_config(config_path)
+        if isinstance(config, Path):
+            config = load_config(config)
         changes = session.changes()
         result.outside_roots = _outside_roots(session, changes, list(config.root_packages))
         with (
@@ -129,20 +183,10 @@ def idl_diff(session, config_path: Path) -> IdlDiff:
         ):
             before = _generate(config, _copy_model(session.path, before_dir))
             copy = _copy_model(session.path, after_dir)
-            if not changes.is_empty():
-                backend = SqlBackend.for_file(copy)
-                try:
-                    backend.load()
-                    backend.apply(changes)
-                finally:
-                    backend.close()
+            _apply(copy, changes)
             after = _generate(config, copy)
     except Exception as error:  # eaidl raises whatever it likes on a model it cannot generate from
-        message = " ".join(str(error).split()) or type(error).__name__
-        cause = error.__cause__
-        if cause is not None:
-            message += f" ({type(cause).__name__}: {' '.join(str(cause).split())})"
-        result.error = f"{type(error).__name__}: {message}"
+        result.error = f"{type(error).__name__}: {error_text(error)}"
         return result
     result.diff = "".join(
         difflib.unified_diff(

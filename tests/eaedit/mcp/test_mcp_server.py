@@ -10,6 +10,7 @@ pytest.importorskip("mcp")
 from mcp.client import Client  # noqa: E402
 
 from eaedit.mcp.server import _FIELD_TABLES, build_server, main, parse_config  # noqa: E402
+from eaedit.mcp import server as server_module  # noqa: E402
 from eaedit.mcp.workspace import Config, Workspace  # noqa: E402
 
 CORE = "Model::core"
@@ -39,6 +40,7 @@ TOOLS = {
     "import_svg",
     "check",
     "idl_diff",
+    "idl",
 }
 
 
@@ -224,6 +226,51 @@ def test_idl_diff_and_preview(qea_copy, nafv4_path, tmp_path):
     (_, _), (_, _), (_, diff), (_, preview) = results
     assert diff.startswith("IDL diff (idl.yaml):") and "+" in diff and "zazolcMember" in diff
     assert "IDL diff (idl.yaml):" in preview and preview.count("zazolcMember") >= 2
+
+
+def test_idl_config_per_call(qea_copy, nafv4_path, tmp_path, monkeypatch):
+    monkeypatch.setattr(server_module, "IDL_PAGE_SIZE", 20)
+    (tmp_path / "idl.yaml").write_text(
+        'root_packages: ["{753A4DFC-7876-4b00-BB5A-6274AD3817C3}"]\n'
+        'template: "idl_just_defs.jinja2"\n'
+        'filter_stereotypes: ["lobw"]\n',
+        encoding="utf-8",
+    )
+    ws = _workspace(qea_copy, nafv4_path, tmp_path, focus=[CORE])
+    edit = {"el": f"{MSG}::Message", "name": "zazolcMember", "type": "int"}
+    results = _run(
+        ws,
+        [
+            ("idl", {}),
+            ("idl", {"config": "idl.yaml"}),
+            ("idl", {"config": "idl.yaml", "page": 2}),
+            ("idl", {"config": "idl.yaml", "overrides": {"template": "idl.jinja2"}}),
+            ("idl", {"config": "idl.yaml", "overrides": {"no_such_option": 1}}),
+            ("idl", {"config": "missing.yaml"}),
+        ],
+    )
+    monkeypatch.setattr(server_module, "IDL_PAGE_SIZE", 1000)
+    results += _run(
+        ws,
+        [
+            ("open_session", {}),
+            ("edit", {"op": "add_attribute", "args": edit}),
+            ("idl", {"config": str(tmp_path / "idl.yaml")}),
+            ("idl_diff", {}),
+            ("idl_diff", {"config": "idl.yaml", "overrides": {"root_packages": ["L7"]}}),
+        ],
+    )
+    (none_err, none), (_, plain), (_, page2), (_, full), (bad_err, bad), (missing_err, missing) = results[:6]
+    (_, staged), (diff_none_err, diff_none), (diff_err, diff) = results[8:]
+    assert none_err and none.startswith("error: no eaidl config") and "config=" in none
+    assert plain.startswith("IDL (idl.yaml):") and "zazolcMember" not in plain
+    assert plain.splitlines()[-1].startswith("… ") and "(page=2)" in plain.splitlines()[-1]
+    assert not page2.startswith("IDL (idl.yaml):") and full.startswith("IDL (idl.yaml):") and full != plain
+    assert bad_err and bad.startswith("error: idl.yaml:") and "no_such_option" in bad
+    assert missing_err and missing.startswith("error:") and "missing.yaml" in missing
+    assert "zazolcMember" in staged
+    assert diff_none_err and "config=" in diff_none
+    assert not diff_err and diff.startswith("IDL diff (idl.yaml):") and "changes outside the IDL roots" in diff
 
 
 def test_export_and_apply(qea_copy, nafv4_path, tmp_path):
