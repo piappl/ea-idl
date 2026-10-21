@@ -8,11 +8,15 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[2] / "src"
 
-#: The only eaedit -> eaidl imports: the extractor and SVG renderer behind eaedit's diagram previews.
+#: The only eaedit -> eaidl imports: the extractor and SVG renderer behind eaedit diagram previews, and IDL generation.
 ALLOWED = {
     ("eaedit/diagrams/render.py", "eaidl.config"),
     ("eaedit/diagrams/render.py", "eaidl.native_diagram_extractor"),
     ("eaedit/diagrams/render.py", "eaidl.native_diagram_svg"),
+    ("eaedit/mcp/idl.py", "eaidl.config"),
+    ("eaedit/mcp/idl.py", "eaidl.generate"),
+    ("eaedit/mcp/idl.py", "eaidl.load"),
+    ("eaedit/mcp/idl.py", "eaidl.utils"),
 }
 
 
