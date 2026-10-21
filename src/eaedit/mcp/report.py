@@ -6,9 +6,11 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from eacore.catalogue import AmbiguousStereotype
 from eacore.embedded import parse_stereotypes
 from eacore.records import Record, RecordSet, Ref
 from eaedit.defaults import FIELDS
+from eaedit.ops.common import stereotype_names
 from eaedit.resolve import is_package_twin, qualified_name
 
 TITLE = "Model changes"
@@ -37,9 +39,9 @@ _RANK.update({table: 6 for table in _TAGS})
 
 @dataclass
 class _Section:
-    added: list[tuple[int, str]] = field(default_factory=list)
-    changed: list[tuple[int, str]] = field(default_factory=list)
-    removed: list[tuple[int, str]] = field(default_factory=list)
+    added: list[tuple[int, str, tuple]] = field(default_factory=list)
+    changed: list[tuple[int, str, tuple]] = field(default_factory=list)
+    removed: list[tuple[int, str, tuple]] = field(default_factory=list)
 
 
 def _text(value: Any, empty: str = "(none)") -> str:
@@ -107,12 +109,18 @@ def _twin(record: Record) -> bool:
     return record.table == "t_object" and is_package_twin(record)
 
 
-def _tag_line(rs: RecordSet, record: Record) -> str:
+def _tag_parts(rs: RecordSet, record: Record) -> tuple[str, str]:
+    """``(owner: tag, value)`` of a tag row."""
     owner_col, name_col, value_col = _TAGS[record.table]
     value = record.values.get(value_col)
     if value == "<memo>":
         value = record.values.get("attr_notes")
-    return f"{_owner_label(rs, record, owner_col)}: {_text(record.values.get(name_col))} = {_text(value)}"
+    return f"{_owner_label(rs, record, owner_col)}: {_text(record.values.get(name_col))}", _text(value)
+
+
+def _tag_line(rs: RecordSet, record: Record) -> str:
+    head, value = _tag_parts(rs, record)
+    return f"{head} = {value}"
 
 
 def _stereotypes(record: Record) -> str:
@@ -131,7 +139,7 @@ def _fields(table: str, changes: dict) -> list[str]:
     return lines
 
 
-def _stem(name: str, used: set[str]) -> str:
+def diagram_file_stem(name: str, used: set[str]) -> str:
     """A plain file name for a diagram (as ``eaedit`` writes them), kept apart from earlier ones of the same name."""
     stem = "".join("_" if c in '/\\:*?"<>|' else c for c in name).strip() or "diagram"
     unique, count = stem, 1
@@ -178,8 +186,8 @@ def change_report(
     def add(rs: RecordSet, record: Record, kind: str, lines: list[str], package: Ref | None = None) -> None:
         owner = package if package is not None else rs.owner_package(Ref(record.table, record.key))
         name = qualified_name(rs, owner) if owner is not None else _REPOSITORY
-        rank = _RANK.get(record.table, 9)
-        getattr(sections.setdefault(name, _Section()), kind).append((rank, "\n".join(lines)))
+        item = (_RANK.get(record.table, 9), "\n".join(lines), (record.table, record.key))
+        getattr(sections.setdefault(name, _Section()), kind).append(item)
 
     def item_package(rs: RecordSet, record: Record) -> Ref | None:
         """Package twins and the tags and stereotypes on them belong to the package itself."""
@@ -207,7 +215,8 @@ def change_report(
     layout: dict[Any, tuple[RecordSet, Record, str]] = {}
     stereo_changes: dict[Any, tuple[RecordSet, Record, str, str]] = {}
     other = 0
-    stems = _diagram_stems(session, preview) if diagrams_dir is not None else {}
+    stems = diagram_file_stems(session, preview.changes) if diagrams_dir is not None else {}
+    folded = _default_tags(session, changes, inserted)
 
     def note_layout(rs: RecordSet, row: Record) -> None:
         column = "attr_diagram_id" if row.table == "t_diagramobjects" else "attr_diagramid"
@@ -240,10 +249,14 @@ def change_report(
         record = insert.record
         if record.table in _ITEMS and not (record.table == "t_object" and is_package_twin(record)):
             lines = [_label(working, record)]
+            if folded.get((record.table, record.key)):
+                lines[0] += f" (+{folded[(record.table, record.key)]} default tags)"
             if record.table == "t_diagram" and diagrams_dir is not None:
-                lines[0] += f"\n  ![{_text(record.values.get('attr_name'))}]({diagrams_dir}/{stems[record.key]}.svg)"
+                lines[0] += f"\n  ![{_text(record.values.get('attr_name'))}](<{diagrams_dir}/{stems[record.key]}.svg>)"
             add(working, record, "added", lines, item_package(working, record))
         elif record.table in _TAGS:
+            if (record.table, record.key) in folded.get("rows", ()):
+                continue
             add(working, record, "added", [_tag_line(working, record)], package_of(working, record))
         elif record.table in _LAYOUT:
             note_layout(working, record)
@@ -270,9 +283,8 @@ def change_report(
                 )
         elif update.table in _TAGS:
             before = original.get(update.table, update.key)
-            old = _tag_line(original, before).rpartition(" = ")[2] if before else "(none)"
-            new = _tag_line(working, record)
-            head, _, value = new.rpartition(" = ")
+            old = _tag_parts(original, before)[1] if before else "(none)"
+            head, value = _tag_parts(working, record)
             if old != value:
                 add(working, record, "changed", [f"{head}: {old} {_ARROW} {value}"], package_of(working, record))
         elif update.table in _LAYOUT:
@@ -297,7 +309,9 @@ def change_report(
     for rs, diagram, _ in layout.values():
         add(rs, diagram, "changed", [f"{_label(rs, diagram, plain=True)}: diagram layout changed"])
     if other:
-        sections.setdefault(_REPOSITORY, _Section()).changed.append((9, f"{other} other change(s) to model data"))
+        sections.setdefault(_REPOSITORY, _Section()).changed.append(
+            (9, f"{other} other change(s) to model data", ("other", 0))
+        )
 
     out = [f"# {title or TITLE}", ""]
     if not sections:
@@ -326,31 +340,71 @@ def change_report(
     return "\n".join(out).rstrip("\n") + "\n"
 
 
-def _fold(items: list[tuple[int, str]]) -> list[str]:
-    """Lines of one list: multi-line items (detail or image) stay together, items sorted by their first line."""
-    entries = []
-    for rank, item in items:
+def _default_tags(session, changes, inserted: set) -> dict:
+    """Tags of newly added items that hold no value or the catalogue's default: ``{item: count}``, plus the folded
+    tag rows under ``"rows"``. The item line carries the count; only tags with another value are listed."""
+    working = session.working
+    counts: dict = {}
+    rows: set = set()
+    defaults: dict = {}
+    for insert in changes.inserts:
+        record = insert.record
+        if record.table not in _TAGS:
+            continue
+        owner_col, name_col, value_col = _TAGS[record.table]
+        value = record.values.get(owner_col)
+        if isinstance(value, str):
+            found = working.by_guid(value)
+            value = found[0] if found else None
+        owner = working.resolve(value) if isinstance(value, Ref) else None
+        if owner is None:
+            continue
+        item = owner
+        if _twin(owner):
+            ref = owner.values.get("attr_pdata1")
+            item = working.resolve(ref) if isinstance(ref, Ref) else None
+        if item is None or (item.table, item.key) not in inserted or item.table not in _ITEMS:
+            continue
+        if (owner.table, owner.key) not in defaults:
+            entries = stereotype_names(session, owner)
+            tags = {}
+            for name, fqname in entries:
+                try:
+                    resolved = session.catalogues.resolved(fqname or name)
+                except AmbiguousStereotype:
+                    continue
+                tags.update({t.name: t.default for t in resolved.tags} if resolved else {})
+            defaults[(owner.table, owner.key)] = tags
+        text = record.values.get(value_col)
+        wanted = defaults[(owner.table, owner.key)].get(record.values.get(name_col))
+        if text in (None, "") or (wanted and text == wanted):
+            counts[(item.table, item.key)] = counts.get((item.table, item.key), 0) + 1
+            rows.add((record.table, record.key))
+    counts["rows"] = rows
+    return counts
+
+
+def _fold(items: list[tuple[int, str, tuple]]) -> list[str]:
+    """Lines of one list: multi-line items (detail or image) stay together, sorted by kind then first line.
+    Entries about the same record (several changes to one row) share one head line; equal lines of different
+    records stay apart."""
+    merged: dict[tuple, tuple[int, str, list[str]]] = {}
+    for rank, item, ident in items:
         first, *rest = item.split("\n")
-        entries.append((rank, first, rest))
-    # Detail lines of the same item (several operations touching one row) are merged under one head line.
-    merged: dict[str, list[str]] = {}
-    for _, first, rest in sorted(entries, key=lambda e: e[:2]):
-        merged.setdefault(first, [])
-        for line in rest:
-            if line not in merged[first]:
-                merged[first].append(line)
+        _, _, details = merged.setdefault(ident, (rank, first, []))
+        details.extend(line for line in rest if line not in details)
     out = []
-    for first, rest in merged.items():
+    for _, first, details in sorted(merged.values(), key=lambda e: e[:2]):
         out.append(first)
-        out.extend(rest)
+        out.extend(details)
     return out
 
 
-def _diagram_stems(session, preview) -> dict:
+def diagram_file_stems(session, changes=None) -> dict:
     """Diagram key -> file stem, in the order the changed diagrams are written (``eaedit`` CLI naming)."""
     used: set[str] = set()
     stems = {}
-    for key in session.changed_diagrams(preview.changes):
+    for key in session.changed_diagrams(changes):
         record = session.working.get("t_diagram", key)
-        stems[key] = _stem(str(record.values.get("attr_name") or ""), used)
+        stems[key] = diagram_file_stem(str(record.values.get("attr_name") or ""), used)
     return stems
