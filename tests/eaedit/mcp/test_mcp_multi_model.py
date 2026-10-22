@@ -157,3 +157,13 @@ def test_idl_config_resolves_against_chosen_model(models, nafv4_path, tmp_path):
     assert not results[1][0] and results[1][1].startswith("IDL (idl.yaml):")
     assert not results[2][0] and results[2][1].startswith("IDL (idl.yaml):")
     assert results[3][0] and "no eaidl config file" in results[3][1]
+
+
+def test_open_model_with_unreadable_working_file_still_opens(models, qea_copy, nafv4_path, tmp_path):
+    other = qea_copy(nafv4_path, "other.qea")
+    (tmp_path / "eaedit-out-other").mkdir()
+    (tmp_path / "eaedit-out-other" / "working.yaml").write_text("ops: [unclosed", encoding="utf-8")
+    (err, text), (_, listing) = _run(models, [("open_model", {"path": str(other)}), ("models", {})])
+    assert not err and text.splitlines()[0].startswith("opened other: ")
+    assert "unreadable" in text and 'discard(model="other")' in text
+    assert "other" in listing

@@ -112,3 +112,29 @@ def test_no_default_names_the_open_models(models, qea_copy, nafv4_path):
     models.close("copy")
     with pytest.raises(EaeditError, match="no default model; pass model= one of: other"):
         models.get(None)
+
+
+def test_reopen_startup_model_given_relative(nafv4_path, tmp_path, monkeypatch):
+    (tmp_path / "m").mkdir()
+    shutil.copyfile(nafv4_path, tmp_path / "m" / "copy.qea")
+    monkeypatch.chdir(tmp_path)
+    models = Models()
+    models.add(Config(Path("m/copy.qea")))
+    models.close("copy")
+    models.open(tmp_path / "m" / "copy.qea")
+    assert models.get("copy").config.out_dir.resolve() == (tmp_path / "m" / "eaedit-out").resolve()
+
+
+def test_failed_open_closes_its_backend(models, qea_copy, nafv4_path, tmp_path, monkeypatch):
+    from eacore.backends.sql import SqlBackend
+
+    closed = []
+    original = SqlBackend.close
+    monkeypatch.setattr(SqlBackend, "close", lambda self: (closed.append(self), original(self))[1])
+    bad = tmp_path / "bad.qea"
+    bad.write_text("not a database")
+    with pytest.raises(Exception):
+        models.open(bad)
+    with pytest.raises(Exception):
+        models.open(qea_copy(nafv4_path, "other.qea"), catalogues=["missing.xml"])
+    assert len(closed) == 2

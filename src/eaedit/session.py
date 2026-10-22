@@ -217,18 +217,15 @@ class Session:
             clock = _local_clock(timezone)
         path = Path(path)
         backend = SqlBackend.for_file(path)
-        original = backend.load()
-        original.meta["path"] = str(path)
-        scope = Scope([resolve.find(original, f, kinds=("package",)) for f in focus], policy)
-        return cls(
-            path,
-            backend,
-            original,
-            load_catalogues(catalogues, original, infer_from_model=infer),
-            scope,
-            author or getpass.getuser(),
-            clock,
-        )
+        try:
+            original = backend.load()
+            original.meta["path"] = str(path)
+            scope = Scope([resolve.find(original, f, kinds=("package",)) for f in focus], policy)
+            loaded = load_catalogues(catalogues, original, infer_from_model=infer)
+        except BaseException:
+            backend.close()  # a file that is not a model, or a bad catalogue or focus, leaves no open handle
+            raise
+        return cls(path, backend, original, loaded, scope, author or getpass.getuser(), clock)
 
     # --- primitives for ops (only way ops change state) ---
 

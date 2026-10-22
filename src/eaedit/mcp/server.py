@@ -378,7 +378,11 @@ def build_server(models: Models | Workspace) -> MCPServer:
         text += "; read-only" if config.read_only else ""
         text += "; default" if registry.default == opened else ""
         text += f"; catalogues: {', '.join(p.name for p in config.catalogues) or 'none'}"
-        count = saved_count(workspace)
+        try:
+            count = saved_count(workspace)
+        except EaeditError as exc:  # the model is open; its working file needs the agent's attention
+            hint = _line(exc).replace("discard()", f'discard(model="{opened}")')
+            return f"{text}\nwarning {hint}"
         if count:
             text += (
                 f"\na saved session with {count} operations exists: "
@@ -747,6 +751,9 @@ _ENV = {
     "out_dir": ("OUT", None),
     "read_only": ("READ_ONLY", None),
 }
+#: Spellings of a yes/no environment variable.
+_TRUE = ("1", "true", "yes")
+_FALSE = ("0", "false", "no", "")
 #: The options that describe the startup model, by their command-line spelling; refused without MODEL.
 _MODEL_OPTIONS = {
     "catalogues": "--catalogue",
@@ -806,10 +813,14 @@ def parse_config(argv: Sequence[str], env: Mapping[str, str]) -> Startup:
             continue
         raw = env[ENV + suffix]
         if name == "read_only":
-            values[name] = raw.strip().lower() in ("1", "true", "yes")
+            flag = raw.strip().lower()
+            if flag not in _TRUE + _FALSE:
+                choices = ", ".join(v for v in _TRUE + _FALSE if v)
+                raise click.BadParameter(f"{ENV}{suffix}={raw!r} is not one of {choices}", ctx)
+            values[name] = flag in _TRUE
         else:
             values[name] = [part for part in raw.split(separator) if part] if separator else raw
-        if name in _MODEL_OPTIONS:
+        if name in _MODEL_OPTIONS and values[name] not in ("", [], False):
             given_as[name] = ENV + suffix
     if not values["model"]:
         if given_as:

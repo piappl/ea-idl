@@ -136,7 +136,7 @@ class Models:
         self._check(workspace, name)
         self._open[name] = workspace
         if not workspace.config.read_only:
-            self._out_dirs[workspace.config.model.resolve()] = workspace.config.out_dir
+            self._out_dirs[workspace.config.model.resolve()] = workspace.config.out_dir.resolve()
         if default or self.default is None:
             self.default = name
         return name

@@ -410,6 +410,19 @@ def test_parse_config_without_model():
         parse_config([], {"EAEDIT_MCP_CATALOGUES": "a.xml"})
     with pytest.raises(click.UsageError, match="--read-only"):
         parse_config(["--read-only"], {})
+    # false or empty values are not given
+    assert parse_config([], {"EAEDIT_MCP_READ_ONLY": "0", "EAEDIT_MCP_FOCUS": ""}) == Startup(None)
+
+
+def test_read_only_env_value_must_be_recognised(tmp_path):
+    import click
+
+    model = tmp_path / "m.qea"
+    model.write_bytes(b"")
+    for value, expected in (("1", True), ("TRUE", True), ("yes", True), ("0", False), ("false", False), ("no", False)):
+        assert parse_config([str(model)], {"EAEDIT_MCP_READ_ONLY": value}).config.read_only is expected
+    with pytest.raises(click.BadParameter, match="EAEDIT_MCP_READ_ONLY"):
+        parse_config([str(model)], {"EAEDIT_MCP_READ_ONLY": "on"})
 
 
 def test_main_starts_without_model(monkeypatch):
