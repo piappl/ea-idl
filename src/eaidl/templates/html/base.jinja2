@@ -2,10 +2,47 @@
 
 {% macro render_package_tree(packages, current_namespace) %}
 <nav class="package-tree">
-    <h6 class="text-muted text-uppercase small mb-2">Packages</h6>
+    {% if config.documentation.root_packages %}
+    <p><a href="{{ index_link | replace('index.html', 'diagrams.html') }}">All diagrams</a></p>
+    {% endif %}
+    {% if config.documentation.root_packages %}
+    <details open><summary>Model views</summary><ul>
+    {% for key, section in config.documentation.sections.items() %}
+    {% set grouped_section = namespace(value=false) %}
+    {% for keys in config.documentation.package_group_sections.values() %}
+    {% if key in keys %}{% set grouped_section.value = true %}{% endif %}
+    {% endfor %}
+    {% if not grouped_section.value %}
+    <li><a href="{{ index_link | replace('index.html', 'diagrams.html') }}#{{ key }}">{{ section.title }}</a></li>
+    {% endif %}
+    {% endfor %}
+    <li><a href="{{ index_link | replace('index.html', 'diagrams.html') }}#other">Other model views</a></li>
+    </ul></details>
+    {% endif %}
+    <h6 class="text-muted text-uppercase small mb-2 mt-3">AEP references</h6>
+    {% for title, names in config.documentation.package_groups.items() %}
+    <details open><summary>{{ title }}</summary><ul>
+    {% for package in packages %}
+    {% if package.name in names and package.name != 'ext' %}
+    {% if package.name in config.documentation.flatten_package_roots %}
+    <li><a href="{{ generate_package_link_from_current(current_namespace, [package.name]) }}">Overview</a></li>
+    {% for nested in package.packages %}
+    {{ render_package_node(nested, current_namespace, [package.name, nested.name]) }}
+    {% endfor %}
+    {% else %}
+    {{ render_package_node(package, current_namespace, [package.name]) }}
+    {% endif %}
+    {% endif %}
+    {% endfor %}
+    </ul></details>
+    {% endfor %}
     <ul>
     {% for package in packages %}
-        {% if package.name != 'ext' %}
+        {% set grouped = namespace(value=false) %}
+        {% for names in config.documentation.package_groups.values() %}
+        {% if package.name in names %}{% set grouped.value = true %}{% endif %}
+        {% endfor %}
+        {% if package.name != 'ext' and not grouped.value %}
         {{ render_package_node(package, current_namespace, [package.name]) }}
         {% endif %}
     {% endfor %}
@@ -15,13 +52,15 @@
 
 {% macro render_package_node(package, current_namespace, namespace_path) %}
 <li>
+    {% if package.packages %}
+    <details {% if current_namespace and current_namespace[:namespace_path|length] == namespace_path %}open{% endif %}>
+    <summary>{{ package.name }}</summary>
+    {% endif %}
     <a href="{{ generate_package_link_from_current(current_namespace, namespace_path) }}"
        class="{% if current_namespace == namespace_path %}active{% endif %}">
-        {{ package.name }}
+        {% if package.packages %}Overview{% else %}{{ package.name }}{% endif %}
         {% if package.info.structs + package.info.enums + package.info.unions > 0 %}
-        <span class="badge bg-secondary class-badge">
-            {{ package.info.structs + package.info.enums + package.info.unions }}
-        </span>
+        <span class="badge bg-secondary class-badge">{{ package.info.structs + package.info.enums + package.info.unions }}</span>
         {% endif %}
     </a>
     {% if package.packages %}
@@ -30,6 +69,7 @@
         {{ render_package_node(nested, current_namespace, namespace_path + [nested.name]) }}
         {% endfor %}
     </ul>
+    </details>
     {% endif %}
 </li>
 {% endmacro %}
@@ -79,10 +119,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}EA-IDL Documentation{% endblock %}</title>
+    <title>{% block title %}{{ config.documentation.title }}{% endblock %}</title>
     <link rel="icon" type="image/svg+xml" href="{{ assets_path }}/img/favicon.svg">
     <link rel="stylesheet" href="{{ assets_path }}/css/bootstrap.min.css">
     <style>
+        @font-face {
+            font-family: Carlito;
+            src: url("{{ assets_path }}/fonts/carlito/Carlito-Regular.ttf") format("truetype");
+            font-weight: 400; font-style: normal; font-display: swap;
+        }
+        @font-face {
+            font-family: Carlito;
+            src: url("{{ assets_path }}/fonts/carlito/Carlito-Bold.ttf") format("truetype");
+            font-weight: 700; font-style: normal; font-display: swap;
+        }
+        @font-face {
+            font-family: Carlito;
+            src: url("{{ assets_path }}/fonts/carlito/Carlito-Italic.ttf") format("truetype");
+            font-weight: 400; font-style: italic; font-display: swap;
+        }
+        @font-face {
+            font-family: Carlito;
+            src: url("{{ assets_path }}/fonts/carlito/Carlito-BoldItalic.ttf") format("truetype");
+            font-weight: 700; font-style: italic; font-display: swap;
+        }
         :root {
             --sidebar-width: 280px;
         }
@@ -102,6 +162,10 @@
             border-right: 1px solid var(--bs-border-color);
             padding: 1rem;
         }
+
+        body.sidebar-collapsed .sidebar { display: none; }
+        body.sidebar-collapsed .main-content { margin-left: 0; }
+        .package-tree summary { cursor: pointer; padding: 0.25rem; }
 
         .main-content {
             margin-left: var(--sidebar-width);
@@ -201,6 +265,10 @@
             margin-bottom: 1rem;
         }
 
+        .main-content { min-width: 0; overflow-wrap: anywhere; }
+        .main-content table { display: block; max-width: 100%; overflow-x: auto; }
+        .package-tree a, .package-tree summary { overflow-wrap: anywhere; }
+
         .notes-section {
             background-color: var(--bs-light);
             padding: 1rem;
@@ -224,7 +292,7 @@
                 z-index: 1000;
             }
 
-            .sidebar.show {
+            .sidebar.mobile-open {
                 transform: translateX(0);
             }
 
@@ -239,10 +307,10 @@
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
         <div class="container-fluid">
-            <button class="navbar-toggler me-2" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebar">
-                <span class="navbar-toggler-icon"></span>
+            <button class="btn btn-outline-light btn-sm me-2" id="sidebar-toggle" type="button" aria-controls="sidebar" aria-expanded="true" aria-label="Toggle navigation sidebar">
+                Menu
             </button>
-            <a class="navbar-brand" href="{{ index_link }}">EA-IDL Documentation</a>
+            <a class="navbar-brand" href="{{ index_link }}">{{ config.documentation.title }}</a>
             <button class="btn btn-outline-light btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#searchModal">
                 Search
             </button>
@@ -363,6 +431,23 @@
 
             resultsDiv.innerHTML = html;
         });
+    </script>
+    <script>
+    const sidebarButton = document.getElementById('sidebar-toggle');
+    const sidebar = document.getElementById('sidebar');
+    const smallScreen = window.matchMedia('(max-width: 768px)');
+    function updateSidebarButton() {
+        sidebarButton.setAttribute('aria-expanded', smallScreen.matches
+            ? sidebar.classList.contains('mobile-open')
+            : !document.body.classList.contains('sidebar-collapsed'));
+    }
+    sidebarButton.addEventListener('click', function () {
+        if (smallScreen.matches) sidebar.classList.toggle('mobile-open');
+        else document.body.classList.toggle('sidebar-collapsed');
+        updateSidebarButton();
+    });
+    smallScreen.addEventListener('change', updateSidebarButton);
+    updateSidebarButton();
     </script>
     {% block extra_scripts %}{% endblock %}
 </body>

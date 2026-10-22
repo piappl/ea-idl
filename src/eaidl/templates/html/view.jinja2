@@ -1,0 +1,30 @@
+{% extends "base.jinja2" %}
+{% block title %}{{ entry.name }}{% endblock %}
+{% block content %}
+<a href="../diagrams.html">Model diagrams</a>
+<h1>{{ entry.name }}</h1>
+<p><span class="badge bg-secondary">{{ entry.view or entry.type }}</span> {{ entry.package }}</p>
+{{ render_notes(entry.notes) }}
+<p><a href="{{ entry.guid }}.svg" download>Download SVG</a></p>
+<div class="mb-3">
+<button class="btn btn-outline-primary" id="zoom-in">Zoom in</button>
+<button class="btn btn-outline-primary" id="zoom-out">Zoom out</button>
+<button class="btn btn-outline-secondary" id="zoom-reset">Fit</button>
+</div>
+<div id="view-canvas" style="overflow:auto;max-height:80vh;border:1px solid var(--bs-border-color)">{{ svg | safe }}</div>
+<script>
+const svg = document.querySelector('#view-canvas svg');
+let scale = 1;
+function resizeDiagram() {
+    svg.style.width = (scale * 100) + '%';
+    svg.style.height = 'auto';
+    svg.style.maxWidth = 'none';
+}
+if (svg) {
+    resizeDiagram();
+    document.getElementById('zoom-in').onclick = function () { scale *= 1.2; resizeDiagram(); };
+    document.getElementById('zoom-out').onclick = function () { scale /= 1.2; resizeDiagram(); };
+    document.getElementById('zoom-reset').onclick = function () { scale = 1; resizeDiagram(); };
+}
+</script>
+{% endblock %}

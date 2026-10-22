@@ -60,6 +60,16 @@
 
 {% block content %}
 <div class="container-fluid">
+    {% if linked_diagrams %}
+    <section class="mb-4">
+    <h2>Model diagrams</h2>
+    <div class="list-group">
+    {% for diagram in linked_diagrams %}
+    <a class="list-group-item list-group-item-action" href="{{ diagram.url }}">{{ diagram.name }}</a>
+    {% endfor %}
+    </div></section>
+    {% endif %}
+
     <h1 class="mb-3">{{ package.name }} - Diagrams</h1>
 
     <div class="card mb-4">

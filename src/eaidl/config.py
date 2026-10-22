@@ -177,10 +177,36 @@ class DiagramConfiguration(BaseModel):
     native_diagram_style: NativeDiagramStyleConfig = NativeDiagramStyleConfig()
 
 
+class DocumentationSection(BaseModel):
+    """Map NAF/model viewpoints to a developer-facing catalogue section."""
+
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1)
+    views: List[str] = Field(default_factory=list)
+    root_packages: List[str] = Field(default_factory=list)
+
+
+class DocumentationConfiguration(BaseModel):
+    """Diagram scope independent of the transformed IDL type scope."""
+
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(default="EA-IDL Documentation", min_length=1)
+    apply_transforms: bool = True
+    root_packages: List[str] = Field(default_factory=list)
+    sections: Dict[str, DocumentationSection] = Field(default_factory=dict)
+    package_groups: Dict[str, List[str]] = Field(default_factory=dict)
+    package_group_sections: Dict[str, List[str]] = Field(default_factory=dict)
+    flatten_package_roots: List[str] = Field(default_factory=list)
+    # Diagram GUID -> a non-empty explanation; excluded diagrams remain in the report.
+    exclude_diagrams: Dict[str, str] = Field(default_factory=dict)
+    fail_on_diagram_error: bool = True
+
+
 class Configuration(BaseModel):
     stereotypes: ConfigurationStereotypes = ConfigurationStereotypes()
     spellcheck: ConfigurationSpellcheck = ConfigurationSpellcheck()
     diagrams: DiagramConfiguration = DiagramConfiguration()
+    documentation: DocumentationConfiguration = Field(default_factory=DocumentationConfiguration)
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
     #: List of allowed abbreviations/acronyms (e.g., ["MCM", "URI", "CQL"])
     #: Used for camelCase naming convention AND added to spellcheck dictionary
