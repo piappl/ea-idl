@@ -27,6 +27,14 @@ leave it out.
 If a tool reports that the model changed on disk, tell the user. Do not retry blindly: `open_session(resume=true)`
 replays your edits onto the new model, or `discard`.
 
+## A reference model
+
+When you adapt something from another model (for example a package the user moved over with EA's XMI
+export/import), open the source beside the target instead of asking for a restart:
+`open_model(path="...", name="source", read_only=true)`. Read it with `model="source"` (`describe`, `search`,
+`diagram`, `idl`) and edit the target as usual; tools without `model=` work on the default model. `models` lists what
+is open.
+
 ## Your modelling conventions
 
 Replace this section with the rules of your model. Two neutral examples of the kind of rule that belongs here:

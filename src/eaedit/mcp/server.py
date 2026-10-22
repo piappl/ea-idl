@@ -45,6 +45,7 @@ INSTRUCTIONS = (
     "focus (the packages you mean to change), call edit once per change (operations lists them), check the result "
     "with preview, and finish with commit (writes the model) or export_changes (writes a change package for review "
     "and leaves the model alone). undo takes back the last edit, discard the whole session."
+    " Several models can be open at once (open_model, models); tools take model= to pick one, else the default."
 )
 
 #: Appended to the description of every tool that takes ``model``.
@@ -215,6 +216,13 @@ def _issue_line(rs, issue, words: Callable[[str], str]) -> str:
     return f"{issue.severity} {issue.rule}: {words(issue.message)}{where}"
 
 
+def _listed(value: list[str] | str | None) -> list[str]:
+    """A tool argument that takes one string or a list of them, as a list."""
+    if value is None:
+        return []
+    return [value] if isinstance(value, str) else list(value)
+
+
 def _idl_texts(workspace: Workspace, session) -> list[str]:
     configs = workspace.config.idl_configs
     if not configs:
@@ -302,11 +310,10 @@ def _preview_text(workspace: Workspace, diagrams: bool = False, idl: bool = Fals
 def build_server(models: Models | Workspace) -> MCPServer:
     load_all()
     server = _Server("eaedit", instructions=INSTRUCTIONS)
-    if isinstance(models, Workspace):
-        models = Models.of(models)
+    registry = Models.of(models) if isinstance(models, Workspace) else models
 
     def ws(model: str | None) -> Workspace:
-        return models.get(model)
+        return registry.get(model)
 
     def view(model: str | None):
         """The open session's working copy (staged changes visible), else the model file as it is."""
@@ -325,6 +332,98 @@ def build_server(models: Models | Workspace) -> MCPServer:
     tool = _register(server, threading.Lock(), words)
     #: The last commit's report per model, so commit(page=K) can page it after the session is gone.
     committed: dict[Path, str] = {}
+
+    # --- models ---
+
+    def saved_count(workspace: Workspace) -> int:
+        """Operations in a writable model's working file (0 when there is none)."""
+        if workspace.config.read_only or not workspace.working_file.is_file():
+            return 0
+        return len(workspace.saved_ops())
+
+    @tool
+    def open_model(
+        path: str,
+        name: str | None = None,
+        catalogues: list[str] | str | None = None,
+        idl_configs: list[str] | str | None = None,
+        focus: list[str] | str | None = None,
+        policy: str = "connected",
+        out: str | None = None,
+        read_only: bool = False,
+        default: bool = False,
+    ) -> str:
+        """Open another .qea model beside the ones already open, with its own rules: `catalogues` (MDG XML, YAML or
+        .qea stereotype catalogues), `idl_configs` (eaidl configs), default session `focus` and `policy`. `name`
+        (default: the file name without extension) is what `model=` takes in other tools. A relative `path` is under
+        the default model's folder; relative catalogue and config paths are under the opened model's folder. `out` is
+        its output directory (default: eaedit-out-<file name> next to it). `read_only=true` refuses every edit, for a
+        model you only consult. `default=true` makes calls without `model` go to it. Nothing is shared between
+        models but the author and timezone. Example: open_model(path="../source/A.qea", name="source", read_only=true)"""
+        opened = registry.open(
+            path,
+            name,
+            _listed(catalogues),
+            _listed(idl_configs),
+            _listed(focus),
+            policy,
+            out,
+            read_only,
+            default,
+        )
+        workspace = registry.get(opened)
+        config = workspace.config
+        text = f"opened {opened}: {config.model}"
+        text += "; read-only" if config.read_only else ""
+        text += "; default" if registry.default == opened else ""
+        text += f"; catalogues: {', '.join(p.name for p in config.catalogues) or 'none'}"
+        count = saved_count(workspace)
+        if count:
+            text += (
+                f"\na saved session with {count} operations exists: "
+                f'open_session(model="{opened}", resume=true) or discard(model="{opened}")'
+            )
+        return text
+
+    @tool
+    def close_model(name: str) -> str:
+        """Close an open model. Staged edits are not lost: its working file stays, and opening the model again
+        then open_session(resume=true) brings them back. Example: close_model(name="source")"""
+        workspace = registry.get(name)
+        was_default = registry.default == name
+        count = registry.close(name)
+        text = f"closed {name}"
+        if count:
+            text += f"; {count} staged operations kept in {workspace.working_file}: open_model again, then open_session(resume=true)"
+        return text + ("; no default model now" if was_default else "")
+
+    @tool
+    def models() -> str:
+        """The open models, one per line: name (and whether it is the default or read-only), file, catalogues,
+        eaidl configs and its session (open with N operations, a saved one, or none). Example: models()"""
+        if not registry.names():
+            return "no model is open; call open_model"
+        lines = []
+        for name in registry.names():
+            workspace = registry.get(name)
+            config = workspace.config
+            session = workspace.session
+            if session is not None:
+                state = f"open, {len(session.log)} operations" + (", stale" if workspace.stale() else "")
+            else:
+                try:
+                    count = saved_count(workspace)
+                except EaeditError:
+                    count = 0
+                state = f"saved, {count} operations" if count else "none"
+            head = (
+                name + (" (default)" if registry.default == name else "") + (" read-only" if config.read_only else "")
+            )
+            lines.append(
+                f"{head}: {config.model}; catalogues: {', '.join(p.name for p in config.catalogues) or 'none'}; "
+                f"idl: {', '.join(p.name for p in config.idl_configs) or 'none'}; session: {state}"
+            )
+        return "\n".join(lines)
 
     # --- explore ---
 
@@ -529,6 +628,7 @@ def build_server(models: Models | Workspace) -> MCPServer:
         it; then commit or discard. A relative `path` is under the output directory, as export_changes names it.
         All or nothing: if one operation fails, no session is left open. Example: apply_changes(path="add-header-size")"""
         workspace = ws(model)
+        workspace.require_writable()
         source = Path(path)
         if not source.is_absolute():
             source = workspace.config.out_dir / source

@@ -4,7 +4,8 @@ An [MCP](https://modelcontextprotocol.io) server that lets an agent explore and 
 model through [eaedit](./EAEDIT.md). It is generic: it knows no modelling conventions and no workflow. Those belong in
 the agent's own instructions (see [docs/examples/AGENTS.example.md](./docs/examples/AGENTS.example.md)).
 
-The server speaks stdio and works on one model file, with at most one editing session at a time. The agent sees
+The server speaks stdio. It can have several model files open at once (see Models below), each with its own
+catalogues, eaidl configs and at most one editing session. The agent sees
 qualified names (`Model::Package::Element`, `Element.attribute`) and GUIDs only. Lists are paged: a reply ends with
 `… N more (page=K)`, and the agent calls again with that page.
 
@@ -52,6 +53,23 @@ by the OS path separator (`:` on Linux), except `EAEDIT_MCP_FOCUS`, which uses `
 ## Tools
 
 Every reply is plain text. A failure is a reply starting with `error:` that says what to do next.
+
+Models:
+
+- `open_model`: open another `.qea` beside the ones already open, with its own catalogues, eaidl configs, default
+  focus and policy, output directory and `name` (default: the file name without extension). `read_only=true` refuses
+  every edit (`open_session`, `edit`, `undo`, `discard`, `commit`, `export_changes`, `apply_changes`, `import_svg`),
+  for a model you only consult. A relative model path is under the default model's folder; relative catalogue and
+  config paths are under the opened model's folder. The output directory defaults to `eaedit-out-<file name>` next
+  to the model, or to the one the file had when it was last open in this run. Only the author and timezone carry
+  over from the server's options.
+- `close_model`: close a model. Its working file stays, so opening it again and `open_session(resume=true)` brings
+  staged edits back.
+- `models`: the open models, which one is the default, and each one's session.
+
+Every other tool except `operations` takes `model=` (a name from `models`); without it the call goes to the default
+model: the one given on the command line, else the first one opened (`open_model(default=true)` moves it). Closing
+the default leaves none until another model is opened, and calls without `model=` say which names to pass.
 
 Explore (whole model, no session needed; with a session open they read its working copy, so staged edits show):
 

@@ -20,6 +20,9 @@ L7_DIAGRAM = "{0BA44FD3-F22C-4f9a-AC35-3BDB736B3C80}"
 #: What the agent must never read: table names, column keys, raw key tuples.
 LEAK = re.compile(r"\bt_[a-z]+|attr_|\(t_|, [0-9A-Fa-f]{8}\)")
 TOOLS = {
+    "open_model",
+    "close_model",
+    "models",
     "overview",
     "search",
     "describe",
@@ -79,7 +82,7 @@ def test_every_model_tool_takes_model(qea_copy, nafv4_path, tmp_path):
             return (await client.list_tools()).tools
 
     for t in asyncio.run(go()):
-        if t.name != "operations":
+        if t.name not in {"operations", "open_model", "close_model", "models"}:
             assert "model" in t.input_schema["properties"], t.name
             assert "`model`" in t.description, t.name
 

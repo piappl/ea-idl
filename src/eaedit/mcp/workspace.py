@@ -104,7 +104,7 @@ class Workspace:
     def open_session(
         self, focus: list[str] | None = None, policy: str | None = None, resume: bool = False
     ) -> OpenResult:
-        self._writable()
+        self.require_writable()
         if self._session is not None:
             if not (resume and self.stale()):
                 raise EaeditError("a session is already open; discard or commit first")
@@ -161,12 +161,12 @@ class Workspace:
                 return OpenResult(msg, index - 1, len(ops))
         return OpenResult(f"resumed {len(ops)} of {len(ops)}", len(ops), len(ops))
 
-    def _writable(self) -> None:
+    def require_writable(self) -> None:
         if self.config.read_only:
             raise EaeditError(READ_ONLY)
 
     def require_session(self) -> Session:
-        self._writable()
+        self.require_writable()
         if self._session is None:
             raise EaeditError("no session is open; call open_session first")
         return self._session
@@ -203,7 +203,7 @@ class Workspace:
             self.working_file.unlink(missing_ok=True)
 
     def discard(self) -> None:
-        self._writable()
+        self.require_writable()
         self._close()
 
     def close(self) -> None:
