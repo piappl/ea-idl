@@ -168,3 +168,37 @@ def test_focus_and_policy_survive_restart_and_rebase(qea_copy, nafv4_path, tmp_p
     restarted.open_session(focus=[CORE], policy="package", resume=True)  # new ones win
     assert focus(restarted) == ["core"] and restarted.session.scope.policy == "package"
     assert yaml.safe_load(restarted.working_file.read_text())["policy"] == "package"
+
+
+def test_read_only_refuses_editing(qea_copy, nafv4_path, tmp_path):
+    path = qea_copy(nafv4_path)
+    ws = Workspace(Config(path, out_dir=tmp_path / "out", read_only=True))
+    assert ws.snapshot().find(CORE)
+    for call in (ws.open_session, ws.require_session, ws.discard, ws.commit, lambda: _create(ws, "X")):
+        with pytest.raises(EaeditError, match="read-only"):
+            call()
+    assert not (tmp_path / "out").exists()
+
+
+def test_read_only_discard_keeps_a_saved_working_file(qea_copy, nafv4_path, tmp_path):
+    path, config = _make(qea_copy, nafv4_path, tmp_path)
+    ws = Workspace(config)
+    ws.open_session()
+    _create(ws, "Kept")
+    ws.close()
+    ro = Workspace(Config(path, out_dir=config.out_dir, read_only=True))
+    with pytest.raises(EaeditError, match="read-only"):
+        ro.discard()
+    assert ro.working_file.is_file()
+
+
+def test_close_keeps_working_file_and_resume_restores(qea_copy, nafv4_path, tmp_path):
+    path, config = _make(qea_copy, nafv4_path, tmp_path)
+    ws = Workspace(config)
+    ws.snapshot()
+    ws.open_session()
+    _create(ws, "Thing1")
+    ws.close()
+    assert ws.session is None and ws.working_file.is_file()
+    again = Workspace(config)
+    assert again.open_session(resume=True).resumed == 1

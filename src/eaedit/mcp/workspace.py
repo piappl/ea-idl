@@ -29,6 +29,8 @@ REJECTED_FILE = "working.rejected.yaml"
 _CALL_LIMIT = 300
 #: Why a stale session cannot commit, and the two ways on.
 STALE = "the model changed on disk: open_session(resume=True) replays your edits onto it, or discard()"
+#: Why a read-only model refuses to edit.
+READ_ONLY = "the model is opened read-only; open it again without read_only to edit"
 
 
 @dataclass
@@ -41,6 +43,7 @@ class Config:
     focus: list[str] = field(default_factory=list)
     policy: str = "connected"
     out_dir: Path | None = None  # default: <model dir>/eaedit-out
+    read_only: bool = False
 
     def __post_init__(self) -> None:
         self.model = Path(self.model)
@@ -101,6 +104,7 @@ class Workspace:
     def open_session(
         self, focus: list[str] | None = None, policy: str | None = None, resume: bool = False
     ) -> OpenResult:
+        self._writable()
         if self._session is not None:
             if not (resume and self.stale()):
                 raise EaeditError("a session is already open; discard or commit first")
@@ -157,7 +161,12 @@ class Workspace:
                 return OpenResult(msg, index - 1, len(ops))
         return OpenResult(f"resumed {len(ops)} of {len(ops)}", len(ops), len(ops))
 
+    def _writable(self) -> None:
+        if self.config.read_only:
+            raise EaeditError(READ_ONLY)
+
     def require_session(self) -> Session:
+        self._writable()
         if self._session is None:
             raise EaeditError("no session is open; call open_session first")
         return self._session
@@ -194,7 +203,15 @@ class Workspace:
             self.working_file.unlink(missing_ok=True)
 
     def discard(self) -> None:
+        self._writable()
         self._close()
+
+    def close(self) -> None:
+        """Let go of the model file; the working file stays, so open_session(resume=True) brings the edits back."""
+        self._close(keep_working_file=True)
+        if self._snapshot is not None:
+            self._snapshot.backend.close()
+        self._snapshot = self._snapshot_hash = None
 
     def commit(self) -> ChangeSet:
         session = self.require_session()
