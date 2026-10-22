@@ -34,6 +34,7 @@ from eaedit.mcp import idl as idl_gen
 from eaedit.mcp import workspace as workspace_module
 from eaedit.mcp.report import change_report, change_summary
 from eaedit.mcp.words import agent_words
+from eaedit.mcp.models import Models
 from eaedit.mcp.workspace import Config, Workspace
 from eaedit.ops import OPERATIONS, load_all
 from eaedit.scope import POLICIES
@@ -45,6 +46,9 @@ INSTRUCTIONS = (
     "with preview, and finish with commit (writes the model) or export_changes (writes a change package for review "
     "and leaves the model alone). undo takes back the last edit, discard the whole session."
 )
+
+#: Appended to the description of every tool that takes ``model``.
+MODEL_DOC = "`model` names an open model (models lists them); without it, the default model."
 
 #: Field names an operation with ``**fields`` accepts, by the table it edits.
 _FIELD_TABLES = {
@@ -142,7 +146,7 @@ def _argument_error(fn: Callable[..., str], exc: ValidationError) -> str:
     return f"error: {fn.__name__}: {'; '.join(problems.values())}; parameters: {fn.__name__}({shown})"
 
 
-def _register(server: _Server, lock: threading.Lock, words: Callable[[str], str]) -> Callable:
+def _register(server: _Server, lock: threading.Lock, words: Callable[[str, str | None], str]) -> Callable:
     """Register ``fn`` (returning text) as a tool whose failures come back as ``error:`` text in agent words.
     Replies are model data and stay as the tool wrote them; tools put their warnings in agent words themselves."""
 
@@ -155,12 +159,16 @@ def _register(server: _Server, lock: threading.Lock, words: Callable[[str], str]
                 except Exception as exc:
                     # A _Reply is finished text (it may list model names); eaedit and eacore messages get agent words.
                     text = error_text(exc)
-                    return _text(text if isinstance(exc, _Reply) else words(text), is_error=True)
+                    model = kwargs.get("model")
+                    return _text(text if isinstance(exc, _Reply) else words(text, model), is_error=True)
 
         # The SDK would validate a ``str`` return as structured output; a CallToolResult is passed through.
         tool.__signature__ = inspect.signature(fn).replace(return_annotation=CallToolResult)
         tool.__annotations__ = {**fn.__annotations__, "return": CallToolResult}
-        server.add_tool(tool, name=fn.__name__, description=inspect.cleandoc(fn.__doc__ or ""))
+        description = inspect.cleandoc(fn.__doc__ or "")
+        if "model" in inspect.signature(fn).parameters:
+            description += "\n" + MODEL_DOC
+        server.add_tool(tool, name=fn.__name__, description=description)
         server.tool_functions[fn.__name__] = fn
         return fn
 
@@ -291,34 +299,43 @@ def _preview_text(workspace: Workspace, diagrams: bool = False, idl: bool = Fals
 # --- the server -----------------------------------------------------------------------------------------------
 
 
-def build_server(workspace: Workspace) -> MCPServer:
+def build_server(models: Models | Workspace) -> MCPServer:
     load_all()
     server = _Server("eaedit", instructions=INSTRUCTIONS)
+    if isinstance(models, Workspace):
+        models = Models.of(models)
 
-    def view():
+    def ws(model: str | None) -> Workspace:
+        return models.get(model)
+
+    def view(model: str | None):
         """The open session's working copy (staged changes visible), else the model file as it is."""
+        workspace = ws(model)
         return workspace.session or workspace.snapshot()
 
-    def words(text: str) -> str:
+    def words(text: str, model: str | None = None) -> str:
         if "t_" not in text and "attr_" not in text:
             return text
-        session = view()
+        try:
+            session = view(model)
+        except Exception:  # no such model, or it cannot be read: the message stays as it is
+            return text
         return agent_words(text, session.working, session.original)
 
     tool = _register(server, threading.Lock(), words)
-    #: The last commit's report, so commit(page=K) can page it after the session is gone.
-    committed: list[str] = []
+    #: The last commit's report per model, so commit(page=K) can page it after the session is gone.
+    committed: dict[Path, str] = {}
 
     # --- explore ---
 
     @tool
-    def overview(package: str | None = None, depth: int = 2, page: int = 1) -> str:
+    def overview(package: str | None = None, depth: int = 2, page: int = 1, model: str | None = None) -> str:
         """The package tree, `depth` levels deep, with element counts per package and kind. `package` (qualified
         name or GUID) starts the tree there instead of at the model root. Like every explore tool it reads the
         open session's working copy (so staged edits show) or, with no session, the model file as it is now.
         Long replies end with a `… N more (page=K)` line: call again with that page. Example:
         overview(package="Model::Logical", depth=3)"""
-        return explore.overview(view(), package, depth, page)
+        return explore.overview(view(model), package, depth, page)
 
     @tool
     def search(
@@ -328,6 +345,7 @@ def build_server(workspace: Workspace) -> MCPServer:
         package: str | None = None,
         field: str = "name",
         page: int = 1,
+        model: str | None = None,
     ) -> str:
         """Find packages, elements, attributes, connectors and diagrams: `text` is a case-insensitive substring, or
         a regular expression written as `/regex/` ("" matches everything). `field` says where to look: "name"
@@ -336,34 +354,36 @@ def build_server(workspace: Workspace) -> MCPServer:
         that package's subtree. One line per match: kind, qualified name, stereotypes, type, GUID, and for a match
         outside the name what matched (`notes: "…"` or `tag name = value`). Paged (`page`).
         Example: search(text="timestamp", field="notes", kind="element", package="Model::Logical")"""
-        return explore.search(view(), text, kind, stereotype, package, field, page)
+        return explore.search(view(model), text, kind, stereotype, package, field, page)
 
     @tool
-    def describe(id: str, page: int = 1) -> str:
+    def describe(id: str, page: int = 1, model: str | None = None) -> str:
         """One thing in compact detail, by qualified name or GUID (`id`): an element's stereotypes, tags,
         attributes with types, connectors and the diagrams showing it; a package's direct contents; a connector's
         ends; a diagram's objects (as the diagram tool). A name shared by several things lists them with their
         GUIDs: describe the one you mean by GUID. Paged (`page`). Example: describe(id="Model::Logical::Header")"""
-        return explore.describe(view(), id, page)
+        return explore.describe(view(model), id, page)
 
     @tool
-    def usages(id: str, page: int = 1) -> str:
+    def usages(id: str, page: int = 1, model: str | None = None) -> str:
         """Where an element (qualified name or GUID) is used: attributes typed by it, connectors to and from it,
         diagrams showing it. Good for finding base classes and existing types before creating new ones. Paged
         (`page`). Example: usages(id="Model::Logical::Header")"""
-        return explore.usages(view(), id, page)
+        return explore.usages(view(model), id, page)
 
     @tool
-    def stereotype(name: str) -> str:
+    def stereotype(name: str, model: str | None = None) -> str:
         """A stereotype's definition from the loaded catalogues (or the model): what it applies to, its tags with
         types, values and defaults, what it generalizes, connector end rules. `name` may be qualified with its
         profile (`Profile::Name`) when two profiles define it. Example: stereotype(name="Block")"""
-        return explore.stereotype_info(view(), name)
+        return explore.stereotype_info(view(model), name)
 
     # --- session ---
 
     @tool
-    def open_session(focus: list[str] | str | None = None, policy: str | None = None, resume: bool = False) -> str:
+    def open_session(
+        focus: list[str] | str | None = None, policy: str | None = None, resume: bool = False, model: str | None = None
+    ) -> str:
         """Start editing. `focus` is the package (or list of packages) the changes belong in, by qualified name or
         GUID; the server's default focus when omitted. `policy` says how changes outside the focus are treated:
         "package" (refused outside the focus), "connected" (also allows connectors and diagram changes reaching
@@ -371,15 +391,17 @@ def build_server(workspace: Workspace) -> MCPServer:
         after a restart, `resume=true` replays it, and when the model changed on disk under an open session,
         `resume=true` replays its edits onto the new model; a resumed session keeps its saved focus and policy unless
         new ones are given. Example: open_session(focus=["Model::Logical"])"""
+        workspace = ws(model)
         result = workspace.open_session([focus] if isinstance(focus, str) else focus, policy, resume)
         session = workspace.require_session()
         names = [resolve.qualified_name(session.working, ref) for ref in session.scope.focus]
         return f"{result.message}; focus: {', '.join(names) or '(none)'}; policy: {session.scope.policy}"
 
     @tool
-    def session_status() -> str:
+    def session_status(model: str | None = None) -> str:
         """Whether a session is open, and if so its focus, policy, the operations so far and the warnings they
         raised; also whether the model file changed underneath it. Example: session_status()"""
+        workspace = ws(model)
         session = workspace.session
         if session is None:
             saved = workspace.working_file
@@ -387,7 +409,7 @@ def build_server(workspace: Workspace) -> MCPServer:
                 try:
                     count = len(workspace.saved_ops())
                 except EaeditError as exc:
-                    return f"no session open; {words(_line(exc))}"
+                    return f"no session open; {words(_line(exc), model)}"
                 if count:
                     return f"no session open; a saved one with {count} operations exists: open_session(resume=true) or discard()"
             return "no session open"
@@ -395,7 +417,7 @@ def build_server(workspace: Workspace) -> MCPServer:
         lines = [f"session open; focus: {', '.join(names) or '(none)'}; policy: {session.scope.policy}"]
         ops = [op.name for op in session.log]
         lines.append(f"{len(ops)} operations" + (": " + ", ".join(ops) if ops else ""))
-        lines += [f"warning {words(str(w))}" for w in session.warnings]
+        lines += [f"warning {words(str(w), model)}" for w in session.warnings]
         if workspace.stale():
             lines.append(STALE)
         return "\n".join(lines)
@@ -419,11 +441,12 @@ def build_server(workspace: Workspace) -> MCPServer:
         return "\n".join(lines)
 
     @tool
-    def edit(op: str, args: dict[str, Any] | str) -> str:
+    def edit(op: str, args: dict[str, Any] | str, model: str | None = None) -> str:
         """Run one edit operation (`op`, see operations) on the open session with `args` as a JSON object of its
         parameters. Things are named by qualified name or GUID. Replies `ok <GUID>` of what it created or changed,
         then any warnings; a failed edit changes nothing and replies `error: ...`. Example:
         edit(op="add_attribute", args={"el": "Model::Logical::Header", "name": "size", "type": "long"})"""
+        workspace = ws(model)
         if op not in OPERATIONS:
             raise _unknown_op(op)
         if isinstance(args, str):
@@ -443,63 +466,69 @@ def build_server(workspace: Workspace) -> MCPServer:
         except (TypeError, ValueError, KeyError) as exc:
             if isinstance(exc, EaeditError):
                 raise
-            raise _Reply(f"error: {op}: {words(_line(exc))}; parameters: {_signature(op)}") from None
+            raise _Reply(f"error: {op}: {words(_line(exc), model)}; parameters: {_signature(op)}") from None
         lines = [f"ok {result.guid}" if result.guid else "ok"]
-        lines += [f"warning {words(str(w))}" for w in result.warnings]
+        lines += [f"warning {words(str(w), model)}" for w in result.warnings]
         if workspace.stale():
             lines.append(STALE)
         return "\n".join(lines)
 
     @tool
-    def undo() -> str:
+    def undo(model: str | None = None) -> str:
         """Take back the last edit of the open session. Example: undo()"""
+        workspace = ws(model)
         text = f"undid {workspace.undo()}"
         return text + "\n" + STALE if workspace.stale() else text
 
     @tool
-    def discard() -> str:
+    def discard(model: str | None = None) -> str:
         """Drop the open session and all its edits (also a saved session left by a restart); the model file is not
         touched. Example: discard()"""
+        workspace = ws(model)
         had = workspace.session is not None or workspace.working_file.is_file()
         workspace.discard()
         return "session discarded" if had else "no session to discard"
 
     @tool
-    def preview(diagrams: bool = False, idl: bool = False, page: int = 1) -> str:
+    def preview(diagrams: bool = False, idl: bool = False, page: int = 1, model: str | None = None) -> str:
         """What the open session would change, per package (added, changed, removed), with warnings and new
         integrity issues. `diagrams=true` adds the text form of each changed diagram (its first page; the
         `… N more` line names the diagram call for the rest); `idl=true` adds the IDL diff (when the server has an
         eaidl config). Paged (`page`). Example: preview(diagrams=true)"""
+        workspace = ws(model)
         return _preview_text(workspace, diagrams, idl, page)
 
     @tool
-    def commit(page: int = 1) -> str:
+    def commit(page: int = 1, model: str | None = None) -> str:
         """Write the open session's edits to the model file and close the session. Refused (with the reasons) when
         it would add integrity errors, leave the focus, or when the file changed since the session opened. Replies
         with the change report, which is also saved in the output directory. The report is paged: `page` above 1
         shows that page of the last commit's report and commits nothing. Example: commit()"""
+        workspace = ws(model)
         if page > 1:
-            if not committed:
+            if workspace.config.model not in committed:
                 raise _Reply("error: no commit report yet; commit() first")
-            return _paged(committed[-1], page, False)
+            return _paged(committed[workspace.config.model], page, False)
         report = package.commit_with_report(workspace)
-        committed[:] = [report.rstrip("\n")]
-        return _paged(committed[-1], 1, False)
+        committed[workspace.config.model] = report.rstrip("\n")
+        return _paged(committed[workspace.config.model], 1, False)
 
     @tool
-    def export_changes(name: str, overwrite: bool = False) -> str:
+    def export_changes(name: str, overwrite: bool = False, model: str | None = None) -> str:
         """Write the open session's edits as a change package (change file, report, changed diagrams, IDL diff,
         check results) to the directory `name` under the output directory, without touching the model; the session
         stays open. `overwrite=true` replaces an existing package of that name. Replies with the directory and one
         line per changed package (preview shows the details). Example: export_changes(name="add-header-size")"""
+        workspace = ws(model)
         target = package.export_changes(workspace, name, overwrite)
         return "\n".join([f"wrote {target}", *change_summary(workspace.require_session())])
 
     @tool
-    def apply_changes(path: str) -> str:
+    def apply_changes(path: str, model: str | None = None) -> str:
         """Replay a change package (its directory, or a change file) onto the model in a new session and preview
         it; then commit or discard. A relative `path` is under the output directory, as export_changes names it.
         All or nothing: if one operation fails, no session is left open. Example: apply_changes(path="add-header-size")"""
+        workspace = ws(model)
         source = Path(path)
         if not source.is_absolute():
             source = workspace.config.out_dir / source
@@ -509,32 +538,33 @@ def build_server(workspace: Workspace) -> MCPServer:
     # --- diagrams ---
 
     @tool
-    def diagram(id: str, page: int = 1) -> str:
+    def diagram(id: str, page: int = 1, model: str | None = None) -> str:
         """A diagram (qualified name or GUID) as compact text, staged edits included: one line per object (name,
         GUID, kind, rectangle left,top,right,bottom, stacking), per shown connector and per note. Change it with
         edit operations (place, set_bounds, layout, ...). Paged (`page`). Example: diagram(id="Model::Logical::Overview")"""
-        return diagram_text.diagram_text(view(), id, page)
+        return diagram_text.diagram_text(view(model), id, page)
 
     @tool
-    def diagram_svg(id: str) -> str:
+    def diagram_svg(id: str, model: str | None = None) -> str:
         """A diagram (qualified name or GUID) as eaedit SVG: the full drawing, several thousand tokens even for a
         medium diagram. Edit it and hand it back with import_svg, or prefer the diagram tool to read.
         Example: diagram_svg(id="Model::Logical::Overview")"""
-        return svg_io.export_svg(view(), id)
+        return svg_io.export_svg(view(model), id)
 
     @tool
-    def import_svg(svg: str, owner: str | None = None) -> str:
+    def import_svg(svg: str, owner: str | None = None, model: str | None = None) -> str:
         """Stage the differences between an eaedit SVG (`svg`, as diagram_svg returns it, edited) and its
         diagram in the open session. An SVG without a diagram GUID creates a new diagram in `owner` (a package or
         element). A file that breaks the rules is refused before anything is staged. Example:
         import_svg(svg="<svg ...>...</svg>")"""
+        workspace = ws(model)
         session = workspace.require_session()
         start = len(session.log)
         results = svg_io.import_svg(session, svg, owner)
         workspace.save()
         lines = [f"ok: {len(session.log) - start} operations"]
         lines += [f"ok {r.guid}" for r in results if r.guid]
-        lines += [f"warning {words(str(w))}" for r in results for w in r.warnings]
+        lines += [f"warning {words(str(w), model)}" for r in results for w in r.warnings]
         if workspace.stale():
             lines.append(STALE)
         return "\n".join(lines)
@@ -542,9 +572,10 @@ def build_server(workspace: Workspace) -> MCPServer:
     # --- checks ---
 
     @tool
-    def check(page: int = 1) -> str:
+    def check(page: int = 1, model: str | None = None) -> str:
         """Integrity check: in a session, the issues its edits would add; without one, the model's errors. Paged
         (`page`). Example: check()"""
+        workspace = ws(model)
         session = workspace.session
         if session is not None:
             issues = session.preview(render=False).new_issues
@@ -555,15 +586,20 @@ def build_server(workspace: Workspace) -> MCPServer:
             empty = "no integrity errors in the model"
         if not issues:
             return empty
-        return explore.page_lines([_issue_line(session.working, i, words) for i in issues], page, PAGE_SIZE)
+        return explore.page_lines(
+            [_issue_line(session.working, i, lambda text: words(text, model)) for i in issues], page, PAGE_SIZE
+        )
 
     @tool
-    def idl_diff(config: str | None = None, overrides: dict[str, Any] | str | None = None) -> str:
+    def idl_diff(
+        config: str | None = None, overrides: dict[str, Any] | str | None = None, model: str | None = None
+    ) -> str:
         """The IDL the open session's edits would change, as a unified diff per eaidl config; it also names changed
         packages outside the IDL roots, so an empty diff is not mistaken for no effect. `config` is an eaidl config
         file (relative to the model's folder); without it, the configs the server was started with. `overrides` is a
         JSON object of eaidl options set over the config for this call only.
         Example: idl_diff(config="idl.yaml", overrides={"root_packages": ["Messages"]})"""
+        workspace = ws(model)
         session = workspace.require_session()
         return "\n\n".join(
             f"IDL diff ({name}):\n{idl_gen.idl_diff(session, loaded).text()}"
@@ -571,10 +607,16 @@ def build_server(workspace: Workspace) -> MCPServer:
         )
 
     @tool
-    def idl(config: str | None = None, overrides: dict[str, Any] | str | None = None, page: int = 1) -> str:
+    def idl(
+        config: str | None = None,
+        overrides: dict[str, Any] | str | None = None,
+        page: int = 1,
+        model: str | None = None,
+    ) -> str:
         """The IDL eaidl generates, from the open session's working copy (staged edits included) or, with no session,
         from the model. `config` and `overrides` as for idl_diff. Paged (`page`).
         Example: idl(config="idl.yaml", overrides={"template": "idl.jinja2"})"""
+        workspace = ws(model)
         session = workspace.session or workspace.snapshot()
         parts = []
         for name, loaded in _idl_configs(workspace, config, overrides):

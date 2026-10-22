@@ -73,6 +73,22 @@ def test_tool_names_and_docs(qea_copy, nafv4_path, tmp_path):
     assert all(t.description and "Example:" in t.description for t in tools)
 
 
+def test_every_model_tool_takes_model(qea_copy, nafv4_path, tmp_path):
+    async def go():
+        async with Client(build_server(_workspace(qea_copy, nafv4_path, tmp_path))) as client:
+            return (await client.list_tools()).tools
+
+    for t in asyncio.run(go()):
+        if t.name != "operations":
+            assert "model" in t.input_schema["properties"], t.name
+            assert "`model`" in t.description, t.name
+
+
+def test_unknown_model_is_an_error(qea_copy, nafv4_path, tmp_path):
+    [(err, text)] = _run(_workspace(qea_copy, nafv4_path, tmp_path), [("overview", {"model": "nope"})])
+    assert err and text.startswith("error: no open model 'nope'; open models: copy")
+
+
 def test_end_to_end(qea_copy, nafv4_path, tmp_path):
     ws = _workspace(qea_copy, nafv4_path, tmp_path)
     results = _run(
@@ -393,7 +409,7 @@ def test_sdk_argument_errors_and_unknown_tool(qea_copy, nafv4_path, tmp_path):
     (m_err, missing), (t_err, typed), (u_err, unknown) = _run(
         ws, [("describe", {}), ("overview", {"depth": "deep"}), ("descrbe", {"id": "x"})]
     )
-    assert m_err and missing == "error: describe: id is required; parameters: describe(id, page=1)"
+    assert m_err and missing == "error: describe: id is required; parameters: describe(id, page=1, model=None)"
     assert t_err and typed.startswith("error: overview: depth must be int; parameters: overview(")
     assert u_err and unknown.startswith("error: unknown tool 'descrbe'; did you mean describe")
 
