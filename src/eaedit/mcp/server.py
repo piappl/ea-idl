@@ -12,6 +12,7 @@ import os
 import re
 import sys
 import threading
+from dataclasses import dataclass
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -744,7 +745,26 @@ _ENV = {
     "focus": ("FOCUS", ";"),
     "policy": ("POLICY", None),
     "out_dir": ("OUT", None),
+    "read_only": ("READ_ONLY", None),
 }
+#: The options that describe the startup model, by their command-line spelling; refused without MODEL.
+_MODEL_OPTIONS = {
+    "catalogues": "--catalogue",
+    "idl_configs": "--idl-config",
+    "focus": "--focus",
+    "policy": "--policy",
+    "out_dir": "--out",
+    "read_only": "--read-only",
+}
+
+
+@dataclass
+class Startup:
+    """What the command line asks for: the startup model, if any, and what every model opened later shares."""
+
+    config: Config | None
+    author: str | None = None
+    timezone: str | None = None
 
 
 def _env(name: str) -> str:
@@ -753,8 +773,9 @@ def _env(name: str) -> str:
 
 @click.command(
     "eaedit-mcp",
-    help=f"Serve MODEL (an EA .qea file, or {ENV}MODEL) to an agent as an MCP server over stdio. List options "
-    f"repeat on the command line; in the environment paths are separated by {os.pathsep!r} and packages by ';'.",
+    help=f"Serve MODEL (an EA .qea file, or {ENV}MODEL) to an agent as an MCP server over stdio. MODEL is optional: "
+    "the agent can open models later with open_model. List options repeat on the command line; in the environment "
+    f"paths are separated by {os.pathsep!r} and packages by ';'.",
 )
 @click.argument("model", required=False)
 @click.option(
@@ -768,29 +789,40 @@ def _env(name: str) -> str:
 @click.option("--focus", multiple=True, help=f"Default session focus package {_env('focus')}.")
 @click.option("--policy", help=f"Default focus policy: {', '.join(POLICIES)} {_env('policy')}.")
 @click.option("--out", "out_dir", help=f"Output directory [default: <model dir>/eaedit-out] {_env('out_dir')}.")
+@click.option("--read-only", "read_only", is_flag=True, help=f"Refuse every edit of MODEL {_env('read_only')}.")
 def _command(**values: Any) -> dict:
     return values
 
 
-def parse_config(argv: Sequence[str], env: Mapping[str, str]) -> Config:
+def parse_config(argv: Sequence[str], env: Mapping[str, str]) -> Startup:
     """The configuration from the command line, falling back to ``EAEDIT_MCP_*`` in ``env`` for options not given."""
     ctx = _command.make_context("eaedit-mcp", list(argv))
     values = dict(ctx.params)
+    #: How each given option was spelled, for an error about it.
+    given_as = {name: flag for name, flag in _MODEL_OPTIONS.items() if values.get(name) not in (None, (), False)}
     for name, (suffix, separator) in _ENV.items():
         given = values.get(name)
-        if given not in (None, ()) or ENV + suffix not in env:
+        if given not in (None, (), False) or ENV + suffix not in env:
             continue
         raw = env[ENV + suffix]
-        values[name] = [part for part in raw.split(separator) if part] if separator else raw
+        if name == "read_only":
+            values[name] = raw.strip().lower() in ("1", "true", "yes")
+        else:
+            values[name] = [part for part in raw.split(separator) if part] if separator else raw
+        if name in _MODEL_OPTIONS:
+            given_as[name] = ENV + suffix
     if not values["model"]:
-        raise click.UsageError(f"give MODEL (or set {ENV}MODEL)", ctx)
+        if given_as:
+            spelled = ", ".join(given_as[name] for name in _MODEL_OPTIONS if name in given_as)
+            raise click.UsageError(f"{spelled} need MODEL (or {ENV}MODEL); without one, pass them to open_model", ctx)
+        return Startup(None, values["author"], values["timezone"])
     model = Path(values["model"])
     if not model.is_file():
         raise click.BadParameter(f"{model} is not a file", ctx, param_hint="MODEL")
     policy = values["policy"] or "connected"
     if policy not in POLICIES:
         raise click.BadParameter(f"{policy!r} is not one of {', '.join(POLICIES)}", ctx, param_hint="--policy")
-    return Config(
+    config = Config(
         model,
         catalogues=[Path(p) for p in values["catalogues"]],
         idl_configs=[Path(p) for p in values["idl_configs"]],
@@ -799,16 +831,21 @@ def parse_config(argv: Sequence[str], env: Mapping[str, str]) -> Config:
         focus=list(values["focus"]),
         policy=policy,
         out_dir=Path(values["out_dir"]) if values["out_dir"] else None,
+        read_only=bool(values["read_only"]),
     )
+    return Startup(config, values["author"], values["timezone"])
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """``eaedit-mcp``: parse the options and serve the model over stdio until the client disconnects."""
+    """``eaedit-mcp``: parse the options and serve the models over stdio until the client disconnects."""
     try:
-        config = parse_config(sys.argv[1:] if argv is None else argv, os.environ)
+        startup = parse_config(sys.argv[1:] if argv is None else argv, os.environ)
     except click.exceptions.Exit as exc:  # --help
         sys.exit(exc.exit_code)
     except click.ClickException as exc:
         exc.show()
         sys.exit(exc.exit_code)
-    build_server(Workspace(config)).run("stdio")
+    models = Models(startup.author, startup.timezone)
+    if startup.config is not None:
+        models.add(startup.config)
+    build_server(models).run("stdio")

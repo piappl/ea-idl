@@ -9,7 +9,7 @@ pytest.importorskip("mcp")
 
 from mcp.client import Client  # noqa: E402
 
-from eaedit.mcp.server import _FIELD_TABLES, build_server, main, parse_config  # noqa: E402
+from eaedit.mcp.server import _FIELD_TABLES, Startup, build_server, main, parse_config  # noqa: E402
 from eaedit.mcp import server as server_module  # noqa: E402
 from eaedit.mcp.workspace import Config, Workspace  # noqa: E402
 
@@ -346,9 +346,10 @@ def test_parse_config(tmp_path):
     model.write_bytes(b"")
     argv = [str(model), "-c", "a.xml", "-c", "b.yaml", "--idl-config", "i.yaml", "--author", "me"]
     argv += ["--timezone", "Europe/Warsaw", "--focus", "Model::a", "--focus", "Model::b", "--policy", "package"]
-    argv += ["--out", str(tmp_path / "o")]
-    config = parse_config(argv, {})
-    assert config == Config(
+    argv += ["--out", str(tmp_path / "o"), "--read-only"]
+    startup = parse_config(argv, {})
+    assert (startup.author, startup.timezone) == ("me", "Europe/Warsaw")
+    assert startup.config == Config(
         model,
         catalogues=[Path("a.xml"), Path("b.yaml")],
         idl_configs=[Path("i.yaml")],
@@ -357,7 +358,9 @@ def test_parse_config(tmp_path):
         focus=["Model::a", "Model::b"],
         policy="package",
         out_dir=tmp_path / "o",
+        read_only=True,
     )
+    assert parse_config([str(model)], {}).config.read_only is False
 
 
 def test_parse_config_from_env(tmp_path):
@@ -371,29 +374,59 @@ def test_parse_config_from_env(tmp_path):
         "EAEDIT_MCP_FOCUS": "Model::a;Model::b",
         "EAEDIT_MCP_POLICY": "off",
         "EAEDIT_MCP_OUT": str(tmp_path / "o"),
+        "EAEDIT_MCP_READ_ONLY": "yes",
     }
-    config = parse_config([], env)
+    config = parse_config([], env).config
     assert config.model == model
     assert config.catalogues == [Path("a.xml"), Path("b.yaml")]
     assert config.idl_configs == [Path("i.yaml")]
     assert (config.author, config.timezone, config.policy) == ("env", None, "off")
     assert config.focus == ["Model::a", "Model::b"]
     assert config.out_dir == tmp_path / "o"
+    assert config.read_only is True
     # the command line wins over the environment
-    assert parse_config(["--author", "cli"], env).author == "cli"
+    assert parse_config(["--author", "cli"], env).config.author == "cli"
 
 
 def test_parse_config_errors(tmp_path):
     import click
 
-    with pytest.raises(click.UsageError):
-        parse_config([], {})
     with pytest.raises(click.BadParameter):
         parse_config([str(tmp_path / "missing.qea")], {})
     model = tmp_path / "m.qea"
     model.write_bytes(b"")
     with pytest.raises(click.BadParameter):
         parse_config([str(model), "--policy", "nope"], {})
+
+
+def test_parse_config_without_model():
+    import click
+
+    startup = parse_config(["--author", "me", "--timezone", "UTC"], {})
+    assert startup == Startup(None, "me", "UTC")
+    with pytest.raises(click.UsageError, match="--catalogue.*--focus"):
+        parse_config(["-c", "a.xml", "--focus", "Model::a"], {})
+    with pytest.raises(click.UsageError, match="EAEDIT_MCP_CATALOGUES"):
+        parse_config([], {"EAEDIT_MCP_CATALOGUES": "a.xml"})
+    with pytest.raises(click.UsageError, match="--read-only"):
+        parse_config(["--read-only"], {})
+
+
+def test_main_starts_without_model(monkeypatch):
+    seen = []
+
+    class _Stub:
+        def run(self, transport):
+            seen.append(transport)
+
+    def fake_build(models):
+        seen.append(models)
+        return _Stub()
+
+    monkeypatch.setattr(server_module, "build_server", fake_build)
+    main(["--author", "me"])
+    models, transport = seen
+    assert models.names() == [] and models.author == "me" and transport == "stdio"
 
 
 def test_eaedit_mcp_passes_through():
@@ -403,7 +436,7 @@ def test_eaedit_mcp_passes_through():
 
     result = CliRunner().invoke(cli, ["mcp", "--help"])
     assert result.exit_code == 0 and "EAEDIT_MCP_MODEL" in result.output
-    result = CliRunner().invoke(cli, ["mcp"])
+    result = CliRunner().invoke(cli, ["mcp", "--catalogue", "a.xml"])
     assert result.exit_code == 2 and "MODEL" in result.output
 
 

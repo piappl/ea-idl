@@ -38,7 +38,7 @@ changes. Paths in it are placeholders.
 
 | Option | Environment variable | Meaning |
 |--------|----------------------|---------|
-| `MODEL` | `EAEDIT_MCP_MODEL` | The `.qea` file. |
+| `MODEL` | `EAEDIT_MCP_MODEL` | The `.qea` file, the default model. Optional: without it the server starts with no model and the agent opens them with `open_model`. |
 | `-c`, `--catalogue` (repeatable) | `EAEDIT_MCP_CATALOGUES` | MDG XML, YAML or `.qea` stereotype catalogue. |
 | `--idl-config` (repeatable) | `EAEDIT_MCP_IDL_CONFIGS` | An eaidl config: the default for `idl` and `idl_diff`, and the configs `preview(idl=true)`, commit reports and change packages use. Optional. |
 | `--author` | `EAEDIT_MCP_AUTHOR` | Author written on new items. |
@@ -46,8 +46,10 @@ changes. Paths in it are placeholders.
 | `--focus` (repeatable) | `EAEDIT_MCP_FOCUS` | Default focus of a session. |
 | `--policy` | `EAEDIT_MCP_POLICY` | Default focus policy, how changes outside the focus are treated: `package` (refused outside the focus), `connected` (default; also allows connectors and diagram changes reaching out of it), `advisory` (allowed, with a warning) or `off`. |
 | `--out` | `EAEDIT_MCP_OUT` | Output directory, default `eaedit-out` next to the model. |
+| `--read-only` | `EAEDIT_MCP_READ_ONLY` | Refuse every edit of `MODEL` (in the environment: `1`, `true` or `yes`). |
 
-An option given on the command line wins over its environment variable. In the environment, list values are separated
+These options describe the startup model; without `MODEL`, all but `--author` and `--timezone` are refused (they
+apply to every model opened). An option given on the command line wins over its environment variable. In the environment, list values are separated
 by the OS path separator (`:` on Linux), except `EAEDIT_MCP_FOCUS`, which uses `;`.
 
 ## Tools
