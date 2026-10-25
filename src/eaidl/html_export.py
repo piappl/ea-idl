@@ -111,13 +111,18 @@ def export_html(config: Configuration, packages: List[ModelPackage], output_dir:
     env.globals["generate_package_link_from_current"] = generate_package_link_from_current
     env.globals["generate_package_link_for_breadcrumb"] = generate_package_link_for_breadcrumb
 
+    from eaidl.documentation import export_documentation
+
+    diagram_entries = export_documentation(config, packages, output_path, env)
+    env.globals["catalogue_diagram_urls"] = {entry["guid"]: entry["url"] for entry in diagram_entries}
+
     # Generate pages
     generate_index_page(packages, output_path, env)
     generate_package_pages(packages, output_path, env, config)
     generate_class_pages(packages, output_path, env, config)
 
     # Generate search index
-    generate_search_index(packages, output_path)
+    generate_search_index(packages, output_path, diagram_entries)
 
     log.info("HTML export completed successfully")
 
@@ -284,6 +289,7 @@ def generate_package_pages(
         auto_diagram_content = None
         auto_diagram_type = None
         ea_diagrams = []
+        linked_diagrams = []
         if package.classes or package.diagrams:
             # Use new builder → renderer pipeline
             from eaidl.diagram_builder import ClassDiagramBuilder
@@ -310,6 +316,19 @@ def generate_package_pages(
 
             # Convert EA diagrams using builder → renderer pipeline
             for ea_diagram in package.diagrams:
+                guid = (ea_diagram.guid or "").strip("{}").lower()
+                catalogue_url = env.globals.get("catalogue_diagram_urls", {}).get(guid)
+                if catalogue_url:
+                    linked_diagrams.append(
+                        {
+                            "name": ea_diagram.name,
+                            "url": "/".join([".."] * (depth + 1)) + "/" + catalogue_url,
+                        }
+                    )
+                    continue
+                # Scoped diagrams are published once by the catalogue, including exclusions/failures.
+                if config.documentation.root_packages:
+                    continue
                 try:
                     if config.diagrams.renderer == "native":
                         ea_diagrams.append(
@@ -346,9 +365,7 @@ def generate_package_pages(
 
                     if isinstance(e, PlantUMLServerError):
                         raise
-                    log.warning(
-                        f"Failed to convert EA diagram '{ea_diagram.name}' " f"in package '{package.name}': {e}"
-                    )
+                    log.warning(f"Failed to convert EA diagram '{ea_diagram.name}' in package '{package.name}': {e}")
                     # Continue with other diagrams
 
         # Generate package index page (diagrams are embedded inline)
@@ -357,6 +374,7 @@ def generate_package_pages(
             auto_diagram_content=auto_diagram_content,
             auto_diagram_type=auto_diagram_type,
             ea_diagrams=ea_diagrams,
+            linked_diagrams=linked_diagrams,
             current_namespace=namespace_path,
             index_link=index_rel_link,
             assets_path=assets_rel_path,
@@ -365,18 +383,21 @@ def generate_package_pages(
         (pkg_dir / "index.html").write_text(html, encoding="utf-8")
 
         # Also generate standalone diagram page (kept for direct/legacy access)
-        if package.classes or package.diagrams:
+        if not config.documentation.root_packages and (package.classes or package.diagrams):
             html_diagram = template_diagram.render(
                 package=package,
                 auto_diagram_content=auto_diagram_content,
                 auto_diagram_type=auto_diagram_type,
                 ea_diagrams=ea_diagrams,
+                linked_diagrams=linked_diagrams,
                 current_namespace=namespace_path,
                 index_link=index_rel_link,
                 assets_path=assets_rel_path,
                 search_index_path=search_rel_path,
             )
             (pkg_dir / "diagram.html").write_text(html_diagram, encoding="utf-8")
+        elif config.documentation.root_packages:
+            (pkg_dir / "diagram.html").unlink(missing_ok=True)
 
         log.debug(f"Generated package pages: {pkg_dir}")
 
@@ -449,7 +470,7 @@ def generate_class_pages(
     log.info("Generated all class pages")
 
 
-def generate_search_index(packages: List[ModelPackage], output_dir: Path) -> None:
+def generate_search_index(packages: List[ModelPackage], output_dir: Path, diagram_entries=None) -> None:
     """
     Generate JavaScript search index for client-side search.
 
@@ -459,7 +480,7 @@ def generate_search_index(packages: List[ModelPackage], output_dir: Path) -> Non
     :param packages: All model packages
     :param output_dir: Output directory
     """
-    index = []
+    index = list(diagram_entries or [])
 
     def process_package(package: ModelPackage, namespace_path: List[str]) -> None:
         """Build search index from package."""

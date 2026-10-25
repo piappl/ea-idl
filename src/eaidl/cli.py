@@ -209,7 +209,7 @@ def docs(config_obj, debug, output, raw):
     parser = ModelParser(config_obj)
     model = parser.load()
 
-    if not raw:
+    if not raw and config_obj.documentation.apply_transforms:
         apply_transforms(config_obj, model)
 
     output_path = Path(output)

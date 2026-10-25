@@ -1,0 +1,35 @@
+{% extends "base.jinja2" %}
+{% block title %}Model diagrams{% endblock %}
+{% block content %}
+<h1>Model diagrams</h1>
+<p>{{ total }} diagrams in scope. {{ counts.get('rendered', 0) }} rendered,
+{{ counts.get('excluded', 0) }} excluded, {{ counts.get('failed', 0) }} failed.
+<a href="diagram-coverage.json">Coverage report</a></p>
+<label for="diagram-filter" class="form-label">Filter diagrams by title, viewpoint or package</label>
+<input id="diagram-filter" class="form-control mb-4" type="search">
+{% for group in groups %}
+{% if group.entries %}
+<section class="mb-4" id="{{ group.id }}" style="scroll-margin-top:80px">
+<h2>{{ group.title }}</h2>
+<div class="list-group">
+{% for entry in group.entries %}
+<div class="list-group-item diagram-entry">
+{% if entry.status == 'rendered' %}<a href="{{ entry.url }}">{{ entry.name }}</a>
+{% else %}{{ entry.name }} — {{ entry.status }}: {{ entry.reason }}{% endif %}
+<span class="badge bg-secondary">{{ entry.view or entry.type }}</span>
+<div class="small text-muted">{{ entry.package }}</div>
+</div>
+{% endfor %}
+</div>
+</section>
+{% endif %}
+{% endfor %}
+<script>
+document.getElementById('diagram-filter').addEventListener('input', function () {
+    const query = this.value.toLowerCase();
+    document.querySelectorAll('.diagram-entry').forEach(function (entry) {
+        entry.hidden = !entry.textContent.toLowerCase().includes(query);
+    });
+});
+</script>
+{% endblock %}
