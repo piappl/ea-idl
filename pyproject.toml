@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "eaidl"
 version = "0.1.0"
-description = "Add your description here"
+description = "Convert Enterprise Architect models to IDL, and inspect and edit .qea files"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -23,6 +23,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Optional runtime features for users: pip install "eaidl[mcp]".
 enchant = ["pyenchant>=3.3.0"]
 mcp = ["mcp>=2,<3"]
 
@@ -36,7 +37,7 @@ eaedit-mcp = "eaedit.mcp.server:main"
 
 [tool.ruff]
 line-length = 120
-target-version = "py313"
+target-version = "py312"
 exclude = [
     "src/eaidl/templates"
 ]
@@ -50,9 +51,11 @@ filterwarnings = [
 where = ["src"]
 
 [dependency-groups]
+# Development only: never published, installed by default by `uv sync`.
+# Pulls in every extra so the full test suite runs.
 dev = [
+    "eaidl[enchant,mcp]",
     "idl-parser>=0.0.17",
-    "mcp>=2,<3",
     "pre-commit>=4.0.1",
     "pytest>=8.3.4",
     "ruff>=0.8.3",

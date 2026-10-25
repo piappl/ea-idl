@@ -16,3 +16,5 @@ _docs/
 .coverage
 coverage.json
 .playwright-mcp/
+docs/superpowers
+refs/

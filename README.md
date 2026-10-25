@@ -15,8 +15,10 @@ For detailed code structure documentation, see [STRUCTURE.md](./STRUCTURE.md).
 # Install uv if you haven't already
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Sync dependencies including dev tools (pytest, ruff, pre-commit)
-uv sync --extra dev
+# Sync dependencies, all extras and dev tools (pytest, ruff, pre-commit)
+uv sync
+
+# Runtime only, no dev tools: uv sync --no-dev  (add --extra mcp for eaedit-mcp)
 
 # Install pre-commit hooks
 uv run pre-commit install
@@ -35,7 +37,7 @@ pyenv virtualenv 3.13 eaidl
 pyenv activate eaidl
 
 # Development mode install
-pip install -e "."
+pip install -e ".[enchant,mcp]"  # plus: pip install --group dev (pip >= 25.1)
 # We use pre-commit hook
 pre-commit install
 pytest

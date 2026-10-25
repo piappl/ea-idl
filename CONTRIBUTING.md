@@ -3,8 +3,8 @@
 ## Development Setup
 
 ```bash
-# Sync dependencies including dev tools
-uv sync --extra dev
+# Sync dependencies, all extras and dev tools (the dev group is installed by default)
+uv sync
 
 # Install pre-commit hooks
 uv run pre-commit install
